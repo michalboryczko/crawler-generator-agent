@@ -7,7 +7,7 @@ from ..tools.base import BaseTool
 
 logger = logging.getLogger(__name__)
 
-MAX_ITERATIONS = 20
+MAX_ITERATIONS = 100
 
 
 class BaseAgent:
@@ -41,7 +41,18 @@ class BaseAgent:
             response = self.llm.chat(messages, tools=self.tools if self.tools else None)
 
             if response["tool_calls"]:
-                # Add assistant message with tool calls
+                # IMPORTANT: Only process ONE tool call at a time to ensure sequential execution
+                # Even if model returns multiple tool calls, we only execute the first one
+                # This forces navigate→wait→getHTML sequence instead of batching
+                tool_calls_to_process = response["tool_calls"][:1]  # Only first tool call
+
+                if len(response["tool_calls"]) > 1:
+                    logger.warning(
+                        f"Model returned {len(response['tool_calls'])} tool calls, "
+                        f"but only processing first one to ensure sequential execution"
+                    )
+
+                # Add assistant message with only the tool call we're processing
                 messages.append({
                     "role": "assistant",
                     "content": response["content"],
@@ -54,12 +65,12 @@ class BaseAgent:
                                 "arguments": str(tc["arguments"])
                             }
                         }
-                        for tc in response["tool_calls"]
+                        for tc in tool_calls_to_process
                     ]
                 })
 
-                # Execute each tool call
-                for tool_call in response["tool_calls"]:
+                # Execute the single tool call
+                for tool_call in tool_calls_to_process:
                     result = self._execute_tool(tool_call["name"], tool_call["arguments"])
                     messages.append({
                         "role": "tool",
@@ -90,10 +101,13 @@ class BaseAgent:
 
         tool = self._tool_map[name]
         try:
-            logger.debug(f"Executing tool {name} with {arguments}")
+            # Log at INFO level so tool calls are visible
+            arg_summary = str(arguments)[:200] + "..." if len(str(arguments)) > 200 else str(arguments)
+            logger.info(f"[{self.name}] Executing tool: {name} with args: {arg_summary}")
             result = tool.execute(**arguments)
-            logger.debug(f"Tool {name} result: {result}")
+            result_summary = str(result)[:300] + "..." if len(str(result)) > 300 else str(result)
+            logger.info(f"[{self.name}] Tool {name} completed: {result_summary}")
             return result
         except Exception as e:
-            logger.error(f"Tool {name} failed: {e}")
+            logger.error(f"[{self.name}] Tool {name} failed: {e}")
             return {"success": False, "error": str(e)}

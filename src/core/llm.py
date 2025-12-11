@@ -22,7 +22,8 @@ class LLMClient:
         self,
         messages: list[dict[str, Any]],
         tools: list[BaseTool] | None = None,
-        tool_choice: str | dict = "auto"
+        tool_choice: str | dict = "auto",
+        parallel_tool_calls: bool = False
     ) -> dict[str, Any]:
         """Send chat completion request.
 
@@ -30,6 +31,7 @@ class LLMClient:
             messages: List of message dicts with role/content
             tools: Optional list of BaseTool instances
             tool_choice: "auto", "none", or specific tool
+            parallel_tool_calls: If False, force sequential tool execution (one at a time)
 
         Returns:
             OpenAI response dict
@@ -43,6 +45,9 @@ class LLMClient:
         if tools:
             kwargs["tools"] = [t.to_openai_schema() for t in tools]
             kwargs["tool_choice"] = tool_choice
+            # Disable parallel tool calls to ensure sequential execution
+            # This is important for browser operations: navigate → wait → getHTML
+            kwargs["parallel_tool_calls"] = parallel_tool_calls
 
         logger.debug(f"LLM request with {len(messages)} messages")
         response = self.client.chat.completions.create(**kwargs)

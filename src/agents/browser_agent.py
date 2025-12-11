@@ -38,18 +38,27 @@ Your workflow:
 1. Navigate to the target URL
 2. Wait for page to load (5 seconds recommended for JS-heavy sites)
 3. Extract the page HTML for analysis
-4. Find and extract article links
+4. Find and extract article links (look for article previews, blog posts, news items)
 5. Store extracted URLs in memory under 'extracted_articles'
-6. Look for pagination and store pagination info in memory
+6. Analyze pagination structure:
+   - Find pagination links/buttons
+   - Determine pagination type (numbered, next_button, infinite_scroll, url_parameter)
+   - Find max page number if available (look for "last" link or highest page number)
+   - Store all pagination info in memory
 
-Memory keys to use:
-- 'target_url': The URL being analyzed
-- 'page_html': Current page HTML (truncated)
-- 'extracted_articles': List of article URLs found
-- 'pagination_info': Info about pagination structure
+Memory keys to write:
+- 'extracted_articles': List of {text, href} objects for article links found
+- 'pagination_type': One of 'numbered', 'next_button', 'infinite_scroll', 'url_parameter', or 'none'
+- 'pagination_selector': CSS selector for pagination elements
+- 'pagination_max_pages': Maximum page number if determinable (e.g., 342)
+
+For pagination_max_pages:
+- Look for "last" page links that show the final page number
+- Or extract highest numbered page link visible
+- Store as integer if found, otherwise omit
 
 Always verify your actions worked before proceeding.
-When done, provide a summary of what you found."""
+When done, provide a summary of articles found and pagination info."""
 
 
 class BrowserAgent(BaseAgent):

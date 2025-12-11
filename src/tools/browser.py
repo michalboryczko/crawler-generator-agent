@@ -21,13 +21,16 @@ class NavigateTool(BaseTool):
 
     def execute(self, url: str) -> dict[str, Any]:
         try:
+            logger.info(f">>> BROWSER NAVIGATING TO: {url}")
             result = self.session.navigate(url)
+            logger.info(f">>> BROWSER NAVIGATION COMPLETE: {url}")
             return {
                 "success": True,
                 "result": f"Navigated to {url}",
                 "details": result
             }
         except Exception as e:
+            logger.error(f">>> BROWSER NAVIGATION FAILED: {e}")
             return {"success": False, "error": str(e)}
 
     def get_parameters_schema(self) -> dict[str, Any]:

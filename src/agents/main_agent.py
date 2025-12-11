@@ -20,9 +20,11 @@ from ..tools.memory import (
 )
 from ..tools.file import (
     FileCreateTool,
-    FileReadTool,
-    FileAppendTool,
     FileReplaceTool,
+)
+from ..tools.plan_generator import (
+    GeneratePlanTool,
+    GenerateTestPlanTool,
 )
 from ..tools.orchestration import (
     RunBrowserAgentTool,
@@ -35,62 +37,71 @@ logger = logging.getLogger(__name__)
 
 MAIN_AGENT_PROMPT = """You are the Main Orchestrator Agent for creating web crawler plans.
 
-Your goal is to analyze a website and create a complete crawl plan with test data.
+Your goal is to analyze a website and create a complete crawl plan with comprehensive test data.
 
-## Output Directory
-You will write all outputs to files in the output directory using file tools:
-- plan.md - Main crawl plan
-- test.md - Test plan documentation
-- data/test_set.jsonl - Test dataset (via memory_dump)
+## Output Files
+- plan.md - Comprehensive crawl configuration (from generate_plan_md)
+- test.md - Test dataset documentation (from generate_test_md)
+- data/test_set.jsonl - Test entries for both listing and article pages
 
-## Workflow
+## Workflow - EXECUTE IN ORDER
 
 ### Phase 1: Site Analysis
-1. Store the target URL in memory as 'target_url'
-2. Run the Browser Agent to navigate and extract article links
-3. Run the Browser Agent to find and test pagination
-4. Run the Selector Agent to find optimal CSS selectors
+1. Store target URL: memory_write("target_url", url)
+2. Run browser agent: "Navigate to {url}, extract article links, find pagination, determine max pages"
+   - Stores: extracted_articles, pagination_type, pagination_selector, pagination_max_pages
 
-### Phase 2: Accessibility Check
-5. Run the Accessibility Agent to check if site works without JS rendering
+### Phase 2: Selector Discovery
+3. Run selector agent: "Find CSS selectors for articles and detail page fields"
+   - Stores: article_selector, article_selector_confidence, detail_selectors, listing_selectors
 
-### Phase 3: Test Data Preparation
-6. Run the Data Prep Agent to create test dataset
-7. Get test data keys from memory (pattern: 'test-data-*')
-8. Dump test data to data/test_set.jsonl using memory_dump
+### Phase 3: Accessibility Check
+4. Run accessibility agent: "Check if site works without JavaScript"
+   - Stores: accessibility_result (includes requires_browser, listing_accessible, articles_accessible)
 
-### Phase 4: Documentation
-9. Create plan.md with:
-   - Site URL and analysis date
-   - Article selector and confidence
-   - Pagination strategy
-   - Accessibility note (if requires browser, add: "Page requires browser - see docs/headfull-chrome.md")
-   - Sample article URLs
+### Phase 4: Test Data Preparation - CRITICAL
+5. Run data prep agent: "Create test dataset with 5+ listing pages and 20+ article pages"
+   - Agent fetches listing pages from different pagination positions
+   - Agent extracts article URLs from listings
+   - Agent fetches article pages randomly selected across listings
+   - Stores: test-data-listing-1..N and test-data-article-1..N
 
-10. Create test.md with:
-    - Test dataset description
-    - How to use the test data
-    - Expected data format
+   Listing entry: {"type": "listing", "url": "...", "given": "<HTML>", "expected": {"article_urls": [...], ...}}
+   Article entry: {"type": "article", "url": "...", "given": "<HTML>", "expected": {"title": "...", ...}}
 
-## Available Agents
-- Browser Agent: Navigates pages, extracts links
-- Selector Agent: Finds and verifies CSS selectors
-- Accessibility Agent: Checks HTTP accessibility
-- Data Prep Agent: Creates test dataset
+### Phase 5: Generate Output Files
+6. Call generate_plan_md -> returns comprehensive plan markdown
+7. Call file_create with path="plan.md" and the plan content
+8. Call generate_test_md -> returns test documentation (includes both listing and article counts)
+9. Call file_create with path="test.md" and the test content
 
-## Your Tools
-- Memory: memory_read, memory_write, memory_list, memory_search, memory_dump
-- Files: file_create, file_read, file_append, file_replace
+### Phase 6: Export Test Data
+10. Call memory_search with pattern="test-data-listing-*" to get listing keys
+11. Call memory_search with pattern="test-data-article-*" to get article keys
+12. Combine both key lists
+13. Call memory_dump with ALL keys and filename="data/test_set.jsonl"
+
+## Available Tools
 - Agents: run_browser_agent, run_selector_agent, run_accessibility_agent, run_data_prep_agent
+- Generators: generate_plan_md, generate_test_md
+- Memory: memory_read, memory_write, memory_list, memory_search, memory_dump
+- Files: file_create, file_replace
 
-## Important Rules
-1. Always store target_url first before running agents
-2. Check memory after each agent completes
-3. Verify agents succeeded before proceeding
-4. Always generate outputs even if partial data
-5. Include accessibility warning if requires_browser is true
+## Rules
+1. Run agents sequentially - each depends on previous results
+2. ALWAYS check agent success before proceeding
+3. Data prep agent should create 25+ test entries (5 listings + 20 articles)
+4. Export BOTH listing and article test entries to JSONL
 
-When done, return a summary of all generated files."""
+## CRITICAL - DO NOT SKIP ANY PHASE
+You MUST call ALL four agents in order:
+1. run_browser_agent - REQUIRED
+2. run_selector_agent - REQUIRED
+3. run_accessibility_agent - REQUIRED
+4. run_data_prep_agent - REQUIRED (this fetches additional pages for test data)
+
+Do NOT skip the data prep agent. It is essential for creating the test dataset.
+The data prep agent will navigate the browser to multiple pages - you will see page changes."""
 
 
 class MainAgent(BaseAgent):
@@ -123,10 +134,11 @@ class MainAgent(BaseAgent):
             MemoryListTool(self.memory_store),
             MemorySearchTool(self.memory_store),
             MemoryDumpTool(self.memory_store, output_dir),
+            # Plan generators (structured output from memory)
+            GeneratePlanTool(self.memory_store),
+            GenerateTestPlanTool(self.memory_store),
             # File tools
             FileCreateTool(output_dir),
-            FileReadTool(output_dir),
-            FileAppendTool(output_dir),
             FileReplaceTool(output_dir),
             # Agent orchestration tools
             RunBrowserAgentTool(self.browser_agent),
@@ -141,17 +153,17 @@ class MainAgent(BaseAgent):
         """High-level method to create a complete crawl plan for a URL."""
         task = f"""Create a complete crawl plan for: {url}
 
-The output directory is ready. Execute the full workflow:
+Execute the full workflow:
+1. Store '{url}' in memory as 'target_url'
+2. Run browser agent to extract article links, pagination info, and max pages
+3. Run selector agent to find CSS selectors for listings and detail pages
+4. Run accessibility agent to check HTTP accessibility
+5. Run data prep agent to create test dataset with 5+ listing pages and 20+ article pages
+6. Use generate_plan_md to create comprehensive plan, then file_create for plan.md
+7. Use generate_test_md to create test documentation, then file_create for test.md
+8. Search for BOTH 'test-data-listing-*' AND 'test-data-article-*' keys
+9. Dump ALL test entries to data/test_set.jsonl
 
-1. Store target URL in memory
-2. Run browser agent to analyze the site and extract article links
-3. Run selector agent to find CSS selectors
-4. Run accessibility agent to check if HTTP requests work
-5. Run data prep agent to create test dataset
-6. Search memory for 'test-data-*' keys and dump to data/test_set.jsonl
-7. Create plan.md with full crawl plan
-8. Create test.md with test documentation
-
-Return a summary of all generated files when complete."""
+Return summary with counts when complete."""
 
         return self.run(task)
