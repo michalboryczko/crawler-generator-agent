@@ -5,6 +5,7 @@ from typing import Any
 
 from .base import BaseTool
 from ..core.browser import BrowserSession
+from ..core.html_cleaner import clean_html_for_llm, get_html_summary
 
 logger = logging.getLogger(__name__)
 
@@ -46,27 +47,51 @@ class GetHTMLTool(BaseTool):
     """Get current page HTML."""
 
     name = "browser_get_html"
-    description = "Get the full HTML content of the current page."
+    description = """Get the HTML content of the current page.
+    By default returns cleaned HTML (body only, no scripts/styles/base64).
+    Set raw=true to get unprocessed HTML."""
 
     def __init__(self, session: BrowserSession):
         self.session = session
 
-    def execute(self) -> dict[str, Any]:
+    def execute(self, raw: bool = False) -> dict[str, Any]:
         try:
             html = self.session.get_html()
-            # Truncate if too large
+            original_length = len(html)
+
+            if not raw:
+                # Clean HTML for LLM consumption
+                html = clean_html_for_llm(html)
+                summary = get_html_summary(html)
+                logger.info(
+                    f"HTML cleaned: {original_length} -> {len(html)} bytes "
+                    f"({summary['reduction_percent']}% reduction)"
+                )
+
+            # Truncate if still too large
             if len(html) > 50000:
                 html = html[:50000] + "\n... [TRUNCATED]"
+
             return {
                 "success": True,
                 "result": html,
-                "length": len(html)
+                "original_length": original_length,
+                "cleaned_length": len(html),
+                "raw": raw
             }
         except Exception as e:
             return {"success": False, "error": str(e)}
 
     def get_parameters_schema(self) -> dict[str, Any]:
-        return {"type": "object", "properties": {}}
+        return {
+            "type": "object",
+            "properties": {
+                "raw": {
+                    "type": "boolean",
+                    "description": "If true, return raw HTML without cleaning. Default: false"
+                }
+            }
+        }
 
 
 class ClickTool(BaseTool):

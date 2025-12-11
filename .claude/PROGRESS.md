@@ -3,37 +3,53 @@
 ## Status Dashboard
 | Phase | Status | Progress |
 |-------|--------|----------|
-| Phase 1: Core Infrastructure | ✅ Complete | 100% |
-| Phase 2: Browser Interaction Agent | ✅ Complete | 100% |
-| Phase 3: Selector Tool | ✅ Complete | 100% |
-| Phase 4: Main Agent & Orchestration | ✅ Complete | 100% |
+| Phase 1: Breaking Changes (Output Structure) | ✅ Complete | 100% |
+| Phase 2: File Tool | ✅ Complete | 100% |
+| Phase 3: Random-Choice Tool | ✅ Complete | 100% |
+| Phase 4: Memory Dump Extension | ✅ Complete | 100% |
+| Phase 5: HTTP Tool + Accessibility Agent | ✅ Complete | 100% |
+| Phase 6: Contract Data Prep Agent | ✅ Complete | 100% |
+| Phase 7: Main Agent Workflow Update | ✅ Complete | 100% |
+| Improvement: HTML Cleaner | ✅ Complete | 100% |
 
-## Phase 1: Core Infrastructure
-- [x] Memory Tool (in-memory dictionary with read/write/search)
-- [x] OpenAI client base configuration
-- [x] Base agent class with tool execution pattern
+## Implemented Features
 
-## Phase 2: Browser Interaction Agent
-- [x] Chrome DevTools MCP integration (CDP client)
-- [x] Page loading tool (NavigateTool)
-- [x] Click action tool (ClickTool)
-- [x] Wait/verification tool (WaitTool)
-- [x] HTML extraction (GetHTMLTool)
-- [x] Link extraction (ExtractLinksTool, QuerySelectorTool)
-- [x] Browser Agent with full tool suite
+### Phase 1: Breaking Changes
+- [x] `OutputConfig` class with URL-to-dirname conversion
+- [x] `PLANS_OUTPUT_DIR` and `PLANS_TEMPLATE_DIR` env vars
+- [x] Template copying after agent completion
 
-## Phase 3: Selector Tool
-- [x] Article selector finder (FindSelectorTool)
-- [x] Pagination selector finder
-- [x] Selector verification against extracted links (VerifySelectorTool)
-- [x] Multi-selector comparison (CompareSelectorsTool)
-- [x] Selector Agent with memory integration
+### Phase 2: File Tool
+- [x] `FileCreateTool` - Create new files
+- [x] `FileReadTool` - Read with head/tail options
+- [x] `FileAppendTool` - Append to existing files
+- [x] `FileReplaceTool` - Replace file content
 
-## Phase 4: Main Agent & Orchestration
-- [x] Workflow coordinator (MainAgent)
-- [x] Agent communication (RunBrowserAgentTool, RunSelectorAgentTool)
-- [x] Final crawl plan generation (GenerateCrawlPlanTool)
-- [x] Error recovery and retry logic (in base agent)
+### Phase 3: Random-Choice Tool
+- [x] `RandomChoiceTool` - Random sampling from list
+
+### Phase 4: Memory Dump Extension
+- [x] `MemoryStore.dump_to_jsonl()` method
+- [x] `MemoryDumpTool` - Dump keys to JSONL file
+
+### Phase 5: HTTP + Accessibility
+- [x] `HTTPRequestTool` - Make HTTP requests
+- [x] `AccessibilityAgent` - Check if site needs JS rendering
+
+### Phase 6: Contract Data Prep Agent
+- [x] `DataPrepAgent` - Create test datasets
+- [x] Random page sampling workflow
+- [x] Test data format (type, given, expected)
+
+### Phase 7: Main Agent Update
+- [x] New workflow with all 4 phases
+- [x] File output instead of stdout
+- [x] Integration with all sub-agents
+
+### Improvement: HTML Cleaner
+- [x] `clean_html_for_llm()` - Remove scripts, styles, base64
+- [x] `extract_text_content()` - Get plain text
+- [x] `GetHTMLTool` uses cleaner by default
 
 ---
 
@@ -43,35 +59,53 @@
 src/
 ├── __init__.py
 ├── core/
-│   ├── __init__.py
-│   ├── config.py      # Configuration management
-│   ├── llm.py         # OpenAI client wrapper
-│   └── browser.py     # Chrome DevTools Protocol client
+│   ├── config.py         # Config with OutputConfig
+│   ├── llm.py            # OpenAI client
+│   ├── browser.py        # CDP client
+│   └── html_cleaner.py   # HTML cleaning utilities
 ├── tools/
-│   ├── __init__.py
-│   ├── base.py        # BaseTool abstract class
-│   ├── memory.py      # Memory read/write/search tools
-│   ├── browser.py     # Browser interaction tools
-│   ├── selector.py    # Selector finding/verification
-│   └── orchestration.py # Agent orchestration tools
+│   ├── base.py           # BaseTool class
+│   ├── memory.py         # Memory + dump tool
+│   ├── browser.py        # Browser tools (with HTML cleaning)
+│   ├── selector.py       # Selector tools
+│   ├── file.py           # File CRUD tools
+│   ├── random_choice.py  # Random picker
+│   ├── http.py           # HTTP request tool
+│   └── orchestration.py  # Agent runner tools
 └── agents/
-    ├── __init__.py
-    ├── base.py        # BaseAgent with reasoning loop
+    ├── base.py           # BaseAgent
     ├── browser_agent.py
     ├── selector_agent.py
-    └── main_agent.py  # Orchestrator
+    ├── accessibility_agent.py
+    ├── data_prep_agent.py
+    └── main_agent.py     # Orchestrator
+```
+
+## Output Structure
+```
+plans_output/
+└── rand_org/              # From www.rand.org
+    ├── plan.md            # Crawl plan
+    ├── test.md            # Test documentation
+    └── data/
+        └── test_set.jsonl # Test dataset
 ```
 
 ## Session Log
 
-### Session 1 - 2025-12-10
-- Started project initialization
-- Created tracking structure
-- Completed all 4 phases
-- Created checkpoint: phase4_complete
+### Session 1 - Initial Implementation
+- Completed all 4 phases from original plan
+
+### Session 2 - Development Plan Implementation
+- Implemented all features from docs/development_plan.md
+- Added 6 new tools
+- Added 2 new agents
+- Updated main agent workflow
+- Added HTML cleaner for reduced LLM context
+- Created checkpoint: development_plan_complete
 
 ## Next Steps
-1. Add unit tests for tools
-2. Test with real Chrome instance
-3. Add error recovery and retries
-4. Add infinite scroll detection
+1. Write unit tests for new tools
+2. Integration testing with real site
+3. Add more robust error handling
+4. Consider adding retry logic to agents

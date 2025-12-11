@@ -1,6 +1,8 @@
 """Memory tool for storing and retrieving data across agent calls."""
 import fnmatch
+import json
 import logging
+from pathlib import Path
 from typing import Any
 
 from .base import BaseTool
@@ -47,6 +49,30 @@ class MemoryStore:
     def clear(self) -> None:
         """Clear all data."""
         self._data.clear()
+
+    def dump_to_jsonl(self, keys: list[str], output_path: Path) -> int:
+        """Dump specified keys to JSONL file.
+
+        Args:
+            keys: List of keys to dump
+            output_path: Path to output JSONL file
+
+        Returns:
+            Number of entries written
+        """
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+        count = 0
+
+        with output_path.open("w", encoding="utf-8") as f:
+            for key in keys:
+                value = self._data.get(key)
+                if value is not None:
+                    line = json.dumps(value, ensure_ascii=False)
+                    f.write(line + "\n")
+                    count += 1
+
+        logger.info(f"Dumped {count} entries to {output_path}")
+        return count
 
 
 class MemoryReadTool(BaseTool):
@@ -159,4 +185,51 @@ class MemoryListTool(BaseTool):
         return {
             "type": "object",
             "properties": {}
+        }
+
+
+class MemoryDumpTool(BaseTool):
+    """Dump memory keys to JSONL file."""
+
+    name = "memory_dump"
+    description = "Dump specified memory keys to a JSONL file. Each line contains the value of one key."
+
+    def __init__(self, store: MemoryStore, output_dir: Path):
+        self.store = store
+        self.output_dir = output_dir
+
+    def execute(self, keys: list[str], filename: str) -> dict[str, Any]:
+        """Dump keys to JSONL file.
+
+        Args:
+            keys: List of memory keys to dump
+            filename: Output filename (relative to output directory)
+        """
+        try:
+            output_path = self.output_dir / filename
+            count = self.store.dump_to_jsonl(keys, output_path)
+            return {
+                "success": True,
+                "result": f"Dumped {count} entries to {filename}",
+                "path": str(output_path),
+                "count": count
+            }
+        except Exception as e:
+            return {"success": False, "error": str(e)}
+
+    def get_parameters_schema(self) -> dict[str, Any]:
+        return {
+            "type": "object",
+            "properties": {
+                "keys": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                    "description": "List of memory keys to dump"
+                },
+                "filename": {
+                    "type": "string",
+                    "description": "Output filename (e.g., 'data/test_set.jsonl')"
+                }
+            },
+            "required": ["keys", "filename"]
         }

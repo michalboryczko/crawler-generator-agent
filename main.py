@@ -2,6 +2,7 @@
 """Main entry point for the web crawler agent."""
 import argparse
 import logging
+import shutil
 import sys
 
 from src.core.config import AppConfig
@@ -32,10 +33,6 @@ def main() -> int:
         help="Target URL to analyze"
     )
     parser.add_argument(
-        "--output", "-o",
-        help="Output file for crawl plan (default: stdout)"
-    )
-    parser.add_argument(
         "--log-level", "-l",
         default="INFO",
         choices=["DEBUG", "INFO", "WARNING", "ERROR"],
@@ -51,6 +48,11 @@ def main() -> int:
         config = AppConfig.from_env()
         logger.info(f"Using model: {config.openai.model}")
 
+        # Create output directory from URL
+        output_dir = config.output.get_output_dir(args.url)
+        output_dir.mkdir(parents=True, exist_ok=True)
+        logger.info(f"Output directory: {output_dir}")
+
         # Initialize components
         llm = LLMClient(config.openai)
         browser_session = BrowserSession(config.browser)
@@ -62,23 +64,25 @@ def main() -> int:
 
         try:
             # Create and run main agent
-            agent = MainAgent(llm, browser_session, memory_store)
+            agent = MainAgent(llm, browser_session, output_dir, memory_store)
             logger.info(f"Creating crawl plan for: {args.url}")
 
             result = agent.create_crawl_plan(args.url)
 
             if result["success"]:
-                plan = result["result"]
+                logger.info("Crawl plan created successfully")
+                logger.info(f"Result: {result['result']}")
 
-                if args.output:
-                    with open(args.output, "w") as f:
-                        f.write(plan)
-                    logger.info(f"Plan written to: {args.output}")
-                else:
-                    print("\n" + "=" * 60)
-                    print(plan)
-                    print("=" * 60)
+                # Copy templates if configured
+                if config.output.template_dir and config.output.template_dir.exists():
+                    logger.info(f"Copying templates from: {config.output.template_dir}")
+                    shutil.copytree(
+                        config.output.template_dir,
+                        output_dir,
+                        dirs_exist_ok=True
+                    )
 
+                logger.info(f"Output files written to: {output_dir}")
                 return 0
             else:
                 logger.error(f"Failed to create plan: {result.get('error')}")

@@ -108,8 +108,13 @@ Tool should allow to perform http requests with given method, headers, body etc
 it should return response status code, headers and body
 
 
-
 ## TESTS
 
 1. Create unit tests for existing and new tools and agents
 2. Create integration tests for whole agent flow if we can mock everything
+
+## Improvements to existing agents/tools
+
+### Browser agent:
+
+When we are sending page content to llm for check we don't need to send whooool large html with all trashes we should extract only body content and remove all scripts, styles, base64 images etc to reduce size of content we are sending to llm

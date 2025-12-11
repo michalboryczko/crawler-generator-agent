@@ -75,6 +75,74 @@ class RunSelectorAgentTool(BaseTool):
         }
 
 
+class RunAccessibilityAgentTool(BaseTool):
+    """Run the Accessibility Agent to check HTTP accessibility."""
+
+    name = "run_accessibility_agent"
+    description = """Run the Accessibility Agent to check if the site works without JavaScript.
+    The agent tests HTTP requests and stores results in memory."""
+
+    def __init__(self, accessibility_agent):
+        self.accessibility_agent = accessibility_agent
+
+    def execute(self, task: str) -> dict[str, Any]:
+        try:
+            result = self.accessibility_agent.run(task)
+            return {
+                "success": result["success"],
+                "result": result.get("result", result.get("error")),
+                "iterations": result.get("iterations", 0)
+            }
+        except Exception as e:
+            return {"success": False, "error": str(e)}
+
+    def get_parameters_schema(self) -> dict[str, Any]:
+        return {
+            "type": "object",
+            "properties": {
+                "task": {
+                    "type": "string",
+                    "description": "Task description for the accessibility agent"
+                }
+            },
+            "required": ["task"]
+        }
+
+
+class RunDataPrepAgentTool(BaseTool):
+    """Run the Data Preparation Agent to create test datasets."""
+
+    name = "run_data_prep_agent"
+    description = """Run the Data Prep Agent to create test datasets.
+    The agent fetches sample pages and stores test data in memory."""
+
+    def __init__(self, data_prep_agent):
+        self.data_prep_agent = data_prep_agent
+
+    def execute(self, task: str) -> dict[str, Any]:
+        try:
+            result = self.data_prep_agent.run(task)
+            return {
+                "success": result["success"],
+                "result": result.get("result", result.get("error")),
+                "iterations": result.get("iterations", 0)
+            }
+        except Exception as e:
+            return {"success": False, "error": str(e)}
+
+    def get_parameters_schema(self) -> dict[str, Any]:
+        return {
+            "type": "object",
+            "properties": {
+                "task": {
+                    "type": "string",
+                    "description": "Task description for the data prep agent"
+                }
+            },
+            "required": ["task"]
+        }
+
+
 class GenerateCrawlPlanTool(BaseTool):
     """Generate the final crawl plan as markdown."""
 
