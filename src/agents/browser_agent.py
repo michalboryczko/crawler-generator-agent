@@ -51,6 +51,8 @@ Memory keys to write:
 - 'pagination_type': One of 'numbered', 'next_button', 'infinite_scroll', 'url_parameter', or 'none'
 - 'pagination_selector': CSS selector for pagination elements
 - 'pagination_max_pages': Maximum page number if determinable (e.g., 342)
+- 'pagination_links': List of actual pagination URLs found (e.g., ["/page/2", "?page=3", "?offset=20"])
+  This helps detect the pagination URL pattern (page vs offset, etc.)
 
 For pagination_max_pages:
 - Look for "last" page links that show the final page number

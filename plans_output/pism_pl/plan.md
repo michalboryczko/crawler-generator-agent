@@ -46,9 +46,9 @@ Optional explicit pages:
 
 **Article link selector (verified):**
 ```css
-.articles.index.content .article-preview .article-title a:last-of-type
+.articles.index.content .frontend-list-content .article-preview .article-title > a[href^="/publikacje/"]
 ```
-- **Confidence**: 0.9
+- **Confidence**: 0
 
 **Usage:**
 - For each listing page, select all matching `<a>` elements.
@@ -58,39 +58,24 @@ Optional explicit pages:
 
 **Additional listing-level metadata:**
 
-- **article_block:**
+- **article_container:**
   ```css
-  .articles.index.content .article-preview
+  [{'selector': '.articles.index.content .frontend-list-content .article-preview', 'success_rate': 0.83, 'found_on_pages': 5}, {'selector': 'div.articles.index.content div.frontend-list-content div.article-preview', 'success_rate': 0.17, 'found_on_pages': 1}]
   ```
 
-- **title:**
+- **article_link:**
   ```css
-  .article-title a:last-of-type
+  [{'selector': '.articles.index.content .frontend-list-content .article-preview .article-title > a[href^="/publikacje/"]', 'success_rate': 0.33, 'found_on_pages': 2}, {'selector': '.articles.index.content .frontend-list-content .article-preview .article-title > a[href]', 'success_rate': 0.17, 'found_on_pages': 1}, {'selector': '.articles.index.content .frontend-list-content .article-preview .article-title > a[href^="/publikacje"]', 'success_rate': 0.17, 'found_on_pages': 1}, {'selector': '.articles.index.content .frontend-list-content .article-preview .article-title > a', 'success_rate': 0.17, 'found_on_pages': 1}, {'selector': 'div.articles.index.content div.frontend-list-content div.article-preview div.article-title > a[href]', 'success_rate': 0.17, 'found_on_pages': 1}]
   ```
 
-- **url:**
+- **article_category:**
   ```css
-  .article-title a:last-of-type
-  ```
-
-- **category:**
-  ```css
-  .article-title .article-type a
-  ```
-
-- **author:**
-  ```css
-  .article-author a
+  [{'selector': '.articles.index.content .frontend-list-content .article-preview .article-title .article-type a', 'success_rate': 0.83, 'found_on_pages': 5}, {'selector': 'div.articles.index.content div.frontend-list-content div.article-preview div.article-title div.article-type > a', 'success_rate': 0.17, 'found_on_pages': 1}]
   ```
 
 - **pagination:**
   ```css
-  .paginator .pagination a
-  ```
-
-- **confidence:**
-  ```css
-  0.9
+  [{'selector': '.paginator ul.pagination li a', 'success_rate': 0.67, 'found_on_pages': 4}, {'selector': '.paginator .pagination li a', 'success_rate': 0.17, 'found_on_pages': 1}, {'selector': 'div.paginator ul.pagination li a', 'success_rate': 0.17, 'found_on_pages': 1}]
   ```
 
 ---
@@ -144,7 +129,7 @@ Selectors below are inferred from site structure; validate on sample pages.
 
 **Selector:**
 ```css
-.article-header .title
+[{'selector': '.article-header h1.title', 'priority': 1, 'notes': 'Most common (10/12). Class-based and not over\x1fspecific; should match both div and non-div containers.', 'success_rate': 0.83, 'found_on_pages': 10}, {'selector': '.article .article-header h1.title', 'priority': 2, 'notes': 'More specific context inside .article; use if multiple .article-header blocks exist on page.', 'success_rate': 0.08, 'found_on_pages': 1}, {'selector': 'div.article-header h1.title', 'priority': 3, 'notes': 'Tag-specific variant; fallback for pages where .article-header is explicitly a div and other selectors fail.', 'success_rate': 0.08, 'found_on_pages': 1}]
 ```
 
 
@@ -152,23 +137,23 @@ Selectors below are inferred from site structure; validate on sample pages.
 
 **Selector:**
 ```css
-.article-header .date
+[{'selector': '.article-header .date', 'priority': 1, 'notes': 'Most common (10/12). Class-based and flexible regarding container tag.', 'success_rate': 0.83, 'found_on_pages': 10}, {'selector': '.article .article-header .date', 'priority': 2, 'notes': 'Adds .article context; safer when multiple .article-header blocks exist.', 'success_rate': 0.08, 'found_on_pages': 1}, {'selector': 'div.article-header div.date', 'priority': 3, 'notes': 'Tag-specific; use as a last resort when other class-only selectors fail.', 'success_rate': 0.08, 'found_on_pages': 1}]
 ```
 
 
-### 5.3. Author
+### 5.3. Authors
 
 **Selector:**
 ```css
-.article-header .author a
+[{'selector': '.article-header .author a', 'priority': 1, 'notes': 'Most common (8/9). Directly targets author links within the header.', 'success_rate': 0.67, 'found_on_pages': 8}, {'selector': '.article .article-header .author a', 'priority': 2, 'notes': 'Adds .article context; fallback for pages where author block is nested under .article.', 'success_rate': 0.08, 'found_on_pages': 1}]
 ```
 
 
-### 5.4. Category
+### 5.4. Lead
 
 **Selector:**
 ```css
-.frontend-path span:last-of-type a
+[{'selector': '.article-header .lead', 'priority': 1, 'notes': 'Most common (10/12). Class-based and independent of container tag.', 'success_rate': 0.83, 'found_on_pages': 10}, {'selector': '.article .article-header .lead', 'priority': 2, 'notes': 'More specific context under .article; use when multiple headers exist.', 'success_rate': 0.08, 'found_on_pages': 1}, {'selector': 'div.article-header div.lead', 'priority': 3, 'notes': 'Tag-specific; fallback for pages with strict div structure.', 'success_rate': 0.08, 'found_on_pages': 1}]
 ```
 
 
@@ -176,23 +161,39 @@ Selectors below are inferred from site structure; validate on sample pages.
 
 **Selector:**
 ```css
-.article .content .richtext-preview
+[{'selector': '.article .content .richtext-preview', 'priority': 1, 'notes': 'Most common (11/12). Strong structural context: article > content > richtext-preview.', 'success_rate': 0.92, 'found_on_pages': 11}, {'selector': 'div.article div.content div.richtext-preview', 'priority': 2, 'notes': 'Tag-specific variant; fallback for pages using explicit div structure.', 'success_rate': 0.08, 'found_on_pages': 1}]
 ```
 
 
-### 5.6. Tags
+### 5.6. Category
 
 **Selector:**
 ```css
-.article-footer .tags a
+[]
 ```
 
 
-### 5.7. Files
+### 5.7. Tags
 
 **Selector:**
 ```css
-.article-footer .files ul li a
+[]
+```
+
+
+### 5.8. Breadcrumbs
+
+**Selector:**
+```css
+[{'selector': '.frontend-path span a', 'priority': 1, 'notes': 'Most common (9/12). Targets individual breadcrumb links; best for extracting full trail.', 'success_rate': 0.75, 'found_on_pages': 9}, {'selector': 'div.frontend-path span a', 'priority': 2, 'notes': 'Tag-specific variant; fallback when .frontend-path is a div and first selector fails.', 'success_rate': 0.08, 'found_on_pages': 1}, {'selector': '.frontend-path', 'priority': 3, 'notes': 'Very generic; use only as last resort to capture the whole breadcrumb container if link-level selectors fail.', 'success_rate': 0.17, 'found_on_pages': 2}]
+```
+
+
+### 5.9. Files
+
+**Selector:**
+```css
+[{'selector': '.article-footer .files-content ul li a', 'priority': 1, 'notes': 'Most frequent file list pattern (4/10). Targets explicit files-content block.', 'success_rate': 0.33, 'found_on_pages': 4}, {'selector': '.article-footer .files ul li a', 'priority': 2, 'notes': 'Second most common (3/10). Generic files list under article footer.', 'success_rate': 0.25, 'found_on_pages': 3}, {'selector': 'div.article-footer div.files ul li a', 'priority': 3, 'notes': 'Tag-specific variant of .files list; fallback for strict div-based markup.', 'success_rate': 0.08, 'found_on_pages': 1}, {'selector': '.article .picture img', 'priority': 4, 'notes': 'Single occurrence; likely main article image. Use as a low-priority file/media source.', 'success_rate': 0.08, 'found_on_pages': 1}, {'selector': '.article-footer .similar-preview .article-preview .article-title a', 'priority': 5, 'notes': 'Single occurrence; links to similar articles, not primary files. Use only as last resort if other file selectors fail.', 'success_rate': 0.08, 'found_on_pages': 1}]
 ```
 
 
@@ -229,7 +230,7 @@ Notes:
 config = {
     "start_url": "https://www.pism.pl/publikacje",
     "listing": {
-        "article_link_selector": ".articles.index.content .article-preview .article-title a:last-of-type",
+        "article_link_selector": ".articles.index.content .frontend-list-content .article-preview .article-title > a[href=\"/publikacje/\"]",
     },
     "pagination": {
         "enabled": true,
@@ -239,13 +240,15 @@ config = {
         "max_pages": 342
     },
     "detail": {
-        "title_selector": ".article-header .title",
-        "date_selector": ".article-header .date",
-        "author_selector": ".article-header .author a",
-        "category_selector": ".frontend-path span:last-of-type a",
-        "content_selector": ".article .content .richtext-preview",
-        "tags_selector": ".article-footer .tags a",
-        "files_selector": ".article-footer .files ul li a"
+        "title_selector": "[{'selector': '.article-header h1.title', 'priority': 1, 'notes': 'Most common (10/12). Class-based and not over\x1fspecific; should match both div and non-div containers.', 'success_rate': 0.83, 'found_on_pages': 10}, {'selector': '.article .article-header h1.title', 'priority': 2, 'notes': 'More specific context inside .article; use if multiple .article-header blocks exist on page.', 'success_rate': 0.08, 'found_on_pages': 1}, {'selector': 'div.article-header h1.title', 'priority': 3, 'notes': 'Tag-specific variant; fallback for pages where .article-header is explicitly a div and other selectors fail.', 'success_rate': 0.08, 'found_on_pages': 1}]",
+        "date_selector": "[{'selector': '.article-header .date', 'priority': 1, 'notes': 'Most common (10/12). Class-based and flexible regarding container tag.', 'success_rate': 0.83, 'found_on_pages': 10}, {'selector': '.article .article-header .date', 'priority': 2, 'notes': 'Adds .article context; safer when multiple .article-header blocks exist.', 'success_rate': 0.08, 'found_on_pages': 1}, {'selector': 'div.article-header div.date', 'priority': 3, 'notes': 'Tag-specific; use as a last resort when other class-only selectors fail.', 'success_rate': 0.08, 'found_on_pages': 1}]",
+        "authors_selector": "[{'selector': '.article-header .author a', 'priority': 1, 'notes': 'Most common (8/9). Directly targets author links within the header.', 'success_rate': 0.67, 'found_on_pages': 8}, {'selector': '.article .article-header .author a', 'priority': 2, 'notes': 'Adds .article context; fallback for pages where author block is nested under .article.', 'success_rate': 0.08, 'found_on_pages': 1}]",
+        "lead_selector": "[{'selector': '.article-header .lead', 'priority': 1, 'notes': 'Most common (10/12). Class-based and independent of container tag.', 'success_rate': 0.83, 'found_on_pages': 10}, {'selector': '.article .article-header .lead', 'priority': 2, 'notes': 'More specific context under .article; use when multiple headers exist.', 'success_rate': 0.08, 'found_on_pages': 1}, {'selector': 'div.article-header div.lead', 'priority': 3, 'notes': 'Tag-specific; fallback for pages with strict div structure.', 'success_rate': 0.08, 'found_on_pages': 1}]",
+        "content_selector": "[{'selector': '.article .content .richtext-preview', 'priority': 1, 'notes': 'Most common (11/12). Strong structural context: article > content > richtext-preview.', 'success_rate': 0.92, 'found_on_pages': 11}, {'selector': 'div.article div.content div.richtext-preview', 'priority': 2, 'notes': 'Tag-specific variant; fallback for pages using explicit div structure.', 'success_rate': 0.08, 'found_on_pages': 1}]",
+        "category_selector": "[]",
+        "tags_selector": "[]",
+        "breadcrumbs_selector": "[{'selector': '.frontend-path span a', 'priority': 1, 'notes': 'Most common (9/12). Targets individual breadcrumb links; best for extracting full trail.', 'success_rate': 0.75, 'found_on_pages': 9}, {'selector': 'div.frontend-path span a', 'priority': 2, 'notes': 'Tag-specific variant; fallback when .frontend-path is a div and first selector fails.', 'success_rate': 0.08, 'found_on_pages': 1}, {'selector': '.frontend-path', 'priority': 3, 'notes': 'Very generic; use only as last resort to capture the whole breadcrumb container if link-level selectors fail.', 'success_rate': 0.17, 'found_on_pages': 2}]",
+        "files_selector": "[{'selector': '.article-footer .files-content ul li a', 'priority': 1, 'notes': 'Most frequent file list pattern (4/10). Targets explicit files-content block.', 'success_rate': 0.33, 'found_on_pages': 4}, {'selector': '.article-footer .files ul li a', 'priority': 2, 'notes': 'Second most common (3/10). Generic files list under article footer.', 'success_rate': 0.25, 'found_on_pages': 3}, {'selector': 'div.article-footer div.files ul li a', 'priority': 3, 'notes': 'Tag-specific variant of .files list; fallback for strict div-based markup.', 'success_rate': 0.08, 'found_on_pages': 1}, {'selector': '.article .picture img', 'priority': 4, 'notes': 'Single occurrence; likely main article image. Use as a low-priority file/media source.', 'success_rate': 0.08, 'found_on_pages': 1}, {'selector': '.article-footer .similar-preview .article-preview .article-title a', 'priority': 5, 'notes': 'Single occurrence; links to similar articles, not primary files. Use only as last resort if other file selectors fail.', 'success_rate': 0.08, 'found_on_pages': 1}]"
     },
     "request": {
         "requires_browser": true,

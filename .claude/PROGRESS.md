@@ -3,109 +3,87 @@
 ## Status Dashboard
 | Phase | Status | Progress |
 |-------|--------|----------|
-| Phase 1: Breaking Changes (Output Structure) | ✅ Complete | 100% |
-| Phase 2: File Tool | ✅ Complete | 100% |
-| Phase 3: Random-Choice Tool | ✅ Complete | 100% |
-| Phase 4: Memory Dump Extension | ✅ Complete | 100% |
-| Phase 5: HTTP Tool + Accessibility Agent | ✅ Complete | 100% |
-| Phase 6: Contract Data Prep Agent | ✅ Complete | 100% |
-| Phase 7: Main Agent Workflow Update | ✅ Complete | 100% |
-| Improvement: HTML Cleaner | ✅ Complete | 100% |
+| Phase 1-7: Core Implementation | ✅ Complete | 100% |
+| Phase 8: Selector Agent Refactoring | ✅ Complete | 100% |
 
-## Implemented Features
+## Phase 8: Selector Agent Refactoring
 
-### Phase 1: Breaking Changes
-- [x] `OutputConfig` class with URL-to-dirname conversion
-- [x] `PLANS_OUTPUT_DIR` and `PLANS_TEMPLATE_DIR` env vars
-- [x] Template copying after agent completion
+### Problem Statement
+The selector agent doesn't properly implement the sampling logic:
+1. Hardcoded 5 listing pages / 5 article pages instead of dynamic sampling
+2. Not grouping URLs by pattern
+3. Not using isolated contexts per page
+4. Relies on prompt instructions which LLM often ignores
 
-### Phase 2: File Tool
-- [x] `FileCreateTool` - Create new files
-- [x] `FileReadTool` - Read with head/tail options
-- [x] `FileAppendTool` - Append to existing files
-- [x] `FileReplaceTool` - Replace file content
+### Solution: LLM-Based Sampling Tools
 
-### Phase 3: Random-Choice Tool
-- [x] `RandomChoiceTool` - Random sampling from list
+#### Tool 1: ListingPagesGeneratorTool ✅
+- [x] Input: target_url, max_pages, pagination_links (for pattern detection)
+- [x] Logic: LLM detects pagination URL pattern (page vs offset vs path), calculates 2% of pages (min 5, max 20)
+- [x] Output: List of listing page URLs with detected pagination pattern
+- File: `src/tools/selector_sampling.py`
 
-### Phase 4: Memory Dump Extension
-- [x] `MemoryStore.dump_to_jsonl()` method
-- [x] `MemoryDumpTool` - Dump keys to JSONL file
+#### Tool 2: ArticlePagesGeneratorTool ✅
+- [x] Input: All collected article URLs
+- [x] Logic: Group by URL pattern, sample 20% per group (min 3)
+- [x] Output: List of article URLs to visit, grouped by pattern
+- File: `src/tools/selector_sampling.py`
 
-### Phase 5: HTTP + Accessibility
-- [x] `HTTPRequestTool` - Make HTTP requests
-- [x] `AccessibilityAgent` - Check if site needs JS rendering
+#### Tool 3: ListingPageExtractorTool ✅
+- [x] Input: Listing page URL
+- [x] Logic: Fresh LLM context, navigate, extract selectors + article URLs
+- [x] Output: Selectors found, article URLs extracted
+- File: `src/tools/selector_extraction.py`
 
-### Phase 6: Contract Data Prep Agent
-- [x] `DataPrepAgent` - Create test datasets
-- [x] Random page sampling workflow
-- [x] Test data format (type, given, expected)
+#### Tool 4: ArticlePageExtractorTool ✅
+- [x] Input: Article URL
+- [x] Logic: Fresh LLM context, navigate, extract detail selectors
+- [x] Output: Detail selectors found on this page
+- File: `src/tools/selector_extraction.py`
 
-### Phase 7: Main Agent Update
-- [x] New workflow with all 4 phases
-- [x] File output instead of stdout
-- [x] Integration with all sub-agents
+#### Tool 5: SelectorAggregatorTool ✅
+- [x] Input: All listing selectors, all detail selectors
+- [x] Logic: Creates SELECTOR CHAINS - ordered lists of ALL working selectors (not just one!)
+- [x] Output: Selector chains where crawler tries each in order until match
+- File: `src/tools/selector_extraction.py`
 
-### Improvement: HTML Cleaner
-- [x] `clean_html_for_llm()` - Remove scripts, styles, base64
-- [x] `extract_text_content()` - Get plain text
-- [x] `GetHTMLTool` uses cleaner by default
+#### SelectorAgent Updated ✅
+- [x] Replaced old prompt-based workflow with tool-based orchestration
+- [x] Now uses 5 new tools instead of browser + selector tools
+- File: `src/agents/selector_agent.py`
+
+### Simplified Selector Agent Workflow
+1. Read target_url and pagination_max_pages from memory
+2. Call ListingPagesGeneratorTool → get listing URLs
+3. For each listing URL: call ListingPageExtractorTool
+4. Collect all article URLs from extractions
+5. Call ArticlePagesGeneratorTool → get sample article URLs
+6. For each article URL: call ArticlePageExtractorTool
+7. Call SelectorAggregatorTool → get final selectors
+8. Store results in memory
 
 ---
 
-## Project Structure
-
-```
-src/
-├── __init__.py
-├── core/
-│   ├── config.py         # Config with OutputConfig
-│   ├── llm.py            # OpenAI client
-│   ├── browser.py        # CDP client
-│   └── html_cleaner.py   # HTML cleaning utilities
-├── tools/
-│   ├── base.py           # BaseTool class
-│   ├── memory.py         # Memory + dump tool
-│   ├── browser.py        # Browser tools (with HTML cleaning)
-│   ├── selector.py       # Selector tools
-│   ├── file.py           # File CRUD tools
-│   ├── random_choice.py  # Random picker
-│   ├── http.py           # HTTP request tool
-│   └── orchestration.py  # Agent runner tools
-└── agents/
-    ├── base.py           # BaseAgent
-    ├── browser_agent.py
-    ├── selector_agent.py
-    ├── accessibility_agent.py
-    ├── data_prep_agent.py
-    └── main_agent.py     # Orchestrator
-```
-
-## Output Structure
-```
-plans_output/
-└── rand_org/              # From www.rand.org
-    ├── plan.md            # Crawl plan
-    ├── test.md            # Test documentation
-    └── data/
-        └── test_set.jsonl # Test dataset
-```
-
 ## Session Log
 
-### Session 1 - Initial Implementation
-- Completed all 4 phases from original plan
+### 2025-12-11 - Selector Agent Refactoring
+- Analyzed current issues with selector agent
+- Designed 5 new LLM-based tools to encapsulate sampling logic
+- Implemented all 5 tools:
+  - ListingPagesGeneratorTool (LLM-based pagination pattern detection)
+  - ArticlePagesGeneratorTool (LLM-based URL pattern grouping)
+  - ListingPageExtractorTool (isolated context extraction)
+  - ArticlePageExtractorTool (isolated context extraction)
+  - SelectorAggregatorTool (creates selector chains with all working selectors)
+- Updated SelectorAgent to use new tools
+- Phase 8 complete - ready for testing
 
-### Session 2 - Development Plan Implementation
-- Implemented all features from docs/development_plan.md
-- Added 6 new tools
-- Added 2 new agents
-- Updated main agent workflow
-- Added HTML cleaner for reduced LLM context
-- Created checkpoint: development_plan_complete
-
-## Next Steps
-1. Write unit tests for new tools
-2. Integration testing with real site
-3. Add more robust error handling
-4. Consider adding retry logic to agents
+### 2025-12-11 - Pagination & Selector Chain Improvements
+- Updated ListingPagesGeneratorTool to use LLM for pagination pattern detection
+  - Now handles page-based (?page=N), offset-based (?offset=N), and other patterns
+  - Analyzes sample pagination links to detect the pattern
+- Updated SelectorAggregatorTool to preserve ALL working selectors as chains
+  - Instead of picking ONE best selector, creates ordered list of all that worked
+  - Crawler can try selectors in order until one matches
+  - Handles sites with different page structures
+- Updated BrowserAgent to store pagination_links for pattern detection

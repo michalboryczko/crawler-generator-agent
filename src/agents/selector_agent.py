@@ -1,24 +1,24 @@
 """Selector Agent for finding and verifying CSS selectors."""
 import logging
-from typing import Any
 
 from .base import BaseAgent
 from ..core.llm import LLMClient
 from ..core.browser import BrowserSession
-from ..tools.browser import NavigateTool, QuerySelectorTool, GetHTMLTool, WaitTool
-from ..tools.selector import (
-    FindSelectorTool,
-    TestSelectorTool,
-    VerifySelectorTool,
-    CompareSelectorsTool,
-)
 from ..tools.memory import (
     MemoryStore,
     MemoryReadTool,
     MemoryWriteTool,
     MemorySearchTool,
 )
-from ..tools.random_choice import RandomChoiceTool
+from ..tools.selector_sampling import (
+    ListingPagesGeneratorTool,
+    ArticlePagesGeneratorTool,
+)
+from ..tools.selector_extraction import (
+    ListingPageExtractorTool,
+    ArticlePageExtractorTool,
+    SelectorAggregatorTool,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -27,123 +27,83 @@ SELECTOR_AGENT_PROMPT = """You are a Selector Agent. Find CSS selectors by visit
 ## CRITICAL: ONE TOOL CALL AT A TIME
 You MUST call only ONE tool per response. Never batch multiple tool calls.
 
-## Tools
-- browser_navigate: Navigate to URL
-- browser_wait: Wait (use seconds=5)
-- browser_get_html: Get page HTML
-- browser_query: Query elements
-- find_selector: Find selectors for 'articles' or 'pagination'
-- test_selector: Test a selector
-- random_choice: Pick random items
-- memory_read/write/search: Access memory
+## Available Tools
 
-## Workflow - PHASE 1: LISTING PAGES (do this FIRST)
+### Sampling Tools
+- generate_listing_pages: Generate listing page URLs (2% of pages, min 5, max 20).
+  Pass pagination_links array if available to detect URL pattern (offset, page param, etc.)
+- generate_article_pages: Group article URLs by pattern and sample (20% per group, min 3)
 
-### Step 1: Read memory and plan
-- Read 'target_url' and 'pagination_max_pages'
-- Calculate: visit ~2% of max_pages (minimum 5, maximum 20 listing pages)
-- Example: 342 pages → visit pages 1, 50, 100, 200, 300 (5 pages)
+### Extraction Tools
+- extract_listing_page: Navigate to ONE listing page and extract selectors + article URLs
+- extract_article_page: Navigate to ONE article page and extract detail selectors
 
-### Step 2: Visit listing page 1 (target_url)
-- Navigate to target_url
-- Wait 5 seconds
-- Get HTML
-- Find/query selectors for article links
-- Store article URLs found on this page
-- Note: you have visited 1 listing page
+### Aggregation Tool
+- aggregate_selectors: Create SELECTOR CHAINS from all extractions (ordered lists of all
+  working selectors, not just one). Crawler will try each in order until match.
 
-### Step 3: Visit listing page 2
-- Navigate to target_url?page=50 (or similar)
-- Wait 5 seconds
-- Get HTML
-- Query articles with selector from step 2
-- Add article URLs to your collection
-- Note: you have visited 2 listing pages
+### Memory Tools
+- memory_read: Read from memory
+- memory_write: Write to memory
+- memory_search: Search memory
 
-### Step 4: Visit listing page 3
-- Navigate to target_url?page=100 (or similar)
-- Wait 5 seconds
-- Get HTML
-- Query articles, add URLs
-- Note: you have visited 3 listing pages
+## Workflow - Follow these steps IN ORDER
 
-### Step 5: Visit listing page 4
-- Navigate to target_url?page=200 (or similar)
-- Wait 5 seconds
-- Get HTML
-- Query articles, add URLs
-- Note: you have visited 4 listing pages
+### Step 1: Read configuration
+Call memory_read for:
+- 'target_url'
+- 'pagination_max_pages'
+- 'pagination_links' (if available - helps detect URL pattern like offset vs page)
 
-### Step 6: Visit listing page 5
-- Navigate to target_url?page=300 (or similar)
-- Wait 5 seconds
-- Get HTML
-- Query articles, add URLs
-- Note: you have visited 5 listing pages - MINIMUM REACHED
+### Step 2: Generate listing page URLs
+Call generate_listing_pages with:
+- target_url
+- max_pages
+- pagination_links (if available from memory)
 
-### Step 7: Store listing results
-- Store ALL collected article URLs as 'collected_article_urls'
-- Store 'listing_selectors' with the verified selector
-- Store 'article_selector' with best selector
+### Step 3: Extract from EACH listing page
+For EACH URL returned by generate_listing_pages:
+- Call extract_listing_page with that URL
+- This tool handles navigation, waiting, and extraction automatically
+- Collect all results (selectors + article URLs from each page)
 
-## Workflow - PHASE 2: ARTICLE PAGES (do this AFTER Phase 1)
+### Step 4: Generate article page URLs
+After ALL listing pages are done, call generate_article_pages with all collected article URLs
 
-### Step 8: Pick articles to verify
-- Use random_choice to select 5 URLs from collected_article_urls
-- Store the 5 selected URLs for tracking
+### Step 5: Extract from EACH article page
+For EACH URL returned by generate_article_pages:
+- Call extract_article_page with that URL
+- Collect all results
 
-### Step 9: Visit article page 1
-- Navigate to first article URL
-- Wait 5 seconds
-- Get HTML
-- Query selectors: h1.title, .article-header .date, .article-header .author, .article .content
-- Note: you have visited 1 article page
+### Step 6: Aggregate selectors
+Call aggregate_selectors with all listing_extractions and article_extractions
+This returns SELECTOR CHAINS - ordered lists where crawler tries each until one matches
 
-### Step 10: Visit article page 2
-- Navigate to second article URL
-- Wait 5 seconds
-- Get HTML
-- Query same selectors, verify they work
-- Note: you have visited 2 article pages
+### Step 7: Store results
+Store in memory:
+- 'listing_selectors': Selector chains for listing pages (each field has ordered list)
+- 'detail_selectors': Selector chains for article pages (each field has ordered list)
+- 'article_selector': Primary article link selector (first from chain)
+- 'collected_article_urls': All article URLs found
+- 'selector_analysis': Summary of analysis
+- 'pagination_pattern': Detected pagination URL pattern
 
-### Step 11: Visit article page 3
-- Navigate to third article URL
-- Wait 5 seconds
-- Get HTML
-- Query same selectors, verify they work
-- Note: you have visited 3 article pages
-
-### Step 12: Visit article page 4
-- Navigate to fourth article URL
-- Wait 5 seconds
-- Get HTML
-- Query same selectors, verify they work
-- Note: you have visited 4 article pages
-
-### Step 13: Visit article page 5
-- Navigate to fifth article URL
-- Wait 5 seconds
-- Get HTML
-- Query same selectors, verify they work
-- Note: you have visited 5 article pages - MINIMUM REACHED
-
-### Step 14: Store detail selectors (ONLY after visiting all 5 articles)
-Store 'detail_selectors' with verified selectors:
+## Selector Chain Format
+Results are stored as chains, e.g.:
 {
-  "title": {"primary": "h1.title", "fallbacks": [], "confidence": 0.95},
-  "date": {"primary": ".article-header .date", "fallbacks": [], "confidence": 0.9},
-  "content": {"primary": ".article .content", "fallbacks": [], "confidence": 0.9}
+  "title": [
+    {"selector": "h1.article-title", "priority": 1, "success_rate": 0.95},
+    {"selector": "h1", "priority": 2, "success_rate": 0.80}
+  ]
 }
-
-### Step 15: Final summary
-Store 'selector_analysis': "Analyzed X listing pages, 5 article pages"
-Store 'article_selector' and 'article_selector_confidence'
+The crawler will try selectors in order until one matches.
 
 ## CRITICAL RULES
-- You MUST visit at least 5 DIFFERENT listing pages before moving to articles
-- You MUST visit at least 5 DIFFERENT article pages before storing detail_selectors
-- Do NOT store detail_selectors until you have visited 5 article pages
-- Call ONE tool at a time"""
+- Call ONE tool at a time
+- You MUST call extract_listing_page for EACH URL from generate_listing_pages
+- You MUST call extract_article_page for EACH URL from generate_article_pages
+- Do NOT skip pages - process every URL returned by the generators
+- Only call aggregate_selectors AFTER all extractions are complete"""
 
 
 class SelectorAgent(BaseAgent):
@@ -162,18 +122,14 @@ class SelectorAgent(BaseAgent):
         self.memory_store = memory_store or MemoryStore()
 
         tools = [
-            # Selector tools
-            FindSelectorTool(browser_session),
-            TestSelectorTool(browser_session),
-            VerifySelectorTool(browser_session),
-            CompareSelectorsTool(browser_session),
-            # Browser tools (including navigation for visiting articles)
-            NavigateTool(browser_session),
-            WaitTool(browser_session),
-            QuerySelectorTool(browser_session),
-            GetHTMLTool(browser_session),
-            # Random selection for sampling
-            RandomChoiceTool(),
+            # Sampling tools (URL generation with LLM for pattern detection)
+            ListingPagesGeneratorTool(llm),
+            ArticlePagesGeneratorTool(llm),
+            # Extraction tools (isolated context per page)
+            ListingPageExtractorTool(llm, browser_session),
+            ArticlePageExtractorTool(llm, browser_session),
+            # Aggregation tool (creates selector chains, not single selectors)
+            SelectorAggregatorTool(llm),
             # Memory tools
             MemoryReadTool(self.memory_store),
             MemoryWriteTool(self.memory_store),

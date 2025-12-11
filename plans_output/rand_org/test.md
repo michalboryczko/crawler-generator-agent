@@ -1,11 +1,11 @@
-# Test Plan: pism.pl
+# Test Plan: rand.org
 
 ## Test Dataset Overview
 
 - **File**: `data/test_set.jsonl`
-- **Total Entries**: 32
+- **Total Entries**: 11
   - Listing pages: 7
-  - Article pages: 25
+  - Article pages: 4
 - **Format**: JSONL (one JSON object per line)
 
 ---
@@ -87,32 +87,25 @@ for test in articles:
 ## Test URLs
 
 ### Listing Pages (7)
-1. https://www.pism.pl/publikacje?page=2
-2. https://www.pism.pl/publikacje?page=3
-3. https://www.pism.pl/publikacje?page=50
-4. https://www.pism.pl/publikacje?page=150
-5. https://www.pism.pl/publikacje?page=300
-6. https://www.pism.pl/publikacje?page=342
-7. https://www.pism.pl/publikacje?page=1
+1. https://www.rand.org/pubs.html?start=3600
+2. https://www.rand.org/pubs.html?start=480
+3. https://www.rand.org/pubs.html?start=12
+4. https://www.rand.org/pubs.html?start=0
+5. https://www.rand.org/pubs.html?start=600
+6. https://www.rand.org/pubs.html?start=1200
+7. https://www.rand.org/pubs.html?start=120
 
-### Article Pages (25)
-1. https://www.pism.pl/publikacje/Perspektywa_polityki_Turcji_wobec_Kaukazu_Poludniowego
-2. https://www.pism.pl/publikacje/scenariusze-odejscia-ue-od-uzaleznienia-gospodarczego-od-chrl
-3. https://www.pism.pl/publikacje/Plany_na_trudne_czasy__zakonczenie_sesji_parlamentu_ChRL
-4. https://www.pism.pl/publikacje/Przyszlosc_konfliktu_w_Jemenie_po_zmianie_administracji_w_Stanach_Zjednoczonych
-5. https://www.pism.pl/publikacje/strategia-obrony-narodowej-kanady-konsekwencje-dla-nato
-6. https://www.pism.pl/publikacje/Oligarchowie_wobec_protest_w_na_Ukrainie
-7. https://www.pism.pl/publikacje/Polska_w_Unii_Europejskiej__Poczatkowe_problemy_i_kryzysy
-8. https://www.pism.pl/publikacje/nigeria-wobec-zarzutow-usa-o-ludobojstwo-chrzescijan
-9. https://www.pism.pl/publikacje/polskie-dokumenty-dyplomatyczne-informacja-o-serii-wydawniczej
-10. https://www.pism.pl/publikacje/wojenna-rekonstrukcja-ukrainskiego-rzadu
-... and 15 more
+### Article Pages (4)
+1. https://www.rand.org/pubs/research_reports/RRA2186-1.html
+2. https://www.rand.org/pubs/commentary/2025/12/the-students-who-disappear-before-they-count.html
+3. https://www.rand.org/pubs/commentary/2025/12/china-is-worried-about-ai-job-losses.html
+4. https://www.rand.org/pubs/research_reports/RRA4435-1.html
 
 ---
 
 ## Notes
 
-Test dataset for https://www.pism.pl/publikacje with 7 listing pages (pages 1,2,3,50,150,300,342) and 25 article pages sampled across all listings. Each listing entry (test-data-listing-1..7) contains the raw HTML and expected article URLs plus pagination info. Each article entry (test-data-article-1..25) contains the raw HTML and expected structured fields: title, date, authors, lead, body presence flag, breadcrumbs, main image URL (if present), and file links (if present).
+Test dataset for https://www.rand.org/pubs.html with 7 listing pages (offset-based pagination via ?start=) and 4 article detail pages. Listings use selector ul.teasers li > a. Articles include fields: title, authors, date, product_type, series, description, topics, isbn_doi, download_links.
 
 - Listing pages are randomly sampled to avoid overfitting to specific structure
 - Article pages are randomly selected from multiple listing pages
