@@ -68,7 +68,8 @@ Fetches URLs using browser and stores HTML in memory.
 Extracts article URLs from listing page HTML.
 - html_key_prefix: prefix to find listing HTML (e.g., "listing-html")
 - output_key_prefix: prefix for output (default: "test-data-listing")
-- Also stores all found article URLs at "collected_article_urls"
+- Stores all found article URLs at "collected_article_urls" (overwrites previous value)
+- IMPORTANT: The tool returns article_urls_sample showing first 10 URLs found
 
 ### batch_extract_articles
 Extracts article data from article page HTML.
@@ -108,11 +109,13 @@ Access shared memory.
    - output_key_prefix: "test-data-listing"
    - article_selector: the selector from memory
 3. This creates test-data-listing-1, test-data-listing-2, etc.
-4. Also stores all article URLs at "collected_article_urls"
+4. CRITICAL: Check the result - it shows total_article_urls and article_urls_sample
+5. The tool stores all URLs at "collected_article_urls"
 
 ### Phase 4: Select Article URLs
-1. Read 'collected_article_urls' from memory
-2. Use random_choice to pick 20-25 article URLs
+1. Read 'collected_article_urls' from memory IMMEDIATELY AFTER batch_extract_listings
+2. Verify the list has URLs - if empty or too few, there may be an extraction issue
+3. Use random_choice to pick 20-25 article URLs (or all if fewer available)
    - This ensures random selection across all listing pages
 
 ### Phase 5: Fetch Article Pages

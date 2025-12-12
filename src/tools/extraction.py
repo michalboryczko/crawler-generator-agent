@@ -173,18 +173,11 @@ class RunExtractionAgentTool(BaseTool):
             if len(html) > 40000:
                 html = html[:40000] + "\n... [TRUNCATED]"
 
-            # Fresh LLM context for extraction
-            extraction_prompt = """You are an HTML extraction agent. Extract article data from this HTML.
+            # Get discovered selectors for dynamic field extraction
+            detail_selectors = self.memory_store.read("detail_selectors") or {}
 
-Return ONLY a JSON object with these fields:
-{
-    "title": "article title",
-    "date": "publication date or null",
-    "authors": ["author1", "author2"] or [],
-    "content": "first 500 characters of main content"
-}
-
-Do not include any explanation, just the JSON."""
+            # Build dynamic extraction prompt based on discovered fields
+            extraction_prompt = self._build_extraction_prompt(detail_selectors)
 
             messages = [
                 {"role": "system", "content": extraction_prompt},
@@ -225,6 +218,82 @@ Do not include any explanation, just the JSON."""
         except Exception as e:
             logger.error(f"Extraction failed: {e}")
             return {"success": False, "error": str(e)}
+
+    def _build_extraction_prompt(self, detail_selectors: dict) -> str:
+        """Build dynamic extraction prompt based on discovered selectors."""
+        # Default fields if no selectors discovered
+        default_fields = {
+            "title": "article title",
+            "date": "publication date or null",
+            "authors": ["author1", "author2"],
+            "content": "first 500 characters of main content"
+        }
+
+        if not detail_selectors:
+            fields = default_fields
+        else:
+            # Build fields from discovered selectors
+            fields = {}
+            for field_name, selector_chain in detail_selectors.items():
+                # Skip empty chains
+                if not selector_chain:
+                    continue
+
+                # Get the primary selector info
+                if isinstance(selector_chain, list) and len(selector_chain) > 0:
+                    primary = selector_chain[0]
+                    selector = primary.get("selector", "") if isinstance(primary, dict) else str(primary)
+                else:
+                    selector = str(selector_chain)
+
+                # Define field type hints based on field name
+                if field_name in ["authors", "tags"]:
+                    fields[field_name] = ["value1", "value2"]
+                elif field_name in ["files", "attachments", "images", "related_articles"]:
+                    fields[field_name] = [{"url": "...", "title": "..."}]
+                elif field_name == "content":
+                    fields[field_name] = "first 500 characters of main content"
+                elif field_name == "breadcrumbs":
+                    fields[field_name] = ["Home", "Section", "Article"]
+                else:
+                    fields[field_name] = f"{field_name} value or null"
+
+            # Ensure we have at least title and content
+            if "title" not in fields:
+                fields["title"] = "article title"
+            if "content" not in fields:
+                fields["content"] = "first 500 characters of main content"
+
+        # Build the JSON example
+        json_example = json.dumps(fields, indent=4)
+
+        # Build selector hints
+        selector_hints = ""
+        if detail_selectors:
+            hints = []
+            for field_name, selector_chain in detail_selectors.items():
+                if isinstance(selector_chain, list) and len(selector_chain) > 0:
+                    primary = selector_chain[0]
+                    selector = primary.get("selector", "") if isinstance(primary, dict) else str(primary)
+                    if selector:
+                        hints.append(f"- {field_name}: use selector '{selector}'")
+            if hints:
+                selector_hints = "\n\nCSS SELECTOR HINTS:\n" + "\n".join(hints)
+
+        return f"""You are an HTML extraction agent. Extract article data from this HTML.
+
+Return ONLY a JSON object with these fields:
+{json_example}
+{selector_hints}
+
+REQUIREMENTS:
+1. Extract actual values from the HTML, not placeholders
+2. For arrays (authors, tags, files), return empty array [] if not found
+3. For single values, return null if not found
+4. content should be first 500 characters of main article body
+5. files/attachments should include URL and title if present
+
+Do not include any explanation, just the JSON."""
 
     def get_parameters_schema(self) -> dict[str, Any]:
         return {
@@ -318,53 +387,29 @@ class RunListingExtractionAgentTool(BaseTool):
             html = stored.get("html", "")
             url = stored.get("url", "")
 
-            # Truncate for LLM
-            if len(html) > 50000:
-                html = html[:50000] + "\n... [TRUNCATED]"
+            # Try to extract just the main content area using listing_container_selector
+            main_content_html = html
+            listing_container_selector = self.memory_store.read("listing_container_selector")
 
-            # Build extraction prompt
-            selector_hint = ""
-            if article_selector:
-                selector_hint = f"\nHint: Article links use selector: {article_selector}"
-
-            extraction_prompt = f"""You are an HTML extraction agent for listing pages.
-Extract article link information from this listing page HTML.{selector_hint}
-
-Return ONLY a JSON object with these fields:
-{{
-    "article_urls": ["url1", "url2", ...],
-    "article_count": 10,
-    "has_pagination": true,
-    "next_page_url": "next page URL or null"
-}}
-
-Guidelines:
-- article_urls: List of article detail page URLs found on this page
-- Resolve relative URLs to absolute using base: {url}
-- has_pagination: true if there are pagination links
-- next_page_url: URL to the next page if available
-
-Do not include any explanation, just the JSON."""
-
-            messages = [
-                {"role": "system", "content": extraction_prompt},
-                {"role": "user", "content": f"Listing URL: {url}\n\nHTML:\n{html}"}
-            ]
-
-            logger.info(f"Running listing extraction agent for: {url}")
-            response = self.llm.chat(messages)
-            extracted_text = response.get("content", "{}")
-
-            # Parse JSON
-            try:
-                import re
-                json_match = re.search(r'\{[\s\S]*\}', extracted_text)
-                if json_match:
-                    extracted = json.loads(json_match.group())
+            if listing_container_selector:
+                focused_html = self._extract_main_content(html, listing_container_selector)
+                if focused_html and len(focused_html) < len(html):
+                    logger.info(f"Extracted main content using '{listing_container_selector}': {len(focused_html)} chars (was {len(html)})")
+                    main_content_html = focused_html
                 else:
-                    extracted = {"error": "No JSON found", "article_urls": [], "article_count": 0}
-            except json.JSONDecodeError as e:
-                extracted = {"error": str(e), "article_urls": [], "article_count": 0}
+                    logger.warning(f"Container selector '{listing_container_selector}' did not match - using full HTML")
+            else:
+                logger.info("No listing_container_selector in memory - using full HTML")
+
+            # Use LLM for extraction
+            article_urls = self._extract_urls_with_llm(main_content_html, url, article_selector)
+
+            extracted = {
+                "article_urls": article_urls,
+                "article_count": len(article_urls),
+                "has_pagination": True,
+                "next_page_url": None
+            }
 
             # Create listing test entry
             test_entry = {
@@ -377,15 +422,94 @@ Do not include any explanation, just the JSON."""
             self.memory_store.write(output_memory_key, test_entry)
             logger.info(f"Listing extraction complete: {html_memory_key} -> {output_memory_key}")
 
+            actual_count = len(article_urls)
+            logger.info(f"RunListingExtractionAgentTool: Extracted {actual_count} URLs from {url}")
+            if actual_count > 0:
+                logger.info(f"  Sample URLs: {article_urls[:3]}")
+
             return {
                 "success": True,
-                "result": f"Extracted {extracted.get('article_count', 0)} article URLs to: {output_memory_key}",
-                "article_urls": extracted.get("article_urls", []),
-                "article_count": extracted.get("article_count", 0)
+                "result": f"Extracted {actual_count} article URLs to: {output_memory_key}",
+                "article_urls": article_urls,
+                "article_count": actual_count
             }
         except Exception as e:
             logger.error(f"Listing extraction failed: {e}")
             return {"success": False, "error": str(e)}
+
+    def _extract_main_content(self, html: str, container_selector: str) -> str | None:
+        """Extract just the main content container HTML using the selector."""
+        try:
+            from bs4 import BeautifulSoup
+            soup = BeautifulSoup(html, 'html.parser')
+            container = soup.select_one(container_selector)
+            if container:
+                return str(container)
+            return None
+        except Exception as e:
+            logger.warning(f"Failed to extract main content with '{container_selector}': {e}")
+            return None
+
+    def _extract_urls_with_llm(self, html: str, url: str, article_selector: str | None) -> list[str]:
+        """Extract URLs using LLM."""
+        # Truncate for LLM (100KB limit - will use better model in future)
+        if len(html) > 150000:
+            html = html[:150000] + "\n... [TRUNCATED]"
+
+        selector_hint = ""
+        if article_selector:
+            selector_hint = f"\n\nUSE THIS CSS SELECTOR to find article links: {article_selector}"
+
+        extraction_prompt = f"""You are extracting article URLs from a LISTING PAGE.
+
+## YOUR TASK
+Find ALL <a href="..."> links to individual articles in the HTML below.{selector_hint}
+
+## CRITICAL: Different pages have DIFFERENT articles!
+This page URL is: {url}
+- If the URL has ?start=100, articles start from position 100
+- If the URL has ?start=1000, articles start from position 1000
+- Each listing page has DIFFERENT article URLs - they should NOT be the same!
+
+## DO NOT EXTRACT from these (they're the same on EVERY page):
+- Header section with "latest" or "featured" items
+- Top navigation with recent articles
+- Sidebar recommendations
+- Footer links
+- Any section labeled "popular", "trending", "recent"
+
+## EXTRACT from the MAIN CONTENT AREA:
+- The large repeated list of articles (10-20+ items)
+- This is the section that CHANGES when you paginate
+
+## Return JSON:
+{{
+    "article_urls": ["https://example.com/article1", "https://example.com/article2", ...]
+}}
+
+Expected: 10-30 URLs per page. If you find less than 5, you're probably looking at the header/sidebar!
+Convert relative URLs to absolute using base: {url}"""
+
+        messages = [
+            {"role": "system", "content": extraction_prompt},
+            {"role": "user", "content": f"Listing URL: {url}\n\nHTML:\n{html}"}
+        ]
+
+        logger.info(f"Running LLM extraction for: {url}")
+        response = self.llm.chat(messages)
+        extracted_text = response.get("content", "{}")
+
+        # Parse JSON
+        try:
+            import re
+            json_match = re.search(r'\{[\s\S]*\}', extracted_text)
+            if json_match:
+                extracted = json.loads(json_match.group())
+                return extracted.get("article_urls", [])
+        except json.JSONDecodeError:
+            pass
+
+        return []
 
     def get_parameters_schema(self) -> dict[str, Any]:
         return {
@@ -431,28 +555,44 @@ class BatchExtractListingsTool(BaseTool):
         for i, html_key in enumerate(html_keys):
             output_key = f"{output_key_prefix}-{i+1}"
             result = extractor.execute(html_key, output_key, article_selector)
+            extracted_urls = result.get("article_urls", [])
             results.append({
                 "html_key": html_key,
                 "output_key": output_key,
                 "success": result.get("success", False),
-                "article_count": result.get("article_count", 0)
+                "article_count": len(extracted_urls)
             })
             # Collect article URLs
-            if result.get("success"):
-                all_article_urls.extend(result.get("article_urls", []))
+            if result.get("success") and extracted_urls:
+                logger.info(f"BatchExtractListingsTool: {html_key} yielded {len(extracted_urls)} URLs")
+                all_article_urls.extend(extracted_urls)
 
         successful = sum(1 for r in results if r["success"])
-        total_articles = len(all_article_urls)
 
-        # Store collected article URLs for later use
-        self.memory_store.write("collected_article_urls", all_article_urls)
+        # Deduplicate URLs while preserving order
+        seen = set()
+        unique_article_urls = []
+        for url in all_article_urls:
+            if url and url not in seen:
+                seen.add(url)
+                unique_article_urls.append(url)
+
+        total_articles = len(unique_article_urls)
+
+        # Store collected article URLs for later use (use unique key to avoid conflicts)
+        self.memory_store.write("extracted_listing_article_urls", unique_article_urls)
+        # Also update the standard key for backwards compatibility
+        self.memory_store.write("collected_article_urls", unique_article_urls)
+
+        logger.info(f"BatchExtractListingsTool: Stored {total_articles} unique article URLs")
 
         return {
             "success": successful > 0,
-            "result": f"Extracted {successful}/{len(html_keys)} listings, found {total_articles} article URLs",
+            "result": f"Extracted {successful}/{len(html_keys)} listings, found {total_articles} unique article URLs",
             "extracted_count": successful,
             "total_article_urls": total_articles,
-            "output_keys": [r["output_key"] for r in results if r["success"]]
+            "output_keys": [r["output_key"] for r in results if r["success"]],
+            "article_urls_sample": unique_article_urls[:10] if unique_article_urls else []
         }
 
     def get_parameters_schema(self) -> dict[str, Any]:

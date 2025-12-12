@@ -26,6 +26,7 @@ class GeneratePlanTool(BaseTool):
             target_url = self.memory_store.read("target_url") or "Unknown"
             article_selector = self.memory_store.read("article_selector") or "Not found"
             article_confidence = self.memory_store.read("article_selector_confidence") or 0
+            listing_container_selector = self.memory_store.read("listing_container_selector") or "Not found"
             pagination_selector = self.memory_store.read("pagination_selector") or "None"
             pagination_type = self.memory_store.read("pagination_type") or "none"
             pagination_max_pages = self.memory_store.read("pagination_max_pages")
@@ -46,14 +47,14 @@ class GeneratePlanTool(BaseTool):
 
             # Build the comprehensive plan
             plan = self._build_header(site_name, target_url)
-            plan += self._build_scope_section(target_url, pagination_max_pages)
+            plan += self._build_scope_section(target_url, pagination_max_pages, detail_selectors)
             plan += self._build_start_urls_section(target_url, pagination_type, pagination_max_pages)
-            plan += self._build_listing_section(article_selector, listing_selectors, article_confidence)
+            plan += self._build_listing_section(article_selector, listing_container_selector, listing_selectors, article_confidence)
             plan += self._build_pagination_section(pagination_type, pagination_selector, pagination_max_pages)
             plan += self._build_detail_section(detail_selectors)
             plan += self._build_data_model_section(target_url, detail_selectors)
             plan += self._build_config_section(
-                target_url, article_selector, pagination_selector,
+                target_url, article_selector, listing_container_selector, pagination_selector,
                 pagination_type, pagination_max_pages, requires_browser, detail_selectors
             )
             plan += self._build_accessibility_section(requires_browser, listing_accessible, articles_accessible)
@@ -80,7 +81,7 @@ This plan is based on:
 
 """
 
-    def _build_scope_section(self, target_url: str, max_pages: int | None) -> str:
+    def _build_scope_section(self, target_url: str, max_pages: int | None, detail_selectors: dict) -> str:
         parsed = urlparse(target_url)
         path = parsed.path.rstrip('/')
 
@@ -88,14 +89,15 @@ This plan is based on:
 
 **Goal:** Collect all articles/publications from this section, including:
 - URL
-- Title
-- Publication date
-- Author(s)
-- Category/section
-- Main content/body
-
-**Coverage:**
 """
+        # Dynamically list fields based on discovered selectors
+        discovered_fields = self._get_discovered_fields(detail_selectors)
+        for field in discovered_fields:
+            # Format field name nicely
+            display_name = field.replace("_", " ").title()
+            section += f"- {display_name}\n"
+
+        section += "\n**Coverage:**\n"
         if max_pages:
             section += f"- Listing pages: `{target_url}?page=N` (1 … ~{max_pages})\n"
         else:
@@ -103,6 +105,28 @@ This plan is based on:
 
         section += f"- Article detail pages: `{parsed.scheme}://{parsed.netloc}{path}/<slug>`\n\n---\n\n"
         return section
+
+    def _get_discovered_fields(self, detail_selectors: dict) -> list[str]:
+        """Extract field names from detail selectors, handling both old and new chain format."""
+        if not detail_selectors:
+            # Default fields if nothing discovered
+            return ["title", "publication_date", "authors", "category", "content"]
+
+        fields = []
+        for field, value in detail_selectors.items():
+            # Check if the selector chain has any valid selectors
+            if isinstance(value, list):
+                # New chain format: [{"selector": "...", "priority": 1}, ...]
+                if any(item.get("selector") for item in value if isinstance(item, dict)):
+                    fields.append(field)
+            elif isinstance(value, dict):
+                # Old format: {"primary": "...", "fallbacks": [...]}
+                if value.get("primary") or value.get("selector"):
+                    fields.append(field)
+            elif isinstance(value, str) and value:
+                fields.append(field)
+
+        return fields if fields else ["title", "publication_date", "authors", "category", "content"]
 
     def _build_start_urls_section(self, target_url: str, pagination_type: str, max_pages: int | None) -> str:
         section = f"""## 2. Start URLs
@@ -121,10 +145,22 @@ This plan is based on:
         section += "---\n\n"
         return section
 
-    def _build_listing_section(self, article_selector: str, listing_selectors: dict, confidence: float) -> str:
+    def _build_listing_section(self, article_selector: str, listing_container_selector: str, listing_selectors: dict, confidence: float) -> str:
         section = f"""## 3. Listing Pages
 
-### 3.1. Article blocks & links
+### 3.1. Main content container
+
+**Purpose:** Focus extraction on the main listing area, excluding headers/sidebars/footers.
+
+**Container selector:**
+```css
+{listing_container_selector}
+```
+
+**Usage:** Before extracting articles, narrow the DOM to this container to avoid
+picking up "featured" or "recent" articles from headers/sidebars.
+
+### 3.2. Article blocks & links
 
 **Purpose:** Discover article detail URLs and basic metadata from listing pages.
 
@@ -135,17 +171,26 @@ This plan is based on:
 - **Confidence**: {confidence}
 
 **Usage:**
-- For each listing page, select all matching `<a>` elements.
+- Within the container, select all matching `<a>` elements.
 - Extract:
   - `url`: resolve relative `href` against base URL
   - `title`: `textContent` of the `<a>`
 
 """
         if listing_selectors:
-            section += "**Additional listing-level metadata:**\n\n"
-            for field, selector in listing_selectors.items():
-                if selector:
-                    section += f"- **{field}:**\n  ```css\n  {selector}\n  ```\n\n"
+            section += "**Additional listing-level selectors (as chains):**\n\n"
+            for field, selector_chain in listing_selectors.items():
+                if selector_chain:
+                    # Handle selector chains (list) or simple strings
+                    if isinstance(selector_chain, list) and len(selector_chain) > 0:
+                        primary = selector_chain[0]
+                        selector = primary.get("selector", str(primary)) if isinstance(primary, dict) else str(primary)
+                        section += f"- **{field}:**\n  ```css\n  {selector}\n  ```\n"
+                        if len(selector_chain) > 1:
+                            section += f"  (+ {len(selector_chain) - 1} fallback selectors)\n"
+                        section += "\n"
+                    else:
+                        section += f"- **{field}:**\n  ```css\n  {selector_chain}\n  ```\n\n"
 
         section += "---\n\n"
         return section
@@ -228,57 +273,71 @@ Recommended approach:
     def _build_detail_section(self, detail_selectors: dict) -> str:
         section = """## 5. Article Detail Pages
 
-Selectors below are inferred from site structure; validate on sample pages.
+Selectors below are discovered from analyzing multiple article pages.
+Each field has a **selector chain** - an ordered list of selectors to try until one matches.
 
 """
 
         # Default selectors if none provided
         default_selectors = {
-            "title": {
-                "primary": "h1.article-title, .article-view h1",
-                "description": "Main article title"
-            },
-            "date": {
-                "primary": ".article-date, .publication-date, time[datetime]",
-                "description": "Publication date"
-            },
-            "authors": {
-                "primary": ".article-author a, .author-name, [rel='author']",
-                "description": "Author name(s)"
-            },
-            "category": {
-                "primary": ".article-category, .article-type a, .category",
-                "description": "Article category/section"
-            },
-            "content": {
-                "primary": ".article-content, .article-body, .entry-content, main article",
-                "description": "Main article content"
-            },
-            "language": {
-                "primary": "html[lang]",
-                "description": "Page language from html attribute"
-            }
+            "title": [{"selector": "h1.article-title, .article-view h1", "priority": 1, "success_rate": 1.0}],
+            "date": [{"selector": ".article-date, .publication-date, time[datetime]", "priority": 1, "success_rate": 1.0}],
+            "authors": [{"selector": ".article-author a, .author-name, [rel='author']", "priority": 1, "success_rate": 1.0}],
+            "category": [{"selector": ".article-category, .article-type a, .category", "priority": 1, "success_rate": 1.0}],
+            "content": [{"selector": ".article-content, .article-body, .entry-content", "priority": 1, "success_rate": 1.0}],
         }
 
         selectors_to_use = detail_selectors if detail_selectors else default_selectors
 
         for i, (field, info) in enumerate(selectors_to_use.items(), 1):
-            if isinstance(info, dict):
-                selector = info.get("primary", info.get("selector", ""))
-                desc = info.get("description", "")
-            else:
-                selector = info
-                desc = ""
-
-            section += f"""### 5.{i}. {field.title()}
-
-**Selector:**
-```css
-{selector}
-```
-{f"*{desc}*" if desc else ""}
+            section += f"""### 5.{i}. {field.replace("_", " ").title()}
 
 """
+            # Handle selector chain format (new)
+            if isinstance(info, list):
+                if not info:
+                    section += "*No selectors found for this field.*\n\n"
+                    continue
+
+                section += "**Selector chain** (try in order until match):\n\n"
+                for j, item in enumerate(info, 1):
+                    if isinstance(item, dict):
+                        selector = item.get("selector", "")
+                        success_rate = item.get("success_rate", 0)
+                        notes = item.get("notes", "")
+                        priority = item.get("priority", j)
+
+                        section += f"{priority}. `{selector}`"
+                        if success_rate:
+                            section += f" *(success: {int(success_rate * 100)}%)*"
+                        if notes:
+                            section += f" - {notes}"
+                        section += "\n"
+                    else:
+                        section += f"{j}. `{item}`\n"
+                section += "\n"
+
+            # Handle old dict format
+            elif isinstance(info, dict):
+                primary = info.get("primary", info.get("selector", ""))
+                fallbacks = info.get("fallbacks", [])
+                confidence = info.get("confidence", 0)
+                desc = info.get("description", "")
+
+                section += f"**Primary selector:**\n```css\n{primary}\n```\n"
+                if confidence:
+                    section += f"*Confidence: {int(confidence * 100)}%*\n"
+                if desc:
+                    section += f"*{desc}*\n"
+                if fallbacks:
+                    section += "\n**Fallbacks:**\n"
+                    for fb in fallbacks:
+                        section += f"- `{fb}`\n"
+                section += "\n"
+
+            # Handle simple string format
+            elif isinstance(info, str):
+                section += f"**Selector:**\n```css\n{info}\n```\n\n"
 
         section += "---\n\n"
         return section
@@ -287,52 +346,80 @@ Selectors below are inferred from site structure; validate on sample pages.
         parsed = urlparse(target_url)
         example_url = f"{parsed.scheme}://{parsed.netloc}{parsed.path}/example-article"
 
+        # Build dynamic JSON example based on discovered fields
+        discovered_fields = self._get_discovered_fields(detail_selectors)
+
+        json_fields = [f'  "url": "{example_url}"']
+
+        # Map field names to example values
+        field_examples = {
+            "title": '"Article Title"',
+            "date": '"2024-01-15"',
+            "publication_date": '"2024-01-15"',
+            "authors": '["Author Name"]',
+            "author": '"Author Name"',
+            "category": '"Category"',
+            "content": '"<p>Article content...</p>"',
+            "body": '"<p>Article content...</p>"',
+            "lead": '"Article summary/lead paragraph"',
+            "summary": '"Article summary"',
+            "tags": '["tag1", "tag2"]',
+            "language": '"en"',
+            "breadcrumbs": '["Home", "Section", "Article"]',
+            "files": '[{"name": "document.pdf", "url": "/files/doc.pdf"}]',
+            "attachments": '[{"name": "file.pdf", "url": "/attachments/file.pdf"}]',
+            "related_articles": '[{"title": "Related", "url": "/related"}]',
+            "images": '[{"src": "/img/photo.jpg", "alt": "Photo"}]',
+        }
+
+        for field in discovered_fields:
+            field_lower = field.lower()
+            example = field_examples.get(field_lower, f'"{field} value"')
+            json_fields.append(f'  "{field}": {example}')
+
+        # Add metadata fields
+        json_fields.append(f'  "source_listing_page": "{target_url}?page=1"')
+
+        json_content = ",\n".join(json_fields)
+
+        # Build notes based on discovered fields
+        notes = []
+        if "date" in discovered_fields or "publication_date" in discovered_fields:
+            notes.append("- `date`/`publication_date` should come from the detail page, not the listing.")
+        if "language" in discovered_fields:
+            notes.append("- `language` extracted from `html[lang]` attribute.")
+        if "files" in discovered_fields or "attachments" in discovered_fields:
+            notes.append("- `files`/`attachments` contain downloadable documents found on the page.")
+        if "breadcrumbs" in discovered_fields:
+            notes.append("- `breadcrumbs` provide navigation path context.")
+        notes.append("- `source_listing_page` is optional but useful for debugging.")
+
+        notes_text = "\n".join(notes)
+
         return f"""## 6. Data Model
 
-Recommended fields per article:
+Recommended fields per article (based on discovered selectors):
 
 ```json
 {{
-  "url": "{example_url}",
-  "title": "Article Title",
-  "publication_date": "2024-01-15",
-  "authors": ["Author Name"],
-  "category": "Category",
-  "language": "en",
-  "body_html": "<p>...</p>",
-  "body_text": "...",
-  "source_listing_page": "{target_url}?page=1"
+{json_content}
 }}
 ```
 
 Notes:
-- `publication_date` should come from the detail page, not the listing.
-- `language` from `html[lang]`.
-- `source_listing_page` is optional but useful for debugging.
+{notes_text}
 
 ---
 
 """
 
     def _build_config_section(
-        self, target_url: str, article_selector: str, pagination_selector: str,
-        pagination_type: str, max_pages: int | None, requires_browser: bool,
-        detail_selectors: dict
+        self, target_url: str, article_selector: str, listing_container_selector: str,
+        pagination_selector: str, pagination_type: str, max_pages: int | None,
+        requires_browser: bool, detail_selectors: dict
     ) -> str:
-        # Build detail selectors string
-        detail_config = ""
-        if detail_selectors:
-            for field, info in detail_selectors.items():
-                selector = info.get("primary", info) if isinstance(info, dict) else info
-                detail_config += f'        "{field}_selector": "{selector}",\n'
-        else:
-            detail_config = '''        "title_selector": "h1.article-title, .article-view h1",
-        "date_selector": ".article-date, .publication-date",
-        "author_selector": ".article-author a, .author-name",
-        "category_selector": ".article-category, .article-type a",
-        "body_selector": ".article-content, .article-body",
-        "language_selector": "html[lang]",
-'''
+        # Build detail selectors with chain support
+        detail_config = self._build_detail_config(detail_selectors)
 
         return f"""## 7. Crawler Configuration
 
@@ -340,6 +427,7 @@ Notes:
 config = {{
     "start_url": "{target_url}",
     "listing": {{
+        "container_selector": "{listing_container_selector}",  # Focus on main content
         "article_link_selector": "{article_selector}",
     }},
     "pagination": {{
@@ -350,7 +438,7 @@ config = {{
         "max_pages": {max_pages if max_pages else 100}
     }},
     "detail": {{
-{detail_config.rstrip().rstrip(',')}
+{detail_config}
     }},
     "request": {{
         "requires_browser": {str(requires_browser).lower()},
@@ -364,9 +452,53 @@ config = {{
 }}
 ```
 
+**Note:**
+- Use `container_selector` first to narrow DOM to main content area (excludes header/sidebar articles)
+- Detail selectors use chains - try each selector in order until one matches
+
 ---
 
 """
+
+    def _build_detail_config(self, detail_selectors: dict) -> str:
+        """Build detail config section with selector chains."""
+        if not detail_selectors:
+            return '''        "title": ["h1.article-title", ".article-view h1"],
+        "date": [".article-date", ".publication-date", "time[datetime]"],
+        "authors": [".article-author a", ".author-name"],
+        "category": [".article-category", ".article-type a"],
+        "content": [".article-content", ".article-body"]'''
+
+        lines = []
+        for field, info in detail_selectors.items():
+            # Handle selector chain format (list)
+            if isinstance(info, list):
+                selectors = []
+                for item in info:
+                    if isinstance(item, dict):
+                        sel = item.get("selector", "")
+                        if sel:
+                            selectors.append(f'"{sel}"')
+                    elif isinstance(item, str) and item:
+                        selectors.append(f'"{item}"')
+
+                if selectors:
+                    lines.append(f'        "{field}": [{", ".join(selectors)}]')
+
+            # Handle old dict format
+            elif isinstance(info, dict):
+                primary = info.get("primary", info.get("selector", ""))
+                fallbacks = info.get("fallbacks", [])
+                selectors = [f'"{primary}"'] if primary else []
+                selectors.extend(f'"{fb}"' for fb in fallbacks if fb)
+                if selectors:
+                    lines.append(f'        "{field}": [{", ".join(selectors)}]')
+
+            # Handle simple string format
+            elif isinstance(info, str) and info:
+                lines.append(f'        "{field}": ["{info}"]')
+
+        return ",\n".join(lines) if lines else '        # No selectors discovered'
 
     def _build_accessibility_section(self, requires_browser: bool, listing_ok: bool, articles_ok: bool) -> str:
         section = """## 8. Accessibility & Requirements
@@ -452,6 +584,7 @@ class GenerateTestPlanTool(BaseTool):
         try:
             target_url = self.memory_store.read("target_url") or "Unknown"
             test_description = self.memory_store.read("test-data-description") or ""
+            detail_selectors = self.memory_store.read("detail_selectors") or {}
 
             # Find all test data keys
             listing_keys = self.memory_store.search("test-data-listing-*")
@@ -464,6 +597,9 @@ class GenerateTestPlanTool(BaseTool):
             # Determine site name
             parsed = urlparse(target_url)
             site_name = parsed.netloc.replace("www.", "")
+
+            # Build dynamic expected fields based on discovered selectors
+            expected_fields = self._build_expected_fields(detail_selectors)
 
             test_plan = f"""# Test Plan: {site_name}
 
@@ -497,17 +633,15 @@ class GenerateTestPlanTool(BaseTool):
 
 ### Article Page Entry
 
+Fields are based on selectors discovered during analysis:
+
 ```json
 {{
     "type": "article",
     "url": "article URL",
     "given": "HTML content of the article page",
     "expected": {{
-        "title": "extracted title",
-        "date": "publication date",
-        "authors": ["author1", "author2"],
-        "category": "category name",
-        "content": "article content (truncated)"
+{expected_fields}
     }}
 }}
 ```
@@ -598,6 +732,55 @@ for test in articles:
         except Exception as e:
             logger.error(f"Failed to generate test plan: {e}")
             return {"success": False, "error": str(e)}
+
+    def _build_expected_fields(self, detail_selectors: dict) -> str:
+        """Build expected fields JSON based on discovered selectors."""
+        # Default fields if nothing discovered
+        if not detail_selectors:
+            return '''        "title": "extracted title",
+        "date": "publication date",
+        "authors": ["author1", "author2"],
+        "category": "category name",
+        "content": "article content (truncated)"'''
+
+        # Map field names to example values for test data
+        field_examples = {
+            "title": '"extracted title"',
+            "date": '"2024-01-15"',
+            "publication_date": '"2024-01-15"',
+            "authors": '["author1", "author2"]',
+            "author": '"Author Name"',
+            "category": '"category name"',
+            "content": '"article content (truncated)"',
+            "body": '"article body text"',
+            "lead": '"article lead/summary"',
+            "summary": '"article summary"',
+            "tags": '["tag1", "tag2"]',
+            "language": '"en"',
+            "breadcrumbs": '["Home", "Section"]',
+            "files": '[{"name": "doc.pdf", "url": "/files/doc.pdf"}]',
+            "attachments": '[{"name": "file.pdf", "url": "/file.pdf"}]',
+            "related_articles": '[{"title": "Related", "url": "/related"}]',
+            "images": '[{"src": "/img.jpg", "alt": "desc"}]',
+        }
+
+        lines = []
+        for field, value in detail_selectors.items():
+            # Check if selector chain has any valid selectors
+            has_selectors = False
+            if isinstance(value, list):
+                has_selectors = any(item.get("selector") for item in value if isinstance(item, dict))
+            elif isinstance(value, dict):
+                has_selectors = bool(value.get("primary") or value.get("selector"))
+            elif isinstance(value, str):
+                has_selectors = bool(value)
+
+            if has_selectors:
+                example = field_examples.get(field.lower(), f'"{field} value"')
+                lines.append(f'        "{field}": {example}')
+
+        return ",\n".join(lines) if lines else '''        "title": "extracted title",
+        "content": "article content"'''
 
     def get_parameters_schema(self) -> dict[str, Any]:
         return {"type": "object", "properties": {}}

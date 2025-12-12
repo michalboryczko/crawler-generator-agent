@@ -35,12 +35,12 @@ You MUST call only ONE tool per response. Never batch multiple tool calls.
 - generate_article_pages: Group article URLs by pattern and sample (20% per group, min 3)
 
 ### Extraction Tools
-- extract_listing_page: Navigate to ONE listing page and extract selectors + article URLs
+- extract_listing_page: Navigate to ONE listing page and extract selectors + article URLs.
+  Returns {"selectors": {...}, "article_urls": [...]}
 - extract_article_page: Navigate to ONE article page and extract detail selectors
 
 ### Aggregation Tool
-- aggregate_selectors: Create SELECTOR CHAINS from all extractions (ordered lists of all
-  working selectors, not just one). Crawler will try each in order until match.
+- aggregate_selectors: Create SELECTOR CHAINS from all extractions
 
 ### Memory Tools
 - memory_read: Read from memory
@@ -50,60 +50,57 @@ You MUST call only ONE tool per response. Never batch multiple tool calls.
 ## Workflow - Follow these steps IN ORDER
 
 ### Step 1: Read configuration
-Call memory_read for:
-- 'target_url'
-- 'pagination_max_pages'
-- 'pagination_links' (if available - helps detect URL pattern like offset vs page)
+Call memory_read for 'target_url' and 'pagination_max_pages'
 
 ### Step 2: Generate listing page URLs
-Call generate_listing_pages with:
-- target_url
-- max_pages
-- pagination_links (if available from memory)
+Call generate_listing_pages with target_url and max_pages
 
 ### Step 3: Extract from EACH listing page
-For EACH URL returned by generate_listing_pages:
+For EACH URL from Step 2:
 - Call extract_listing_page with that URL
-- This tool handles navigation, waiting, and extraction automatically
-- Collect all results (selectors + article URLs from each page)
+- SAVE the article_urls from each extraction (critical for Step 4!)
+- After first page, pass listing_container_selector to focus subsequent pages
 
 ### Step 4: Generate article page URLs
-After ALL listing pages are done, call generate_article_pages with all collected article URLs
+Call generate_article_pages with ALL article URLs collected from Step 3
+IMPORTANT: You need article URLs to proceed. If Step 3 extractions returned no URLs, report the error.
 
 ### Step 5: Extract from EACH article page
-For EACH URL returned by generate_article_pages:
-- Call extract_article_page with that URL
-- Collect all results
+For EACH URL from Step 4, call extract_article_page
 
 ### Step 6: Aggregate selectors
 Call aggregate_selectors with all listing_extractions and article_extractions
-This returns SELECTOR CHAINS - ordered lists where crawler tries each until one matches
 
-### Step 7: Store results
-Store in memory:
-- 'listing_selectors': Selector chains for listing pages (each field has ordered list)
-- 'detail_selectors': Selector chains for article pages (each field has ordered list)
-- 'article_selector': Primary article link selector (first from chain)
-- 'collected_article_urls': All article URLs found
-- 'selector_analysis': Summary of analysis
-- 'pagination_pattern': Detected pagination URL pattern
+### Step 7: Store results (MULTIPLE memory_write calls)
+After aggregation, make SEPARATE memory_write calls for EACH of these:
 
-## Selector Chain Format
-Results are stored as chains, e.g.:
+1. memory_write key='listing_selectors' value=<the listing_selectors from aggregation>
+2. memory_write key='detail_selectors' value=<the detail_selectors from aggregation>
+3. memory_write key='listing_container_selector' value=<extract from listing_selectors["listing_container"][0]["selector"]>
+4. memory_write key='article_selector' value=<extract from listing_selectors["article_link"][0]["selector"]>
+5. memory_write key='collected_article_urls' value=<ALL article URLs found in Step 3>
+6. memory_write key='selector_analysis' value=<summary string>
+
+CRITICAL: Steps 3 and 4 are essential. If you have 0 article URLs after Step 3, you MUST store
+listing_container_selector and article_selector from the FIRST listing page extraction before
+proceeding, even if article URLs are empty.
+
+## Extracting Primary Selectors from Chains
+After aggregation, listing_selectors looks like:
 {
-  "title": [
-    {"selector": "h1.article-title", "priority": 1, "success_rate": 0.95},
-    {"selector": "h1", "priority": 2, "success_rate": 0.80}
-  ]
+  "listing_container": [{"selector": "main.content", "success_rate": 1.0}, ...],
+  "article_link": [{"selector": "a.article-link", "success_rate": 0.95}, ...]
 }
-The crawler will try selectors in order until one matches.
+
+To get the PRIMARY selector, take the FIRST item's "selector" field:
+- listing_container_selector = listing_selectors["listing_container"][0]["selector"]
+- article_selector = listing_selectors["article_link"][0]["selector"]
 
 ## CRITICAL RULES
 - Call ONE tool at a time
-- You MUST call extract_listing_page for EACH URL from generate_listing_pages
-- You MUST call extract_article_page for EACH URL from generate_article_pages
-- Do NOT skip pages - process every URL returned by the generators
-- Only call aggregate_selectors AFTER all extractions are complete"""
+- Process EVERY URL from generators - no skipping
+- COLLECT article_urls from EVERY listing page extraction
+- Store BOTH selector chains AND individual primary selectors in memory"""
 
 
 class SelectorAgent(BaseAgent):

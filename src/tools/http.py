@@ -58,8 +58,8 @@ class HTTPRequestTool(BaseTool):
                     return {
                         "status_code": response.status,
                         "headers": dict(response.headers),
-                        "body": content[:100000] if len(content) > 100000 else content,
-                        "truncated": len(content) > 100000
+                        "body": content,
+                        "truncated": False
                     }
 
         try:

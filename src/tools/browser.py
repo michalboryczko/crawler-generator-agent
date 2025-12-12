@@ -72,8 +72,8 @@ class GetHTMLTool(BaseTool):
                 )
 
             # Truncate if still too large
-            if len(html) > 50000:
-                html = html[:50000] + "\n... [TRUNCATED]"
+            if len(html) > 150000:
+                html = html[:150000] + "\n... [TRUNCATED]"
 
             return {
                 "success": True,
