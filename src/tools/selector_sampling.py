@@ -3,11 +3,16 @@ import json
 import logging
 import random
 import re
+import time
 from typing import Any
 from urllib.parse import urlparse, parse_qs, urlencode, urlunparse
 
 from .base import BaseTool
 from ..core.llm import LLMClient
+from ..core.log_context import get_logger
+from ..core.structured_logger import (
+    EventCategory, LogEvent, LogMetrics
+)
 
 logger = logging.getLogger(__name__)
 
@@ -48,6 +53,26 @@ class ListingPagesGeneratorTool(BaseTool):
         Returns:
             dict with success, urls list, detected pattern, and metadata
         """
+        slog = get_logger()
+        start_time = time.perf_counter()
+
+        # Log start
+        if slog:
+            slog.debug(
+                event=LogEvent(
+                    category=EventCategory.TOOL_EXECUTION,
+                    event_type="tool.listing_pages.start",
+                    name="Listing pages generation started",
+                ),
+                message=f"Generating listing pages for {target_url}",
+                data={
+                    "target_url": target_url,
+                    "max_pages": max_pages,
+                    "pagination_links_count": len(pagination_links) if pagination_links else 0,
+                },
+                tags=["tool", "selector_sampling", "listing_pages", "start"],
+            )
+
         try:
             # Detect pagination pattern from links
             if pagination_links and len(pagination_links) >= 2:
@@ -73,11 +98,33 @@ class ListingPagesGeneratorTool(BaseTool):
 
             # Generate URLs using detected pattern
             urls = self._generate_urls(target_url, page_numbers, pattern_info)
+            duration_ms = (time.perf_counter() - start_time) * 1000
 
             logger.info(
                 f"Generated {len(urls)} listing URLs from {max_pages} total pages "
                 f"(sample: {sample_size}, pattern: {pattern_info.get('pattern_type', 'unknown')})"
             )
+
+            # Log completion
+            if slog:
+                slog.info(
+                    event=LogEvent(
+                        category=EventCategory.TOOL_EXECUTION,
+                        event_type="tool.listing_pages.complete",
+                        name="Listing pages generation completed",
+                    ),
+                    message=f"Generated {len(urls)} listing URLs from {max_pages} total pages",
+                    data={
+                        "target_url": target_url,
+                        "urls_generated": len(urls),
+                        "total_pages": max_pages,
+                        "sample_size": sample_size,
+                        "sample_percentage": round(sample_size / max_pages * 100, 1),
+                        "pattern_type": pattern_info.get("pattern_type", "unknown"),
+                    },
+                    metrics=LogMetrics(duration_ms=duration_ms),
+                    tags=["tool", "selector_sampling", "listing_pages", "complete"],
+                )
 
             return {
                 "success": True,
@@ -90,7 +137,22 @@ class ListingPagesGeneratorTool(BaseTool):
             }
 
         except Exception as e:
+            duration_ms = (time.perf_counter() - start_time) * 1000
             logger.error(f"Failed to generate listing pages: {e}")
+
+            if slog:
+                slog.error(
+                    event=LogEvent(
+                        category=EventCategory.TOOL_EXECUTION,
+                        event_type="tool.listing_pages.error",
+                        name="Listing pages generation failed",
+                    ),
+                    message=f"Failed to generate listing pages: {e}",
+                    data={"target_url": target_url, "error": str(e)},
+                    metrics=LogMetrics(duration_ms=duration_ms),
+                    tags=["tool", "selector_sampling", "listing_pages", "error"],
+                )
+
             return {"success": False, "error": str(e)}
 
     def _detect_pagination_pattern(self, target_url: str, pagination_links: list[str]) -> dict:
@@ -329,8 +391,38 @@ class ArticlePagesGeneratorTool(BaseTool):
         Returns:
             dict with success, selected_urls, and pattern groupings
         """
+        slog = get_logger()
+        start_time = time.perf_counter()
+
+        # Log start
+        if slog:
+            slog.debug(
+                event=LogEvent(
+                    category=EventCategory.TOOL_EXECUTION,
+                    event_type="tool.article_pages.start",
+                    name="Article pages generation started",
+                ),
+                message=f"Generating article page sample from {len(article_urls)} URLs",
+                data={
+                    "total_urls": len(article_urls),
+                    "min_per_group": min_per_group,
+                    "sample_percentage": sample_percentage,
+                },
+                tags=["tool", "selector_sampling", "article_pages", "start"],
+            )
+
         try:
             if not article_urls:
+                if slog:
+                    slog.warning(
+                        event=LogEvent(
+                            category=EventCategory.TOOL_EXECUTION,
+                            event_type="tool.article_pages.empty",
+                            name="No article URLs provided",
+                        ),
+                        message="Article pages generation skipped: no URLs provided",
+                        tags=["tool", "selector_sampling", "article_pages", "empty"],
+                    )
                 return {
                     "success": False,
                     "error": "No article URLs provided"
@@ -358,10 +450,31 @@ class ArticlePagesGeneratorTool(BaseTool):
                     "sampled_urls": sampled
                 }
 
+            duration_ms = (time.perf_counter() - start_time) * 1000
+
             logger.info(
                 f"Generated {len(selected_urls)} article URLs from {len(article_urls)} total "
                 f"across {len(groups)} pattern groups"
             )
+
+            # Log completion
+            if slog:
+                slog.info(
+                    event=LogEvent(
+                        category=EventCategory.TOOL_EXECUTION,
+                        event_type="tool.article_pages.complete",
+                        name="Article pages generation completed",
+                    ),
+                    message=f"Generated {len(selected_urls)} article URLs from {len(article_urls)} total",
+                    data={
+                        "total_urls": len(article_urls),
+                        "selected_count": len(selected_urls),
+                        "num_patterns": len(groups),
+                        "patterns": list(groups.keys()),
+                    },
+                    metrics=LogMetrics(duration_ms=duration_ms),
+                    tags=["tool", "selector_sampling", "article_pages", "complete"],
+                )
 
             return {
                 "success": True,
@@ -373,7 +486,22 @@ class ArticlePagesGeneratorTool(BaseTool):
             }
 
         except Exception as e:
+            duration_ms = (time.perf_counter() - start_time) * 1000
             logger.error(f"Failed to generate article pages: {e}")
+
+            if slog:
+                slog.error(
+                    event=LogEvent(
+                        category=EventCategory.TOOL_EXECUTION,
+                        event_type="tool.article_pages.error",
+                        name="Article pages generation failed",
+                    ),
+                    message=f"Failed to generate article pages: {e}",
+                    data={"total_urls": len(article_urls), "error": str(e)},
+                    metrics=LogMetrics(duration_ms=duration_ms),
+                    tags=["tool", "selector_sampling", "article_pages", "error"],
+                )
+
             return {"success": False, "error": str(e)}
 
     def _group_urls_by_pattern(self, urls: list[str]) -> dict[str, list[str]]:

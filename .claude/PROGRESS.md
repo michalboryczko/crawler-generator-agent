@@ -210,3 +210,89 @@ The selector agent doesn't properly implement the sampling logic:
        - Explicit note that ?start= parameter means different content
        - Clearer sections for what to skip vs extract
        - Warning that <5 URLs means wrong section extracted
+
+---
+
+## Phase 9: Structured Logging Architecture
+
+### Status Dashboard
+| Phase | Status | Progress |
+|-------|--------|----------|
+| Phase 9.1: Foundation (MVP) | ✅ Complete | 100% |
+| Phase 9.2: Enhanced (Tools) | Pending | 0% |
+| Phase 9.3: Production | Pending | 0% |
+| Phase 9.4: Visualization + Jaeger | Pending | 0% |
+
+### Phase 9.1: Foundation (MVP) - Core Infrastructure ✅ COMPLETE
+#### Files Created
+- [x] `src/core/structured_logger.py` - Core classes (LogEntry, TraceContext, StructuredLogger)
+- [x] `src/core/log_outputs.py` - Output implementations (JSONLines, Console, Async, OTel)
+- [x] `src/core/log_context.py` - Context propagation (ContextVar, span manager)
+- [x] `src/core/log_config.py` - Configuration dataclass with MODEL_COSTS
+
+#### Files Modified
+- [x] `main.py` - Initialize LoggerManager, dual logging (legacy + structured)
+- [x] `src/core/llm.py` - LLM metrics logging (tokens, cost, latency, tool calls)
+- [x] `src/agents/base.py` - Agent lifecycle + tool execution logging
+
+### Phase 9.2: Enhanced (Tool Coverage)
+#### Files to Modify
+- [ ] `src/tools/base.py` - Tool wrapper with logging
+- [ ] `src/tools/browser.py` - Browser operation logging
+- [ ] `src/tools/memory.py` - Memory operation logging
+- [ ] `src/tools/extraction.py` - Extraction logging with batch progress
+- [ ] `src/tools/selector_extraction.py` - Selector discovery logging
+- [ ] `src/tools/selector_sampling.py` - Sampling decision logging
+- [ ] `src/tools/orchestration.py` - Sub-agent invocation logging
+- [ ] `src/tools/plan_generator.py` - Plan generation logging
+- [ ] `src/agents/main_agent.py` - Decision logging
+- [ ] `src/agents/selector_agent.py` - Selector workflow logging
+
+### Phase 9.3: Production
+#### Files to Create
+- [ ] `src/core/pii_redactor.py` - PII redaction
+- [ ] `src/core/logging_bridge.py` - Legacy logging bridge
+
+#### Features
+- [ ] PII redaction enabled
+- [ ] Event sampling for high-volume events
+- [ ] Async buffered writing
+- [ ] Environment-based configuration
+
+### Phase 9.4: Visualization + Jaeger
+#### Infrastructure Files
+- [ ] `docker-compose.logging.yml` - Docker Compose for Elasticsearch, Kibana, OTel Collector, Jaeger
+- [ ] `infra/otel-collector-config.yaml` - OTel Collector configuration
+- [ ] `infra/es-index-template.sh` - Elasticsearch index template
+
+### Key Architecture Decisions
+1. **OpenTelemetry-compatible schema** - JSON Lines output compatible with OTel
+2. **Context propagation via ContextVars** - Thread-safe context for async operations
+3. **Trace hierarchy**: session_id → request_id → trace_id → span_id with parent relationships
+4. **Dual output**: Console (human-readable) + JSONL (machine-parseable)
+5. **Cost estimation**: Track token usage and calculate API costs per model
+6. **PII redaction**: Configurable patterns for sensitive data removal
+
+### Highest Risk Items
+1. **Context propagation across agents** - Ensure trace context flows through nested agent calls
+2. **Performance impact** - JSON serialization on every log entry
+3. **Large content truncation** - Balance log completeness vs storage/performance
+
+### 2025-12-12 - Logging Architecture Implementation Start
+- Read complete logging-architecture-plan.md (3000+ lines)
+- Created tracking structure (.claude/checkpoints, .claude/logs)
+- Starting Phase 9.1 implementation
+
+### 2025-12-12 - Phase 9.1 Foundation Complete
+- **Created 4 core logging modules:**
+  - `structured_logger.py`: LogLevel, LogLevelDetail, EventCategory, TraceContext, LogEvent, LogMetrics, LogEntry, LogOutput ABC, StructuredLogger
+  - `log_outputs.py`: JSONLinesOutput, ConsoleOutput (colored), AsyncBufferedOutput, OpenTelemetryOutput, CompositeOutput
+  - `log_context.py`: ContextVar-based propagation, get_logger(), set_logger(), span() context manager, LoggerManager singleton, with_span decorator
+  - `log_config.py`: LoggingConfig dataclass, from_env(), development/production/testing presets, MODEL_COSTS, estimate_cost()
+
+- **Modified core files:**
+  - `main.py`: Initializes both legacy logging and structured logging, logs application lifecycle events
+  - `llm.py`: LLM call start/complete events with token counts, cost estimation, duration, tool calls
+  - `base.py`: Agent lifecycle (start/complete/error), iteration logging, tool execution with timing
+
+- **Verified**: All syntax checks pass, imports validated

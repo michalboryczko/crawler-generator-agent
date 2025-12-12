@@ -1,11 +1,17 @@
 """OpenAI LLM client wrapper."""
 import json
 import logging
+import time
 from typing import Any
 
 from openai import OpenAI
 
 from .config import OpenAIConfig
+from .log_config import estimate_cost
+from .log_context import get_logger
+from .structured_logger import (
+    EventCategory, LogEvent, LogLevel, LogLevelDetail, LogMetrics
+)
 from ..tools.base import BaseTool
 
 logger = logging.getLogger(__name__)
@@ -49,9 +55,61 @@ class LLMClient:
             # This is important for browser operations: navigate → wait → getHTML
             kwargs["parallel_tool_calls"] = parallel_tool_calls
 
+        # Get structured logger if available
+        slog = get_logger()
+
+        # Log LLM call start
         logger.debug(f"LLM request with {len(messages)} messages")
+        if slog:
+            slog.info(
+                event=LogEvent(
+                    category=EventCategory.LLM_INTERACTION,
+                    event_type="llm.call.start",
+                    name="LLM call started",
+                ),
+                message=f"LLM call to {self.config.model} with {len(messages)} messages",
+                data={
+                    "model": self.config.model,
+                    "message_count": len(messages),
+                    "has_tools": bool(tools),
+                    "tool_count": len(tools) if tools else 0,
+                    "tool_choice": str(tool_choice),
+                },
+                tags=["llm", self.config.model, "start"],
+            )
+
+        # Make API call with timing
+        start_time = time.perf_counter()
         response = self.client.chat.completions.create(**kwargs)
-        logger.debug(f"LLM response: {response.choices[0].finish_reason}")
+        duration_ms = (time.perf_counter() - start_time) * 1000
+
+        # Extract token usage
+        tokens_input = response.usage.prompt_tokens if response.usage else 0
+        tokens_output = response.usage.completion_tokens if response.usage else 0
+        tokens_total = response.usage.total_tokens if response.usage else 0
+
+        # Estimate cost
+        cost_usd = estimate_cost(self.config.model, tokens_input, tokens_output)
+
+        # Get finish reason and tool info
+        finish_reason = response.choices[0].finish_reason
+        tool_called = None
+        if response.choices[0].message.tool_calls:
+            tool_called = response.choices[0].message.tool_calls[0].function.name
+
+        logger.debug(f"LLM response: {finish_reason}")
+
+        # Log LLM call completion with metrics
+        if slog:
+            slog.log_llm_call(
+                model=self.config.model,
+                tokens_input=tokens_input,
+                tokens_output=tokens_output,
+                duration_ms=duration_ms,
+                estimated_cost_usd=cost_usd,
+                finish_reason=finish_reason,
+                tool_called=tool_called,
+            )
 
         return self._parse_response(response)
 

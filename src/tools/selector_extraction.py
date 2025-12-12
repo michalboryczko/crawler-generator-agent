@@ -8,6 +8,10 @@ from .base import BaseTool
 from ..core.llm import LLMClient
 from ..core.browser import BrowserSession
 from ..core.html_cleaner import clean_html_for_llm
+from ..core.log_context import get_logger
+from ..core.structured_logger import (
+    EventCategory, LogEvent, LogMetrics
+)
 
 logger = logging.getLogger(__name__)
 
@@ -134,6 +138,22 @@ class ListingPageExtractorTool(BaseTool):
         Returns:
             dict with selectors, article_urls, and metadata
         """
+        slog = get_logger()
+        start_time = time.perf_counter()
+
+        # Log start
+        if slog:
+            slog.debug(
+                event=LogEvent(
+                    category=EventCategory.TOOL_EXECUTION,
+                    event_type="tool.listing_extract.start",
+                    name="Listing page extraction started",
+                ),
+                message=f"Extracting listing page: {url}",
+                data={"url": url, "wait_seconds": wait_seconds},
+                tags=["tool", "selector_extraction", "listing", "start"],
+            )
+
         try:
             logger.info(f"Extracting listing page: {url}")
 
@@ -150,6 +170,18 @@ class ListingPageExtractorTool(BaseTool):
                 original_len = len(cleaned_html)
                 cleaned_html = cleaned_html[:150000] + "\n... [TRUNCATED]"
                 logger.warning(f"HTML truncated from {original_len} to 150000 chars")
+
+                if slog:
+                    slog.warning(
+                        event=LogEvent(
+                            category=EventCategory.TOOL_EXECUTION,
+                            event_type="tool.listing_extract.truncate",
+                            name="HTML truncated",
+                        ),
+                        message=f"HTML truncated from {original_len} to 150000 chars",
+                        data={"url": url, "original_size": original_len, "truncated_size": 150000},
+                        tags=["tool", "selector_extraction", "truncate"],
+                    )
 
             # Fresh LLM call with isolated context
             messages = [
@@ -177,6 +209,20 @@ class ListingPageExtractorTool(BaseTool):
                         f"Expected 10-30. LLM may be missing main content."
                     )
 
+                    if slog:
+                        slog.warning(
+                            event=LogEvent(
+                                category=EventCategory.TOOL_EXECUTION,
+                                event_type="tool.listing_extract.low_urls",
+                                name="Few URLs extracted",
+                            ),
+                            message=f"Only {len(article_urls)} URLs extracted (expected 10-30)",
+                            data={"url": url, "urls_count": len(article_urls)},
+                            tags=["tool", "selector_extraction", "warning"],
+                        )
+
+                duration_ms = (time.perf_counter() - start_time) * 1000
+
                 logger.info(
                     f"Extracted from {url}: "
                     f"{len(article_urls)} article URLs, "
@@ -187,6 +233,24 @@ class ListingPageExtractorTool(BaseTool):
                 if article_urls:
                     logger.debug(f"Sample URLs: {article_urls[:3]}")
 
+                # Log completion
+                if slog:
+                    slog.info(
+                        event=LogEvent(
+                            category=EventCategory.TOOL_EXECUTION,
+                            event_type="tool.listing_extract.complete",
+                            name="Listing page extraction completed",
+                        ),
+                        message=f"Extracted {len(article_urls)} URLs from {url}",
+                        data={
+                            "url": url,
+                            "urls_count": len(article_urls),
+                            "selectors_found": list(result.get("selectors", {}).keys()),
+                        },
+                        metrics=LogMetrics(duration_ms=duration_ms),
+                        tags=["tool", "selector_extraction", "listing", "complete"],
+                    )
+
                 return {
                     "success": True,
                     "url": url,
@@ -195,6 +259,21 @@ class ListingPageExtractorTool(BaseTool):
                     "notes": result.get("notes", "")
                 }
             else:
+                duration_ms = (time.perf_counter() - start_time) * 1000
+
+                if slog:
+                    slog.error(
+                        event=LogEvent(
+                            category=EventCategory.TOOL_EXECUTION,
+                            event_type="tool.listing_extract.parse_error",
+                            name="Failed to parse LLM response",
+                        ),
+                        message=f"Failed to parse LLM response for {url}",
+                        data={"url": url},
+                        metrics=LogMetrics(duration_ms=duration_ms),
+                        tags=["tool", "selector_extraction", "listing", "error"],
+                    )
+
                 return {
                     "success": False,
                     "url": url,
@@ -202,7 +281,22 @@ class ListingPageExtractorTool(BaseTool):
                 }
 
         except Exception as e:
+            duration_ms = (time.perf_counter() - start_time) * 1000
             logger.error(f"Failed to extract listing page {url}: {e}")
+
+            if slog:
+                slog.error(
+                    event=LogEvent(
+                        category=EventCategory.TOOL_EXECUTION,
+                        event_type="tool.listing_extract.error",
+                        name="Listing page extraction failed",
+                    ),
+                    message=f"Failed to extract listing page: {e}",
+                    data={"url": url, "error": str(e)},
+                    metrics=LogMetrics(duration_ms=duration_ms),
+                    tags=["tool", "selector_extraction", "listing", "error"],
+                )
+
             return {
                 "success": False,
                 "url": url,
@@ -301,6 +395,22 @@ class ArticlePageExtractorTool(BaseTool):
         Returns:
             dict with selectors, extracted_values, and metadata
         """
+        slog = get_logger()
+        start_time = time.perf_counter()
+
+        # Log start
+        if slog:
+            slog.debug(
+                event=LogEvent(
+                    category=EventCategory.TOOL_EXECUTION,
+                    event_type="tool.article_extract.start",
+                    name="Article page extraction started",
+                ),
+                message=f"Extracting article page: {url}",
+                data={"url": url, "wait_seconds": wait_seconds},
+                tags=["tool", "selector_extraction", "article", "start"],
+            )
+
         try:
             logger.info(f"Extracting article page: {url}")
 
@@ -314,7 +424,20 @@ class ArticlePageExtractorTool(BaseTool):
 
             # Truncate if too large
             if len(cleaned_html) > 50000:
+                original_len = len(cleaned_html)
                 cleaned_html = cleaned_html[:50000] + "\n... [TRUNCATED]"
+
+                if slog:
+                    slog.warning(
+                        event=LogEvent(
+                            category=EventCategory.TOOL_EXECUTION,
+                            event_type="tool.article_extract.truncate",
+                            name="HTML truncated",
+                        ),
+                        message=f"HTML truncated from {original_len} to 50000 chars",
+                        data={"url": url, "original_size": original_len, "truncated_size": 50000},
+                        tags=["tool", "selector_extraction", "truncate"],
+                    )
 
             # Fresh LLM call with isolated context
             messages = [
@@ -331,10 +454,32 @@ class ArticlePageExtractorTool(BaseTool):
             if result:
                 selectors = result.get("selectors", {})
                 found_count = sum(1 for s in selectors.values() if s.get("found", False))
+                duration_ms = (time.perf_counter() - start_time) * 1000
+
                 logger.info(
                     f"Extracted from {url}: "
                     f"{found_count}/{len(selectors)} selectors found"
                 )
+
+                # Log completion
+                if slog:
+                    slog.info(
+                        event=LogEvent(
+                            category=EventCategory.TOOL_EXECUTION,
+                            event_type="tool.article_extract.complete",
+                            name="Article page extraction completed",
+                        ),
+                        message=f"Extracted {found_count}/{len(selectors)} selectors from {url}",
+                        data={
+                            "url": url,
+                            "selectors_found": found_count,
+                            "selectors_total": len(selectors),
+                            "selector_fields": list(selectors.keys()),
+                        },
+                        metrics=LogMetrics(duration_ms=duration_ms),
+                        tags=["tool", "selector_extraction", "article", "complete"],
+                    )
+
                 return {
                     "success": True,
                     "url": url,
@@ -343,6 +488,21 @@ class ArticlePageExtractorTool(BaseTool):
                     "notes": result.get("notes", "")
                 }
             else:
+                duration_ms = (time.perf_counter() - start_time) * 1000
+
+                if slog:
+                    slog.error(
+                        event=LogEvent(
+                            category=EventCategory.TOOL_EXECUTION,
+                            event_type="tool.article_extract.parse_error",
+                            name="Failed to parse LLM response",
+                        ),
+                        message=f"Failed to parse LLM response for {url}",
+                        data={"url": url},
+                        metrics=LogMetrics(duration_ms=duration_ms),
+                        tags=["tool", "selector_extraction", "article", "error"],
+                    )
+
                 return {
                     "success": False,
                     "url": url,
@@ -350,7 +510,22 @@ class ArticlePageExtractorTool(BaseTool):
                 }
 
         except Exception as e:
+            duration_ms = (time.perf_counter() - start_time) * 1000
             logger.error(f"Failed to extract article page {url}: {e}")
+
+            if slog:
+                slog.error(
+                    event=LogEvent(
+                        category=EventCategory.TOOL_EXECUTION,
+                        event_type="tool.article_extract.error",
+                        name="Article page extraction failed",
+                    ),
+                    message=f"Failed to extract article page: {e}",
+                    data={"url": url, "error": str(e)},
+                    metrics=LogMetrics(duration_ms=duration_ms),
+                    tags=["tool", "selector_extraction", "article", "error"],
+                )
+
             return {
                 "success": False,
                 "url": url,
@@ -431,12 +606,52 @@ class SelectorAggregatorTool(BaseTool):
         Returns:
             dict with listing_selectors and detail_selectors as selector chains
         """
+        slog = get_logger()
+        start_time = time.perf_counter()
+
+        # Log start
+        if slog:
+            slog.debug(
+                event=LogEvent(
+                    category=EventCategory.TOOL_EXECUTION,
+                    event_type="tool.selector_aggregate.start",
+                    name="Selector aggregation started",
+                ),
+                message=f"Aggregating selectors from {len(listing_extractions)} listing and {len(article_extractions)} article pages",
+                data={
+                    "listing_pages": len(listing_extractions),
+                    "article_pages": len(article_extractions),
+                },
+                tags=["tool", "selector_extraction", "aggregate", "start"],
+            )
+
         try:
             # Aggregate listing selectors into chains
             listing_result = self._aggregate_listing_selectors(listing_extractions)
 
             # Aggregate article selectors into chains
             article_result = self._aggregate_article_selectors(article_extractions)
+
+            duration_ms = (time.perf_counter() - start_time) * 1000
+
+            # Log completion
+            if slog:
+                slog.info(
+                    event=LogEvent(
+                        category=EventCategory.TOOL_EXECUTION,
+                        event_type="tool.selector_aggregate.complete",
+                        name="Selector aggregation completed",
+                    ),
+                    message=f"Aggregated selectors: {len(listing_result['selectors'])} listing, {len(article_result['selectors'])} detail fields",
+                    data={
+                        "listing_pages": len(listing_extractions),
+                        "article_pages": len(article_extractions),
+                        "listing_selector_count": len(listing_result["selectors"]),
+                        "detail_selector_count": len(article_result["selectors"]),
+                    },
+                    metrics=LogMetrics(duration_ms=duration_ms),
+                    tags=["tool", "selector_extraction", "aggregate", "complete"],
+                )
 
             return {
                 "success": True,
@@ -451,7 +666,22 @@ class SelectorAggregatorTool(BaseTool):
             }
 
         except Exception as e:
+            duration_ms = (time.perf_counter() - start_time) * 1000
             logger.error(f"Failed to aggregate selectors: {e}")
+
+            if slog:
+                slog.error(
+                    event=LogEvent(
+                        category=EventCategory.TOOL_EXECUTION,
+                        event_type="tool.selector_aggregate.error",
+                        name="Selector aggregation failed",
+                    ),
+                    message=f"Failed to aggregate selectors: {e}",
+                    data={"error": str(e)},
+                    metrics=LogMetrics(duration_ms=duration_ms),
+                    tags=["tool", "selector_extraction", "aggregate", "error"],
+                )
+
             return {"success": False, "error": str(e)}
 
     def _aggregate_listing_selectors(self, extractions: list[dict]) -> dict:

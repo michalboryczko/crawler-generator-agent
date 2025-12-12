@@ -1,5 +1,6 @@
 """Main Agent for orchestrating the crawl plan creation workflow."""
 import logging
+import time
 from pathlib import Path
 from typing import Any
 
@@ -10,6 +11,10 @@ from .accessibility_agent import AccessibilityAgent
 from .data_prep_agent import DataPrepAgent
 from ..core.llm import LLMClient
 from ..core.browser import BrowserSession
+from ..core.log_context import get_logger
+from ..core.structured_logger import (
+    EventCategory, LogEvent, LogMetrics
+)
 from ..tools.memory import (
     MemoryStore,
     MemoryReadTool,
@@ -151,6 +156,22 @@ class MainAgent(BaseAgent):
 
     def create_crawl_plan(self, url: str) -> dict[str, Any]:
         """High-level method to create a complete crawl plan for a URL."""
+        slog = get_logger()
+        start_time = time.perf_counter()
+
+        # Log workflow start
+        if slog:
+            slog.info(
+                event=LogEvent(
+                    category=EventCategory.AGENT_LIFECYCLE,
+                    event_type="workflow.crawl_plan.start",
+                    name="Crawl plan workflow started",
+                ),
+                message=f"Starting crawl plan creation for {url}",
+                data={"target_url": url, "output_dir": str(self.output_dir)},
+                tags=["workflow", "crawl_plan", "start"],
+            )
+
         task = f"""Create a complete crawl plan for: {url}
 
 Execute the full workflow:
@@ -166,4 +187,43 @@ Execute the full workflow:
 
 Return summary with counts when complete."""
 
-        return self.run(task)
+        result = self.run(task)
+        duration_ms = (time.perf_counter() - start_time) * 1000
+
+        # Log workflow completion
+        if slog:
+            if result.get("success"):
+                slog.info(
+                    event=LogEvent(
+                        category=EventCategory.AGENT_LIFECYCLE,
+                        event_type="workflow.crawl_plan.complete",
+                        name="Crawl plan workflow completed",
+                    ),
+                    message=f"Crawl plan workflow completed for {url}",
+                    data={
+                        "target_url": url,
+                        "success": True,
+                        "iterations": result.get("iterations", 0),
+                    },
+                    metrics=LogMetrics(duration_ms=duration_ms),
+                    tags=["workflow", "crawl_plan", "complete", "success"],
+                )
+            else:
+                slog.error(
+                    event=LogEvent(
+                        category=EventCategory.AGENT_LIFECYCLE,
+                        event_type="workflow.crawl_plan.error",
+                        name="Crawl plan workflow failed",
+                    ),
+                    message=f"Crawl plan workflow failed for {url}: {result.get('error', 'Unknown error')}",
+                    data={
+                        "target_url": url,
+                        "success": False,
+                        "error": result.get("error"),
+                        "iterations": result.get("iterations", 0),
+                    },
+                    metrics=LogMetrics(duration_ms=duration_ms),
+                    tags=["workflow", "crawl_plan", "error"],
+                )
+
+        return result

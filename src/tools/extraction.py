@@ -1,12 +1,17 @@
 """Extraction tools that process data with separate agent contexts."""
 import logging
 import json
+import time
 from typing import Any
 
 from .base import BaseTool
 from .memory import MemoryStore
 from ..core.browser import BrowserSession
 from ..core.html_cleaner import clean_html_for_llm
+from ..core.log_context import get_logger
+from ..core.structured_logger import (
+    EventCategory, LogEvent, LogLevel, LogLevelDetail, LogMetrics
+)
 
 logger = logging.getLogger(__name__)
 
@@ -25,14 +30,16 @@ class FetchAndStoreHTMLTool(BaseTool):
 
     def execute(self, url: str, memory_key: str, wait_seconds: int = 3) -> dict[str, Any]:
         """Fetch URL and store in memory."""
-        try:
-            import time
+        slog = get_logger()
+        start_time = time.perf_counter()
 
+        try:
             self.browser_session.navigate(url)
             time.sleep(wait_seconds)
 
             html = self.browser_session.get_html()
             cleaned_html = clean_html_for_llm(html)
+            duration_ms = (time.perf_counter() - start_time) * 1000
 
             self.memory_store.write(memory_key, {
                 "url": url,
@@ -42,6 +49,23 @@ class FetchAndStoreHTMLTool(BaseTool):
 
             logger.info(f"Fetched and stored {url} -> {memory_key} ({len(cleaned_html)} bytes)")
 
+            # Log fetch operation
+            if slog:
+                slog.info(
+                    event=LogEvent(
+                        category=EventCategory.HTTP_OPERATION,
+                        event_type="http.fetch.complete",
+                        name="HTML fetched and stored",
+                    ),
+                    message=f"Fetched {url} -> {memory_key} ({len(cleaned_html)} bytes)",
+                    data={"url": url, "memory_key": memory_key, "html_length": len(cleaned_html)},
+                    metrics=LogMetrics(
+                        duration_ms=duration_ms,
+                        content_size_bytes=len(cleaned_html),
+                    ),
+                    tags=["http", "fetch", "success"],
+                )
+
             return {
                 "success": True,
                 "result": f"Stored HTML ({len(cleaned_html)} bytes) at key: {memory_key}",
@@ -49,7 +73,22 @@ class FetchAndStoreHTMLTool(BaseTool):
                 "memory_key": memory_key
             }
         except Exception as e:
+            duration_ms = (time.perf_counter() - start_time) * 1000
             logger.error(f"Failed to fetch {url}: {e}")
+
+            if slog:
+                slog.error(
+                    event=LogEvent(
+                        category=EventCategory.HTTP_OPERATION,
+                        event_type="http.fetch.error",
+                        name="HTML fetch failed",
+                    ),
+                    message=f"Failed to fetch {url}: {e}",
+                    data={"url": url, "memory_key": memory_key, "error": str(e)},
+                    metrics=LogMetrics(duration_ms=duration_ms),
+                    tags=["http", "fetch", "error"],
+                )
+
             return {"success": False, "error": str(e)}
 
     def get_parameters_schema(self) -> dict[str, Any]:
@@ -83,12 +122,27 @@ class BatchFetchURLsTool(BaseTool):
         wait_seconds: int = 3
     ) -> dict[str, Any]:
         """Fetch multiple URLs."""
-        import time
+        slog = get_logger()
+        batch_start_time = time.perf_counter()
 
         logger.info(f"BatchFetchURLsTool: Starting fetch of {len(urls)} URLs with prefix '{key_prefix}'")
 
+        # Log batch start
+        if slog:
+            slog.info(
+                event=LogEvent(
+                    category=EventCategory.HTTP_OPERATION,
+                    event_type="batch.fetch.start",
+                    name="Batch fetch started",
+                ),
+                message=f"Starting batch fetch of {len(urls)} URLs with prefix '{key_prefix}'",
+                data={"url_count": len(urls), "key_prefix": key_prefix},
+                tags=["batch", "fetch", "start"],
+            )
+
         results = []
         for i, url in enumerate(urls):
+            url_start_time = time.perf_counter()
             try:
                 logger.info(f"BatchFetchURLsTool: Navigating to ({i+1}/{len(urls)}): {url}")
                 self.browser_session.navigate(url)
@@ -96,6 +150,7 @@ class BatchFetchURLsTool(BaseTool):
 
                 html = self.browser_session.get_html()
                 cleaned_html = clean_html_for_llm(html)
+                url_duration_ms = (time.perf_counter() - url_start_time) * 1000
 
                 memory_key = f"{key_prefix}-{i+1}"
                 self.memory_store.write(memory_key, {
@@ -112,11 +167,58 @@ class BatchFetchURLsTool(BaseTool):
                 })
                 logger.info(f"Fetched {i+1}/{len(urls)}: {url}")
 
+                # Log progress
+                if slog:
+                    slog.debug(
+                        event=LogEvent(
+                            category=EventCategory.HTTP_OPERATION,
+                            event_type="batch.fetch.progress",
+                            name="URL fetched",
+                        ),
+                        message=f"Fetched {i+1}/{len(urls)}: {url}",
+                        data={"url": url, "index": i+1, "total": len(urls), "success": True},
+                        metrics=LogMetrics(duration_ms=url_duration_ms, content_size_bytes=len(cleaned_html)),
+                        tags=["batch", "fetch", "progress"],
+                    )
+
             except Exception as e:
+                url_duration_ms = (time.perf_counter() - url_start_time) * 1000
                 results.append({"url": url, "success": False, "error": str(e)})
                 logger.error(f"Failed {i+1}/{len(urls)}: {url} - {e}")
 
+                if slog:
+                    slog.warning(
+                        event=LogEvent(
+                            category=EventCategory.HTTP_OPERATION,
+                            event_type="batch.fetch.progress",
+                            name="URL fetch failed",
+                        ),
+                        message=f"Failed {i+1}/{len(urls)}: {url} - {e}",
+                        data={"url": url, "index": i+1, "total": len(urls), "success": False, "error": str(e)},
+                        metrics=LogMetrics(duration_ms=url_duration_ms),
+                        tags=["batch", "fetch", "progress", "error"],
+                    )
+
         successful = sum(1 for r in results if r.get("success"))
+        batch_duration_ms = (time.perf_counter() - batch_start_time) * 1000
+
+        # Log batch complete
+        if slog:
+            slog.info(
+                event=LogEvent(
+                    category=EventCategory.HTTP_OPERATION,
+                    event_type="batch.fetch.complete",
+                    name="Batch fetch completed",
+                ),
+                message=f"Batch fetch completed: {successful}/{len(urls)} URLs",
+                data={
+                    "successful_count": successful,
+                    "failed_count": len(urls) - successful,
+                    "key_prefix": key_prefix,
+                },
+                metrics=LogMetrics(duration_ms=batch_duration_ms),
+                tags=["batch", "fetch", "complete"],
+            )
 
         return {
             "success": successful > 0,
