@@ -1,11 +1,14 @@
 """Plan generation tool with comprehensive templates."""
 import logging
+import time
 from datetime import datetime
 from typing import Any
 from urllib.parse import urlparse
 
 from .base import BaseTool
 from .memory import MemoryStore
+from ..core.log_context import get_logger
+from ..core.structured_logger import EventCategory, LogEvent
 
 logger = logging.getLogger(__name__)
 
@@ -21,6 +24,20 @@ class GeneratePlanTool(BaseTool):
         self.memory_store = memory_store
 
     def execute(self) -> dict[str, Any]:
+        slog = get_logger()
+        start_time = time.perf_counter()
+
+        if slog:
+            slog.info(
+                event=LogEvent(
+                    category=EventCategory.TOOL_EXECUTION,
+                    event_type="tool.plan.generate.start",
+                    name="Plan generation started",
+                ),
+                message="Starting plan.md generation from memory data",
+                tags=["plan", "generate", "start"],
+            )
+
         try:
             # Read all data from memory
             target_url = self.memory_store.read("target_url") or "Unknown"
@@ -61,9 +78,42 @@ class GeneratePlanTool(BaseTool):
             plan += self._build_sample_articles_section(extracted_articles)
             plan += self._build_notes_section(requires_browser)
 
+            duration_ms = (time.perf_counter() - start_time) * 1000
+
+            if slog:
+                slog.info(
+                    event=LogEvent(
+                        category=EventCategory.TOOL_EXECUTION,
+                        event_type="tool.plan.generate.complete",
+                        name="Plan generation completed",
+                    ),
+                    message=f"Generated plan.md for {site_name}",
+                    data={
+                        "target_url": target_url,
+                        "site_name": site_name,
+                        "plan_length": len(plan),
+                        "detail_fields_count": len(detail_selectors),
+                        "article_count": len(extracted_articles),
+                        "requires_browser": requires_browser,
+                    },
+                    tags=["plan", "generate", "success"],
+                    duration_ms=duration_ms,
+                )
+
             return {"success": True, "result": plan}
         except Exception as e:
             logger.error(f"Failed to generate plan: {e}")
+            if slog:
+                slog.error(
+                    event=LogEvent(
+                        category=EventCategory.ERROR,
+                        event_type="tool.plan.generate.error",
+                        name="Plan generation failed",
+                    ),
+                    message=f"Failed to generate plan: {e}",
+                    data={"error": str(e)},
+                    tags=["plan", "generate", "error"],
+                )
             return {"success": False, "error": str(e)}
 
     def _build_header(self, site_name: str, target_url: str) -> str:
@@ -581,6 +631,20 @@ class GenerateTestPlanTool(BaseTool):
         self.memory_store = memory_store
 
     def execute(self) -> dict[str, Any]:
+        slog = get_logger()
+        start_time = time.perf_counter()
+
+        if slog:
+            slog.info(
+                event=LogEvent(
+                    category=EventCategory.TOOL_EXECUTION,
+                    event_type="tool.testplan.generate.start",
+                    name="Test plan generation started",
+                ),
+                message="Starting test.md generation from memory data",
+                tags=["testplan", "generate", "start"],
+            )
+
         try:
             target_url = self.memory_store.read("target_url") or "Unknown"
             test_description = self.memory_store.read("test-data-description") or ""
@@ -728,9 +792,41 @@ for test in articles:
 - HTML content is cleaned but preserves structure for selector testing
 """
 
+            duration_ms = (time.perf_counter() - start_time) * 1000
+
+            if slog:
+                slog.info(
+                    event=LogEvent(
+                        category=EventCategory.TOOL_EXECUTION,
+                        event_type="tool.testplan.generate.complete",
+                        name="Test plan generation completed",
+                    ),
+                    message=f"Generated test.md for {site_name}",
+                    data={
+                        "target_url": target_url,
+                        "site_name": site_name,
+                        "listing_count": listing_count,
+                        "article_count": article_count,
+                        "total_count": total_count,
+                    },
+                    tags=["testplan", "generate", "success"],
+                    duration_ms=duration_ms,
+                )
+
             return {"success": True, "result": test_plan}
         except Exception as e:
             logger.error(f"Failed to generate test plan: {e}")
+            if slog:
+                slog.error(
+                    event=LogEvent(
+                        category=EventCategory.ERROR,
+                        event_type="tool.testplan.generate.error",
+                        name="Test plan generation failed",
+                    ),
+                    message=f"Failed to generate test plan: {e}",
+                    data={"error": str(e)},
+                    tags=["testplan", "generate", "error"],
+                )
             return {"success": False, "error": str(e)}
 
     def _build_expected_fields(self, detail_selectors: dict) -> str:

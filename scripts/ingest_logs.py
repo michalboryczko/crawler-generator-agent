@@ -47,7 +47,7 @@ def ingest_logs(log_dir: str = "logs", es_host: str = "http://localhost:9200"):
     print(f"Connected to Elasticsearch at {es_host}")
 
     # Generate index name with date
-    index_name = f"crawler-logs-{datetime.now().strftime('%Y.%m.%d')}"
+    index_name = f"crawler-traces-{datetime.now().strftime('%Y.%m.%d')}"
     log_path = Path(log_dir)
 
     if not log_path.exists():
@@ -96,7 +96,7 @@ def ingest_logs(log_dir: str = "logs", es_host: str = "http://localhost:9200"):
     print("\nNext steps:")
     print("  1. Open Kibana: http://localhost:5601")
     print("  2. Go to Stack Management > Data Views")
-    print(f"  3. Create data view with pattern: crawler-logs-*")
+    print(f"  3. Create data view with pattern: crawler-traces-*")
     print("  4. Use Discover to explore your logs")
     print("\nUseful KQL queries:")
     print("  level: \"ERROR\"                    # Find errors")

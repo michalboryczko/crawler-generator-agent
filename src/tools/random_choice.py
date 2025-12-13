@@ -4,6 +4,8 @@ import random
 from typing import Any
 
 from .base import BaseTool
+from ..core.log_context import get_logger
+from ..core.structured_logger import EventCategory, LogEvent
 
 logger = logging.getLogger(__name__)
 
@@ -28,6 +30,8 @@ class RandomChoiceTool(BaseTool):
         Returns:
             Dict with success status and picked items
         """
+        slog = get_logger()
+
         try:
             if not candidates:
                 return {"success": False, "error": "Candidates list is empty"}
@@ -35,15 +39,32 @@ class RandomChoiceTool(BaseTool):
             if count <= 0:
                 return {"success": False, "error": "Count must be positive"}
 
+            actual_count = count
             if count > len(candidates):
                 logger.warning(
                     f"Requested {count} items but only {len(candidates)} available. "
                     "Returning all candidates."
                 )
-                count = len(candidates)
+                actual_count = len(candidates)
 
-            picked = random.sample(candidates, count)
+            picked = random.sample(candidates, actual_count)
             logger.info(f"Randomly picked {len(picked)} items from {len(candidates)} candidates")
+
+            if slog:
+                slog.info(
+                    event=LogEvent(
+                        category=EventCategory.TOOL_EXECUTION,
+                        event_type="tool.random_choice.complete",
+                        name="Random selection completed",
+                    ),
+                    message=f"Picked {len(picked)} items from {len(candidates)} candidates",
+                    data={
+                        "requested_count": count,
+                        "actual_count": len(picked),
+                        "total_candidates": len(candidates),
+                    },
+                    tags=["random", "sampling", "success"],
+                )
 
             return {
                 "success": True,
@@ -52,6 +73,17 @@ class RandomChoiceTool(BaseTool):
                 "total_candidates": len(candidates)
             }
         except Exception as e:
+            if slog:
+                slog.error(
+                    event=LogEvent(
+                        category=EventCategory.ERROR,
+                        event_type="tool.random_choice.error",
+                        name="Random selection failed",
+                    ),
+                    message=f"Failed to pick random items: {e}",
+                    data={"error": str(e)},
+                    tags=["random", "sampling", "error"],
+                )
             return {"success": False, "error": str(e)}
 
     def get_parameters_schema(self) -> dict[str, Any]:

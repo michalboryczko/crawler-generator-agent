@@ -50,9 +50,10 @@ class LoggingConfig:
 
     # OpenTelemetry output settings
     otel_enabled: bool = False
-    otel_endpoint: str = "http://localhost:4317"
+    otel_endpoint: str = "localhost:4317"  # OTLP gRPC endpoint (host:port, no http://)
     otel_export_logs: bool = True
     otel_export_traces: bool = True
+    otel_insecure: bool = True  # Use insecure (non-TLS) connection
 
     # Sampling settings (for high-volume events)
     sampling_enabled: bool = False
@@ -116,11 +117,19 @@ class LoggingConfig:
 
         # OpenTelemetry output
         if self.otel_enabled:
+            # Strip http:// prefix if present (OTLP gRPC expects host:port)
+            endpoint = self.otel_endpoint
+            if endpoint.startswith("http://"):
+                endpoint = endpoint[7:]
+            elif endpoint.startswith("https://"):
+                endpoint = endpoint[8:]
+
             outputs.append(OpenTelemetryOutput(
                 service_name=self.service_name,
-                endpoint=self.otel_endpoint,
+                endpoint=endpoint,
                 export_logs=self.otel_export_logs,
                 export_traces=self.otel_export_traces,
+                insecure=self.otel_insecure,
             ))
 
         return outputs
@@ -157,7 +166,8 @@ class LoggingConfig:
             jsonl_async=os.environ.get("LOG_JSONL_ASYNC", "true").lower() == "true",
             log_dir=Path(os.environ.get("LOG_DIR", "logs")),
             otel_enabled=os.environ.get("LOG_OTEL", "false").lower() == "true",
-            otel_endpoint=os.environ.get("LOG_OTEL_ENDPOINT", "http://localhost:4317"),
+            otel_endpoint=os.environ.get("LOG_OTEL_ENDPOINT", "localhost:4317"),
+            otel_insecure=os.environ.get("LOG_OTEL_INSECURE", "true").lower() == "true",
             sampling_enabled=os.environ.get("LOG_SAMPLING", "false").lower() == "true",
             sampling_rate=float(os.environ.get("LOG_SAMPLING_RATE", "1.0")),
             redact_pii=os.environ.get("LOG_REDACT_PII", "true").lower() == "true",
@@ -228,12 +238,41 @@ class LoggingConfig:
 
 # LLM cost lookup table (per 1K tokens)
 # Used for cost estimation in metrics
+# Updated: December 2025, Standard tier pricing
+# Source: https://platform.openai.com/docs/pricing
 MODEL_COSTS: dict[str, dict[str, float]] = {
-    # OpenAI models
-    "gpt-4o": {"input": 0.005, "output": 0.015},
+    # OpenAI GPT-5 Series
+    "gpt-5.2": {"input": 0.00175, "output": 0.014},
+    "gpt-5.1": {"input": 0.00125, "output": 0.01},
+    "gpt-5": {"input": 0.00125, "output": 0.01},
+    "gpt-5-mini": {"input": 0.00025, "output": 0.002},
+    "gpt-5-nano": {"input": 0.00005, "output": 0.0004},
+    "gpt-5.2-pro": {"input": 0.021, "output": 0.168},
+    "gpt-5-pro": {"input": 0.015, "output": 0.12},
+
+    # OpenAI GPT-4.1 Series
+    "gpt-4.1": {"input": 0.002, "output": 0.008},
+    "gpt-4.1-mini": {"input": 0.0004, "output": 0.0016},
+    "gpt-4.1-nano": {"input": 0.0001, "output": 0.0004},
+
+    # OpenAI GPT-4o Series
+    "gpt-4o": {"input": 0.0025, "output": 0.01},
+    "gpt-4o-2024-05-13": {"input": 0.005, "output": 0.015},
     "gpt-4o-mini": {"input": 0.00015, "output": 0.0006},
+
+    # OpenAI o-Series (Reasoning)
+    "o1": {"input": 0.015, "output": 0.06},
+    "o1-pro": {"input": 0.15, "output": 0.6},
+    "o1-mini": {"input": 0.0011, "output": 0.0044},
+    "o3": {"input": 0.002, "output": 0.008},
+    "o3-pro": {"input": 0.02, "output": 0.08},
+    "o3-mini": {"input": 0.0011, "output": 0.0044},
+    "o4-mini": {"input": 0.0011, "output": 0.0044},
+
+    # OpenAI Legacy Models
     "gpt-4-turbo": {"input": 0.01, "output": 0.03},
     "gpt-4": {"input": 0.03, "output": 0.06},
+    "gpt-4-32k": {"input": 0.06, "output": 0.12},
     "gpt-3.5-turbo": {"input": 0.0005, "output": 0.0015},
 
     # Anthropic models
@@ -241,6 +280,10 @@ MODEL_COSTS: dict[str, dict[str, float]] = {
     "claude-3-sonnet-20240229": {"input": 0.003, "output": 0.015},
     "claude-3-haiku-20240307": {"input": 0.00025, "output": 0.00125},
     "claude-3-5-sonnet-20241022": {"input": 0.003, "output": 0.015},
+
+    # Embeddings
+    "text-embedding-3-small": {"input": 0.00002, "output": 0.0},
+    "text-embedding-3-large": {"input": 0.00013, "output": 0.0},
 }
 
 

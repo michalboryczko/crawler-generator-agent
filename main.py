@@ -5,6 +5,10 @@ import logging
 import shutil
 import sys
 
+# Load .env file before any other imports that use os.environ
+from dotenv import load_dotenv
+load_dotenv()
+
 from src.core.config import AppConfig
 from src.core.llm import LLMClient
 from src.core.browser import BrowserSession

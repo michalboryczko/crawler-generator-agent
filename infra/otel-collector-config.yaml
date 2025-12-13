@@ -22,7 +22,7 @@ exporters:
   # Export to Elasticsearch
   elasticsearch:
     endpoints: ["http://elasticsearch:9200"]
-    logs_index: crawler-logs
+    logs_index: crawler-traces
     traces_index: crawler-traces
 
   # Export to Jaeger (if using)

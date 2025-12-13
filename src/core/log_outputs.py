@@ -4,10 +4,11 @@ Provides various output destinations for structured logs:
 - JSONLinesOutput: JSON Lines format for log aggregators
 - ConsoleOutput: Human-readable colored console output
 - AsyncBufferedOutput: Async buffered wrapper for performance
-- OpenTelemetryOutput: OpenTelemetry-compatible span output
+- OpenTelemetryOutput: OpenTelemetry-compatible span output via OTLP
 """
 
 import json
+import logging
 import sys
 import threading
 from datetime import datetime
@@ -16,6 +17,24 @@ from queue import Queue, Empty
 from typing import TextIO
 
 from .structured_logger import LogEntry, LogLevel, LogOutput
+
+# OpenTelemetry imports - optional, gracefully degrade if not installed
+try:
+    from opentelemetry import trace
+    from opentelemetry.sdk.trace import TracerProvider, ReadableSpan
+    from opentelemetry.sdk.trace.export import BatchSpanProcessor, SpanExporter, SpanExportResult
+    from opentelemetry.sdk.resources import Resource, SERVICE_NAME
+    from opentelemetry.exporter.otlp.proto.grpc.trace_exporter import OTLPSpanExporter
+    from opentelemetry.trace import SpanKind, Status, StatusCode
+    from opentelemetry.trace.span import TraceFlags
+    from opentelemetry.sdk.trace import Span
+    OTEL_AVAILABLE = True
+except ImportError:
+    OTEL_AVAILABLE = False
+    TracerProvider = None
+    OTLPSpanExporter = None
+
+_otel_logger = logging.getLogger(__name__)
 
 
 class JSONLinesOutput(LogOutput):
@@ -221,10 +240,13 @@ class AsyncBufferedOutput(LogOutput):
 
 
 class OpenTelemetryOutput(LogOutput):
-    """OpenTelemetry-compatible span output.
+    """OpenTelemetry-compatible span output via OTLP protocol.
 
-    Converts log entries to OpenTelemetry span format for distributed tracing.
-    Can export to OTel Collector via OTLP protocol.
+    Converts log entries to OpenTelemetry spans and exports them to an OTel Collector
+    using the OTLP gRPC protocol. Supports distributed tracing with Jaeger.
+
+    Requires opentelemetry packages:
+        pip install opentelemetry-sdk opentelemetry-exporter-otlp-proto-grpc
     """
 
     def __init__(
@@ -233,31 +255,120 @@ class OpenTelemetryOutput(LogOutput):
         endpoint: str | None = None,
         export_logs: bool = True,
         export_traces: bool = True,
+        insecure: bool = True,
     ):
         """Initialize OpenTelemetry output.
 
         Args:
             service_name: Name of the service for span attribution
-            endpoint: OTLP endpoint (e.g., "http://localhost:4317")
-            export_logs: Whether to export as OTLP logs
+            endpoint: OTLP endpoint (e.g., "localhost:4317" for gRPC)
+            export_logs: Whether to export as OTLP logs (not yet implemented)
             export_traces: Whether to export as OTLP traces
+            insecure: Whether to use insecure (non-TLS) connection
         """
         self.service_name = service_name
-        self.endpoint = endpoint
+        self.endpoint = endpoint or "localhost:4317"
         self.export_logs = export_logs
         self.export_traces = export_traces
+        self.insecure = insecure
 
-        # Store spans for potential trace export
+        # Store spans for debugging
         self._spans: list[dict] = []
         self._lock = threading.Lock()
 
-        # In a full implementation, initialize OTLP exporters here:
-        # from opentelemetry.exporter.otlp.proto.grpc.trace_exporter import OTLPSpanExporter
-        # self.exporter = OTLPSpanExporter(endpoint=endpoint)
+        # Track active spans by span_id for proper lifecycle management
+        self._active_spans: dict[str, "Span"] = {}
+
+        # Initialize OTel if available
+        self._initialized = False
+        self._tracer = None
+        self._provider = None
+
+        if not OTEL_AVAILABLE:
+            _otel_logger.warning(
+                "OpenTelemetry packages not installed. "
+                "Install with: pip install opentelemetry-sdk opentelemetry-exporter-otlp-proto-grpc"
+            )
+            return
+
+        try:
+            self._initialize_otel()
+            self._initialized = True
+            _otel_logger.info(f"OpenTelemetry initialized, exporting to {self.endpoint}")
+        except Exception as e:
+            _otel_logger.error(f"Failed to initialize OpenTelemetry: {e}")
+
+    def _initialize_otel(self) -> None:
+        """Initialize OpenTelemetry SDK and exporters."""
+        # Create resource with service name
+        resource = Resource.create({
+            SERVICE_NAME: self.service_name,
+            "service.version": "0.1.0",
+            "deployment.environment": "development",
+        })
+
+        # Create tracer provider
+        self._provider = TracerProvider(resource=resource)
+
+        # Create OTLP exporter
+        otlp_exporter = OTLPSpanExporter(
+            endpoint=self.endpoint,
+            insecure=self.insecure,
+        )
+
+        # Add batch processor for efficient exporting
+        span_processor = BatchSpanProcessor(
+            otlp_exporter,
+            max_queue_size=2048,
+            max_export_batch_size=512,
+            schedule_delay_millis=5000,
+        )
+        self._provider.add_span_processor(span_processor)
+
+        # Set as global tracer provider
+        trace.set_tracer_provider(self._provider)
+
+        # Get tracer for this service
+        self._tracer = trace.get_tracer(
+            self.service_name,
+            schema_url="https://opentelemetry.io/schemas/1.21.0",
+        )
+
+    def _convert_trace_id(self, trace_id: str) -> int:
+        """Convert our trace_id format to OTel 128-bit trace ID."""
+        # Remove prefix and convert to integer
+        clean_id = trace_id.replace("trace_", "").replace("-", "")
+        # Pad or truncate to 32 hex chars (128 bits)
+        clean_id = clean_id[:32].ljust(32, "0")
+        return int(clean_id, 16)
+
+    def _convert_span_id(self, span_id: str) -> int:
+        """Convert our span_id format to OTel 64-bit span ID."""
+        # Remove prefix and convert to integer
+        clean_id = span_id.replace("span_", "").replace("-", "")
+        # Pad or truncate to 16 hex chars (64 bits)
+        clean_id = clean_id[:16].ljust(16, "0")
+        return int(clean_id, 16)
 
     def write(self, entry: LogEntry) -> None:
-        """Convert LogEntry to OTel span format."""
-        span_data = {
+        """Convert LogEntry to OTel span and export."""
+        # Always store locally for debugging
+        span_data = self._create_span_data(entry)
+        with self._lock:
+            self._spans.append(span_data)
+
+        # Export via OTLP if initialized
+        if not self._initialized or not self._tracer:
+            return
+
+        try:
+            self._export_as_span(entry)
+        except Exception as e:
+            _otel_logger.debug(f"Failed to export span: {e}")
+
+    def _create_span_data(self, entry: LogEntry) -> dict:
+        """Create span data dict for local storage/debugging."""
+        return {
             "traceId": entry.trace_context.trace_id.replace("trace_", ""),
             "spanId": entry.trace_context.span_id.replace("span_", ""),
             "parentSpanId": (
@@ -270,63 +381,118 @@ class OpenTelemetryOutput(LogOutput):
             "endTimeUnixNano": int(
                 (entry.timestamp.timestamp() + (entry.metrics.duration_ms or 0) / 1000) * 1e9
             ),
-            "attributes": [
-                {"key": "service.name", "value": {"stringValue": self.service_name}},
-                {"key": "event.category", "value": {"stringValue": entry.event.category.value}},
-                {"key": "event.type", "value": {"stringValue": entry.event.event_type}},
-                {"key": "log.level", "value": {"stringValue": entry.level.value}},
-                {"key": "log.message", "value": {"stringValue": entry.message}},
-                *[
-                    {"key": f"context.{k}", "value": {"stringValue": str(v)}}
-                    for k, v in entry.context.items()
-                ],
-                *[
-                    {"key": f"tag.{tag}", "value": {"boolValue": True}}
-                    for tag in entry.tags
-                ],
-            ],
-            "status": {
-                "code": "ERROR" if entry.level in (LogLevel.ERROR, LogLevel.CRITICAL) else "OK"
+            "attributes": {
+                "service.name": self.service_name,
+                "event.category": entry.event.category.value,
+                "event.type": entry.event.event_type,
+                "log.level": entry.level.value,
+                "log.message": entry.message,
+                **{f"context.{k}": str(v) for k, v in entry.context.items()},
+                **{f"tag.{tag}": True for tag in entry.tags},
+            },
+            "status": "ERROR" if entry.level in (LogLevel.ERROR, LogLevel.CRITICAL) else "OK",
+            "metrics": {
+                "duration_ms": entry.metrics.duration_ms,
+                "tokens_total": entry.metrics.tokens_total,
+                "estimated_cost_usd": entry.metrics.estimated_cost_usd,
             },
         }
 
-        # Add metrics as attributes
-        if entry.metrics.duration_ms is not None:
-            span_data["attributes"].append({
-                "key": "metrics.duration_ms",
-                "value": {"doubleValue": entry.metrics.duration_ms}
-            })
-        if entry.metrics.tokens_total is not None:
-            span_data["attributes"].append({
-                "key": "metrics.tokens_total",
-                "value": {"intValue": entry.metrics.tokens_total}
-            })
-        if entry.metrics.estimated_cost_usd is not None:
-            span_data["attributes"].append({
-                "key": "metrics.estimated_cost_usd",
-                "value": {"doubleValue": entry.metrics.estimated_cost_usd}
-            })
+    def _export_as_span(self, entry: LogEntry) -> None:
+        """Export log entry as an OTel span."""
+        # Create span context from our IDs
+        trace_id = self._convert_trace_id(entry.trace_context.trace_id)
+        span_id = self._convert_span_id(entry.trace_context.span_id)
 
-        with self._lock:
-            self._spans.append(span_data)
+        # Build parent context if exists
+        parent_context = None
+        if entry.trace_context.parent_span_id:
+            parent_span_id = self._convert_span_id(entry.trace_context.parent_span_id)
+            parent_span_context = trace.SpanContext(
+                trace_id=trace_id,
+                span_id=parent_span_id,
+                is_remote=False,
+                trace_flags=TraceFlags(TraceFlags.SAMPLED),
+            )
+            parent_context = trace.set_span_in_context(
+                trace.NonRecordingSpan(parent_span_context)
+            )
 
-        # In a full implementation, export to OTLP endpoint:
-        # self.exporter.export([span_data])
+        # Determine span kind based on event category
+        span_kind = SpanKind.INTERNAL
+        if "http" in entry.tags or "browser" in entry.tags:
+            span_kind = SpanKind.CLIENT
+        elif "llm" in entry.tags:
+            span_kind = SpanKind.CLIENT
+
+        # Create span with our custom span context
+        with self._tracer.start_as_current_span(
+            name=entry.event.name,
+            context=parent_context,
+            kind=span_kind,
+            start_time=int(entry.timestamp.timestamp() * 1e9),
+        ) as span:
+            # Set attributes
+            span.set_attribute("event.category", entry.event.category.value)
+            span.set_attribute("event.type", entry.event.event_type)
+            span.set_attribute("log.level", entry.level.value)
+            span.set_attribute("log.message", entry.message)
+
+            # Add context attributes
+            for key, value in entry.context.items():
+                span.set_attribute(f"context.{key}", str(value))
+
+            # Add tags
+            for tag in entry.tags:
+                span.set_attribute(f"tag.{tag}", True)
+
+            # Add metrics as attributes
+            if entry.metrics.duration_ms is not None:
+                span.set_attribute("metrics.duration_ms", entry.metrics.duration_ms)
+            if entry.metrics.tokens_input is not None:
+                span.set_attribute("metrics.tokens_input", entry.metrics.tokens_input)
+            if entry.metrics.tokens_output is not None:
+                span.set_attribute("metrics.tokens_output", entry.metrics.tokens_output)
+            if entry.metrics.tokens_total is not None:
+                span.set_attribute("metrics.tokens_total", entry.metrics.tokens_total)
+            if entry.metrics.estimated_cost_usd is not None:
+                span.set_attribute("metrics.estimated_cost_usd", entry.metrics.estimated_cost_usd)
+
+            # Set status based on log level
+            if entry.level in (LogLevel.ERROR, LogLevel.CRITICAL):
+                span.set_status(Status(StatusCode.ERROR, entry.message))
+            else:
+                span.set_status(Status(StatusCode.OK))
+
+            # Set end time if duration is known
+            # Note: The span will be ended automatically when exiting the context
 
     def flush(self) -> None:
         """Flush pending spans to exporter."""
-        # In a full implementation, export buffered spans
-        pass
+        if self._initialized and self._provider:
+            try:
+                self._provider.force_flush(timeout_millis=5000)
+            except Exception as e:
+                _otel_logger.debug(f"Error flushing spans: {e}")
 
     def close(self) -> None:
-        """Close the exporter."""
-        # In a full implementation, shutdown the exporter
-        pass
+        """Shutdown the tracer provider."""
+        if self._initialized and self._provider:
+            try:
+                self._provider.shutdown()
+                _otel_logger.info("OpenTelemetry provider shut down")
+            except Exception as e:
+                _otel_logger.debug(f"Error shutting down provider: {e}")
 
     def get_spans(self) -> list[dict]:
         """Get collected spans (for testing/debugging)."""
         with self._lock:
             return list(self._spans)
+
+    @property
+    def is_available(self) -> bool:
+        """Check if OpenTelemetry is available and initialized."""
+        return self._initialized
 
 
 class CompositeOutput(LogOutput):

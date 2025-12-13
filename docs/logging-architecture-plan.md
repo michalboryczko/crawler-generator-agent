@@ -3297,19 +3297,51 @@ SERVICE_NAME=crawler-agent                  # Service name for logs
 ## Appendix C: Cost Reference
 
 ```python
-# Token costs per 1K tokens (as of 2024)
+# Token costs per 1K tokens (as of December 2025, Standard tier)
+# Source: https://platform.openai.com/docs/pricing
 MODEL_COSTS = {
-    # OpenAI
-    "gpt-4o": {"input": 0.005, "output": 0.015},
+    # OpenAI GPT-5 Series
+    "gpt-5.2": {"input": 0.00175, "output": 0.014},
+    "gpt-5.1": {"input": 0.00125, "output": 0.01},
+    "gpt-5": {"input": 0.00125, "output": 0.01},
+    "gpt-5-mini": {"input": 0.00025, "output": 0.002},
+    "gpt-5-nano": {"input": 0.00005, "output": 0.0004},
+    "gpt-5.2-pro": {"input": 0.021, "output": 0.168},
+    "gpt-5-pro": {"input": 0.015, "output": 0.12},
+
+    # OpenAI GPT-4.1 Series
+    "gpt-4.1": {"input": 0.002, "output": 0.008},
+    "gpt-4.1-mini": {"input": 0.0004, "output": 0.0016},
+    "gpt-4.1-nano": {"input": 0.0001, "output": 0.0004},
+
+    # OpenAI GPT-4o Series
+    "gpt-4o": {"input": 0.0025, "output": 0.01},
+    "gpt-4o-2024-05-13": {"input": 0.005, "output": 0.015},
     "gpt-4o-mini": {"input": 0.00015, "output": 0.0006},
+
+    # OpenAI o-Series (Reasoning)
+    "o1": {"input": 0.015, "output": 0.06},
+    "o1-pro": {"input": 0.15, "output": 0.6},
+    "o1-mini": {"input": 0.0011, "output": 0.0044},
+    "o3": {"input": 0.002, "output": 0.008},
+    "o3-pro": {"input": 0.02, "output": 0.08},
+    "o3-mini": {"input": 0.0011, "output": 0.0044},
+    "o4-mini": {"input": 0.0011, "output": 0.0044},
+
+    # OpenAI Legacy Models
     "gpt-4-turbo": {"input": 0.01, "output": 0.03},
     "gpt-4": {"input": 0.03, "output": 0.06},
+    "gpt-4-32k": {"input": 0.06, "output": 0.12},
     "gpt-3.5-turbo": {"input": 0.0005, "output": 0.0015},
 
-    # Anthropic (for future use)
+    # Anthropic Claude (for future use)
     "claude-3-opus": {"input": 0.015, "output": 0.075},
     "claude-3-sonnet": {"input": 0.003, "output": 0.015},
     "claude-3-haiku": {"input": 0.00025, "output": 0.00125},
+
+    # Embeddings
+    "text-embedding-3-small": {"input": 0.00002, "output": 0.0},
+    "text-embedding-3-large": {"input": 0.00013, "output": 0.0},
 }
 ```
 

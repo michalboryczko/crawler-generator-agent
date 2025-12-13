@@ -7,10 +7,10 @@ ES_HOST="${ES_HOST:-localhost:9200}"
 
 echo "Creating Elasticsearch index template for crawler logs..."
 
-curl -X PUT "http://${ES_HOST}/_index_template/crawler-logs-template" \
+curl -X PUT "http://${ES_HOST}/_index_template/crawler-traces-template" \
   -H 'Content-Type: application/json' -d'
 {
-  "index_patterns": ["crawler-logs*"],
+  "index_patterns": ["crawler-traces*"],
   "template": {
     "settings": {
       "number_of_shards": 1,
@@ -74,5 +74,5 @@ echo "Index template created successfully!"
 echo ""
 echo "Next steps:"
 echo "  1. Access Kibana at http://localhost:5601"
-echo "  2. Create a data view with pattern: crawler-logs-*"
+echo "  2. Create a data view with pattern: crawler-traces-*"
 echo "  3. Use Discover to explore your logs"
