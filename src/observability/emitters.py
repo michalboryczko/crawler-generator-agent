@@ -2,14 +2,18 @@
 
 This module provides the core emission functions for observability.
 All emissions are UNCONDITIONAL - level is metadata only, not a filter.
+
+Emitters send data to:
+1. LogHandler (abstract backend - OTel, etc.)
+2. ConsoleOutput (optional, for development)
 """
 
 from datetime import datetime, timezone
 from typing import Any, Dict, Optional, List
 
 from .context import ObservabilityContext
-from .config import get_outputs, is_initialized, get_config
-from .schema import LogRecord, F, D, M
+from .config import get_handler, get_console_output, is_initialized, get_config
+from .schema import LogRecord, TraceEvent, F, D, M
 from .serializers import safe_serialize, redact_sensitive
 
 
@@ -22,10 +26,10 @@ def emit_log(
     tags: Optional[List[str]] = None
 ) -> None:
     """Emit a log record UNCONDITIONALLY.
-    
+
     Level is metadata only - never used for filtering.
     All logs are always emitted.
-    
+
     Args:
         level: Log level (DEBUG, INFO, WARNING, ERROR) - metadata only!
         event: Event type (e.g., "tool.input", "agent.error")
@@ -40,14 +44,14 @@ def emit_log(
     # Parse component info from event
     parts = event.split(".")
     component_type = parts[0] if parts else "unknown"
-    
+
     # Get component name from data or context
     component_name = (
         data.get(f"{component_type}_name") or
         data.get("component_name") or
         (ctx.component_stack[-1] if ctx.component_stack else "unknown")
     )
-    
+
     # Apply PII redaction if configured
     config = get_config()
     if config and config.redact_pii:
@@ -72,12 +76,21 @@ def emit_log(
         tags=tags or []
     )
 
-    # Emit to all outputs - NO FILTERING
-    for output in get_outputs():
+    # Send to handler (OTel backend)
+    handler = get_handler()
+    if handler:
         try:
-            output.write_log(record)
+            handler.send_log(record)
         except Exception:
-            pass  # Don't let logging failures break the application
+            pass
+
+    # Also write to console if enabled (for dev)
+    console = get_console_output()
+    if console:
+        try:
+            console.write_log(record)
+        except Exception:
+            pass
 
 
 def emit_trace_event(
@@ -86,9 +99,9 @@ def emit_trace_event(
     attributes: Dict[str, Any]
 ) -> None:
     """Emit a trace event (span event).
-    
+
     Creates an OTel-compatible span event with proper hierarchy.
-    
+
     Args:
         event: Event name (e.g., "tool.triggered")
         ctx: Current observability context
@@ -99,29 +112,37 @@ def emit_trace_event(
 
     # Serialize attributes
     serialized_attrs = safe_serialize(attributes)
-    
+
     # Apply PII redaction if configured
     config = get_config()
     if config and config.redact_pii:
         serialized_attrs = redact_sensitive(serialized_attrs)
 
-    trace_event = {
-        F.NAME: event,
-        F.TIMESTAMP: datetime.now(timezone.utc).isoformat(),
-        F.TRACE_ID: ctx.trace_id,
-        F.SPAN_ID: ctx.span_id,
-        F.PARENT_SPAN_ID: ctx.parent_span_id,
-        F.ATTRIBUTES: {
+    trace_event = TraceEvent(
+        name=event,
+        timestamp=datetime.now(timezone.utc),
+        trace_id=ctx.trace_id,
+        span_id=ctx.span_id,
+        parent_span_id=ctx.parent_span_id,
+        attributes={
             **serialized_attrs,
             F.TRIGGERED_BY: ctx.triggered_by
         }
-    }
+    )
 
-    # Emit to OTLP-capable outputs
-    for output in get_outputs():
+    # Send to handler (OTel backend)
+    handler = get_handler()
+    if handler:
         try:
-            if hasattr(output, 'write_trace_event'):
-                output.write_trace_event(trace_event)
+            handler.send_trace(trace_event)
+        except Exception:
+            pass
+
+    # Also write to console if enabled (for dev)
+    console = get_console_output()
+    if console and hasattr(console, 'write_trace_event'):
+        try:
+            console.write_trace_event(trace_event.to_dict())
         except Exception:
             pass
 

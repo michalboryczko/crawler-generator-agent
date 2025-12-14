@@ -1,5 +1,3 @@
-version: '3.8'
-
 services:
   # Elasticsearch for log storage and search
   elasticsearch:
@@ -9,7 +7,7 @@ services:
       - discovery.type=single-node
       - xpack.security.enabled=false
       - "ES_JAVA_OPTS=-Xms512m -Xmx512m"
-      # Disable disk watermarks for development (allows usage even on nearly-full disks)
+      # Disable disk watermarks for development
       - cluster.routing.allocation.disk.threshold_enabled=false
     ports:
       - "9200:9200"
@@ -33,7 +31,7 @@ services:
       elasticsearch:
         condition: service_healthy
 
-  # OpenTelemetry Collector for trace ingestion
+  # OpenTelemetry Collector for log/trace ingestion via gRPC
   otel-collector:
     image: otel/opentelemetry-collector-contrib:0.91.0
     container_name: crawler-otel-collector
@@ -48,7 +46,7 @@ services:
       elasticsearch:
         condition: service_healthy
 
-  # Jaeger for trace visualization (optional, alternative to Kibana APM)
+  # Jaeger for trace visualization (optional)
   jaeger:
     image: jaegertracing/all-in-one:1.52
     container_name: crawler-jaeger

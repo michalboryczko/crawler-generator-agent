@@ -6,6 +6,11 @@ This module provides:
 - Separate Trace Events (spans) and Logs (detailed data)
 - Zero log filtering - everything is always logged
 
+Architecture:
+- LogHandler: Abstract backend interface (OTel, etc.)
+- ConsoleOutput: Optional human-readable output for development
+- Emitters: Send data to both handler and console
+
 Usage:
     from src.observability import initialize_observability, ObservabilityConfig
     from src.observability.decorators import traced_tool, traced_agent
@@ -20,7 +25,7 @@ Usage:
 
 Key Concepts:
     - Level is METADATA only, never used for filtering
-    - All events are always emitted to all outputs
+    - All events are always emitted to the handler
     - Context propagation is automatic via decorators
     - Traces and Logs are separate concerns
 """
@@ -29,7 +34,8 @@ from .config import (
     ObservabilityConfig,
     initialize_observability,
     is_initialized,
-    get_outputs,
+    get_handler,
+    get_console_output,
     get_config,
     shutdown,
 )
@@ -53,13 +59,13 @@ from .emitters import (
 )
 from .schema import LogRecord, TraceEvent, ComponentType
 from .serializers import safe_serialize, redact_sensitive, extract_error_info
-from .outputs import (
-    LogOutput,
-    ConsoleOutput,
-    JSONLinesOutput,
-    OTLPOutput,
-    CompositeOutput,
-    NullOutput,
+from .outputs import LogOutput, ConsoleOutput, NullOutput
+from .handlers import (
+    LogHandler,
+    OTelGrpcHandler,
+    OTelConfig,
+    NullHandler,
+    CompositeHandler,
 )
 from .decorators import (
     traced_tool,
@@ -75,7 +81,8 @@ __all__ = [
     "ObservabilityConfig",
     "initialize_observability",
     "is_initialized",
-    "get_outputs",
+    "get_handler",
+    "get_console_output",
     "get_config",
     "shutdown",
     # Context
@@ -102,13 +109,16 @@ __all__ = [
     "safe_serialize",
     "redact_sensitive",
     "extract_error_info",
-    # Outputs
+    # Outputs (local)
     "LogOutput",
     "ConsoleOutput",
-    "JSONLinesOutput",
-    "OTLPOutput",
-    "CompositeOutput",
     "NullOutput",
+    # Handlers (backends)
+    "LogHandler",
+    "OTelGrpcHandler",
+    "OTelConfig",
+    "NullHandler",
+    "CompositeHandler",
     # Decorators
     "traced_tool",
     "traced_agent",
@@ -119,4 +129,4 @@ __all__ = [
 ]
 
 # Version
-__version__ = "1.0.0"
+__version__ = "2.0.0"

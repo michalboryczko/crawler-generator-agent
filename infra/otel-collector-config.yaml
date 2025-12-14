@@ -1,4 +1,5 @@
 receivers:
+  # OTLP receiver for gRPC connections from the app
   otlp:
     protocols:
       grpc:
@@ -19,29 +20,30 @@ processors:
         action: upsert
 
 exporters:
-  # Export to Elasticsearch
-  elasticsearch:
+  # Export logs to Elasticsearch
+  elasticsearch/logs:
     endpoints: ["http://elasticsearch:9200"]
-    logs_index: crawler-traces
+    logs_index: crawler-logs
+
+  # Export traces to Elasticsearch
+  elasticsearch/traces:
+    endpoints: ["http://elasticsearch:9200"]
     traces_index: crawler-traces
 
-  # Export to Jaeger (if using)
-  otlp/jaeger:
-    endpoint: jaeger:4317
-    tls:
-      insecure: true
-
-  # Debug logging
-  logging:
+  # Debug logging (optional, disable in production)
+  debug:
     verbosity: detailed
 
 service:
   pipelines:
-    traces:
-      receivers: [otlp]
-      processors: [batch, resource]
-      exporters: [elasticsearch, logging]
+    # Logs pipeline: OTLP -> ES
     logs:
       receivers: [otlp]
       processors: [batch, resource]
-      exporters: [elasticsearch, logging]
+      exporters: [elasticsearch/logs, debug]
+
+    # Traces pipeline: OTLP -> ES
+    traces:
+      receivers: [otlp]
+      processors: [batch, resource]
+      exporters: [elasticsearch/traces, debug]

@@ -20,11 +20,13 @@ from src.tools.memory import MemoryStore
 from src.agents.main_agent import MainAgent
 
 # New observability imports
+import os
 from src.observability.config import (
     ObservabilityConfig,
     initialize_observability,
     shutdown,
 )
+from src.observability.handlers import OTelGrpcHandler, OTelConfig
 from src.observability.context import get_or_create_context
 from src.observability.emitters import emit_info, emit_warning, emit_error
 
@@ -62,8 +64,14 @@ def main() -> int:
     legacy_logger = logging.getLogger(__name__)
 
     # Initialize the new observability system
+    # Create handler from environment config (dependency injection)
+    otel_handler = OTelGrpcHandler(OTelConfig(
+        endpoint=os.environ.get("OTEL_ENDPOINT", "localhost:4317"),
+        insecure=os.environ.get("OTEL_INSECURE", "true").lower() == "true",
+        service_name=os.environ.get("SERVICE_NAME", "crawler-agent"),
+    ))
     config = ObservabilityConfig.from_env()
-    initialize_observability(config)
+    initialize_observability(handler=otel_handler, config=config)
 
     # Create root context for the session
     ctx = get_or_create_context("application")
