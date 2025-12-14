@@ -15,7 +15,7 @@ from dotenv import load_dotenv
 load_dotenv()
 
 from src.core.config import AppConfig
-from src.core.llm import LLMClient
+from src.core.llm import LLMClient, LLMClientFactory
 from src.core.browser import BrowserSession
 from src.tools.memory import MemoryStore
 from src.agents.main_agent import MainAgent
@@ -49,6 +49,7 @@ def main() -> int:
     )
     parser.add_argument(
         "url",
+        nargs="?",
         help="Target URL to analyze"
     )
     parser.add_argument(
@@ -57,7 +58,36 @@ def main() -> int:
         choices=["DEBUG", "INFO", "WARNING", "ERROR"],
         help="Logging level"
     )
+    parser.add_argument(
+        "--multi-model", "-m",
+        action="store_true",
+        help="Enable multi-model mode (use LLMClientFactory with per-component models)"
+    )
+    parser.add_argument(
+        "--list-models",
+        action="store_true",
+        help="List available models and exit"
+    )
     args = parser.parse_args()
+
+    # Handle --list-models
+    if args.list_models:
+        from src.core.default_models import get_default_registry
+        from src.core.component_models import ComponentModelConfig
+        registry = get_default_registry()
+        component_config = ComponentModelConfig.from_env()
+        print("\nAvailable models:")
+        for model_id in sorted(registry.list_models()):
+            print(f"  - {model_id}")
+        print("\nComponent model assignments:")
+        for component in component_config.list_components():
+            model = component_config.get_model_for_component(component)
+            print(f"  {component}: {model}")
+        return 0
+
+    # URL is required if not using --list-models
+    if not args.url:
+        parser.error("url is required")
 
     # Setup legacy logging for backward compatibility
     setup_logging(args.log_level)
@@ -114,8 +144,29 @@ def main() -> int:
         output_dir.mkdir(parents=True, exist_ok=True)
         legacy_logger.info(f"Output directory: {output_dir}")
 
-        # Initialize components
-        llm = LLMClient(app_config.openai)
+        # Initialize LLM - either factory (multi-model) or single client (legacy)
+        if args.multi_model:
+            llm_factory = LLMClientFactory.from_env()
+            llm = llm_factory.get_client("main_agent")
+            legacy_logger.info(f"Multi-model mode: using factory with {len(llm_factory.registry)} models")
+            emit_info(
+                event="llm.factory.initialized",
+                ctx=ctx,
+                data={
+                    "mode": "multi-model",
+                    "model_count": len(llm_factory.registry),
+                    "main_agent_model": llm_factory.get_component_model("main_agent")
+                }
+            )
+        else:
+            llm = LLMClient(app_config.openai)
+            llm_factory = None
+            emit_info(
+                event="llm.client.initialized",
+                ctx=ctx,
+                data={"mode": "legacy", "model": app_config.openai.model}
+            )
+
         browser_session = BrowserSession(app_config.browser)
         memory_store = MemoryStore()
 

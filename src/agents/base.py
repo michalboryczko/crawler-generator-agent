@@ -2,13 +2,18 @@
 
 This module uses the new observability decorators for automatic logging.
 The @traced_agent decorator handles all agent instrumentation.
+
+Supports both single LLMClient (legacy) and LLMClientFactory (multi-model) modes.
 """
 import logging
-from typing import Any
+from typing import Any, Optional, Union, TYPE_CHECKING
 
 from ..core.llm import LLMClient
 from ..observability.decorators import traced_agent
 from ..tools.base import BaseTool
+
+if TYPE_CHECKING:
+    from ..core.llm import LLMClientFactory
 
 logger = logging.getLogger(__name__)
 
@@ -16,13 +21,42 @@ MAX_ITERATIONS = 100
 
 
 class BaseAgent:
-    """Base agent with thought→action→observation loop."""
+    """Base agent with thought→action→observation loop.
+
+    Supports both legacy (single LLMClient) and multi-model (LLMClientFactory) modes.
+    When a factory is provided, the agent gets its own client from the factory
+    based on its name.
+    """
 
     name: str = "base_agent"
     system_prompt: str = "You are a helpful assistant."
 
-    def __init__(self, llm: LLMClient, tools: list[BaseTool] | None = None):
-        self.llm = llm
+    def __init__(
+        self,
+        llm: Union[LLMClient, "LLMClientFactory"],
+        tools: list[BaseTool] | None = None,
+        component_name: Optional[str] = None,
+    ):
+        """Initialize the agent.
+
+        Args:
+            llm: Either an LLMClient (legacy) or LLMClientFactory (multi-model)
+            tools: Optional list of tools available to the agent
+            component_name: Override the component name for factory lookup
+                           (defaults to agent's name attribute)
+        """
+        # Handle both LLMClient and LLMClientFactory
+        if hasattr(llm, 'get_client'):
+            # It's a factory - get a client for this agent
+            self.llm_factory = llm
+            effective_name = component_name or self.name
+            self.llm = llm.get_client(effective_name)
+            logger.debug(f"Agent '{self.name}' initialized with factory client for '{effective_name}'")
+        else:
+            # Direct LLMClient
+            self.llm_factory = None
+            self.llm = llm
+
         self.tools = tools or []
         self._tool_map = {t.name: t for t in self.tools}
 
