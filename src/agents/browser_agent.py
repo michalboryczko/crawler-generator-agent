@@ -1,7 +1,8 @@
-"""Browser Interaction Agent for web navigation and extraction."""
-import logging
-from typing import Any
+"""Browser Interaction Agent for web navigation and extraction.
 
+This agent inherits from BaseAgent which uses the @traced_agent decorator
+for automatic observability instrumentation.
+"""
 from .base import BaseAgent
 from ..core.llm import LLMClient
 from ..core.browser import BrowserSession
@@ -20,8 +21,6 @@ from ..tools.memory import (
     MemorySearchTool,
     MemoryListTool,
 )
-
-logger = logging.getLogger(__name__)
 
 BROWSER_AGENT_PROMPT = """You are a Browser Interaction Agent specialized in navigating websites and extracting information.
 

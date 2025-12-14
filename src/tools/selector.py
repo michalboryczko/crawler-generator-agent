@@ -1,13 +1,15 @@
-"""Selector finding and verification tools."""
+"""Selector finding and verification tools.
+
+This module uses the new observability decorators for automatic logging.
+The @traced_tool decorator handles all tool instrumentation.
+"""
 import logging
-import time
 from typing import Any
-from urllib.parse import urljoin, urlparse
+from urllib.parse import urljoin
 
 from .base import BaseTool
 from ..core.browser import BrowserSession
-from ..core.log_context import get_logger
-from ..core.structured_logger import EventCategory, LogEvent
+from ..observability.decorators import traced_tool
 
 logger = logging.getLogger(__name__)
 
@@ -22,70 +24,24 @@ class FindSelectorTool(BaseTool):
     def __init__(self, session: BrowserSession):
         self.session = session
 
+    @traced_tool(name="find_selector")
     def execute(
         self,
         selector_type: str,
         hint: str | None = None
     ) -> dict[str, Any]:
-        """Find potential selectors based on type and hints."""
-        slog = get_logger()
-        start_time = time.perf_counter()
+        """Find potential selectors based on type and hints. Instrumented by @traced_tool."""
+        if selector_type == "articles":
+            result = self._find_article_selectors(hint)
+        elif selector_type == "pagination":
+            result = self._find_pagination_selectors(hint)
+        else:
+            return {
+                "success": False,
+                "error": f"Unknown selector type: {selector_type}"
+            }
 
-        try:
-            if selector_type == "articles":
-                result = self._find_article_selectors(hint)
-            elif selector_type == "pagination":
-                result = self._find_pagination_selectors(hint)
-            else:
-                if slog:
-                    slog.warning(
-                        event=LogEvent(
-                            category=EventCategory.TOOL_EXECUTION,
-                            event_type="tool.selector.find.unknown_type",
-                            name="Unknown selector type",
-                        ),
-                        message=f"Unknown selector type: {selector_type}",
-                        data={"selector_type": selector_type},
-                        tags=["selector", "find", "error"],
-                    )
-                return {
-                    "success": False,
-                    "error": f"Unknown selector type: {selector_type}"
-                }
-
-            duration_ms = (time.perf_counter() - start_time) * 1000
-
-            if slog and result.get("success"):
-                slog.info(
-                    event=LogEvent(
-                        category=EventCategory.TOOL_EXECUTION,
-                        event_type="tool.selector.find.complete",
-                        name="Selector search completed",
-                    ),
-                    message=f"Found {result.get('total_candidates', 0)} candidate selectors for {selector_type}",
-                    data={
-                        "selector_type": selector_type,
-                        "candidates_found": result.get("total_candidates", 0),
-                        "hint": hint,
-                    },
-                    tags=["selector", "find", "success"],
-                    duration_ms=duration_ms,
-                )
-
-            return result
-        except Exception as e:
-            if slog:
-                slog.error(
-                    event=LogEvent(
-                        category=EventCategory.ERROR,
-                        event_type="tool.selector.find.error",
-                        name="Selector find failed",
-                    ),
-                    message=f"Failed to find selectors: {e}",
-                    data={"selector_type": selector_type, "error": str(e)},
-                    tags=["selector", "find", "error"],
-                )
-            return {"success": False, "error": str(e)}
+        return result
 
     def _find_article_selectors(self, hint: str | None) -> dict[str, Any]:
         """Find selectors for article links."""
@@ -194,45 +150,15 @@ class TestSelectorTool(BaseTool):
     def __init__(self, session: BrowserSession):
         self.session = session
 
+    @traced_tool(name="test_selector")
     def execute(self, selector: str) -> dict[str, Any]:
-        slog = get_logger()
-        start_time = time.perf_counter()
-
-        try:
-            elements = self.session.query_selector_all(selector)
-            duration_ms = (time.perf_counter() - start_time) * 1000
-
-            if slog:
-                slog.info(
-                    event=LogEvent(
-                        category=EventCategory.TOOL_EXECUTION,
-                        event_type="tool.selector.test.complete",
-                        name="Selector test completed",
-                    ),
-                    message=f"Selector '{selector}' matched {len(elements)} elements",
-                    data={"selector": selector, "match_count": len(elements)},
-                    tags=["selector", "test", "success"],
-                    duration_ms=duration_ms,
-                )
-
-            return {
-                "success": True,
-                "result": elements,
-                "count": len(elements)
-            }
-        except Exception as e:
-            if slog:
-                slog.error(
-                    event=LogEvent(
-                        category=EventCategory.ERROR,
-                        event_type="tool.selector.test.error",
-                        name="Selector test failed",
-                    ),
-                    message=f"Failed to test selector: {e}",
-                    data={"selector": selector, "error": str(e)},
-                    tags=["selector", "test", "error"],
-                )
-            return {"success": False, "error": str(e)}
+        """Test a CSS selector. Instrumented by @traced_tool."""
+        elements = self.session.query_selector_all(selector)
+        return {
+            "success": True,
+            "result": elements,
+            "count": len(elements)
+        }
 
     def get_parameters_schema(self) -> dict[str, Any]:
         return {
@@ -257,83 +183,46 @@ class VerifySelectorTool(BaseTool):
     def __init__(self, session: BrowserSession):
         self.session = session
 
+    @traced_tool(name="verify_selector")
     def execute(
         self,
         selector: str,
         expected_urls: list[str],
         base_url: str | None = None
     ) -> dict[str, Any]:
-        slog = get_logger()
-        start_time = time.perf_counter()
+        """Verify selector matches expected URLs. Instrumented by @traced_tool."""
+        elements = self.session.query_selector_all(selector)
+        found_urls = set()
 
-        try:
-            elements = self.session.query_selector_all(selector)
-            found_urls = set()
+        for el in elements:
+            href = el.get("href", "")
+            if href and not href.startswith(("#", "javascript:")):
+                if base_url and not href.startswith("http"):
+                    href = urljoin(base_url, href)
+                found_urls.add(href)
 
-            for el in elements:
-                href = el.get("href", "")
-                if href and not href.startswith(("#", "javascript:")):
-                    if base_url and not href.startswith("http"):
-                        href = urljoin(base_url, href)
-                    found_urls.add(href)
+        expected_set = set(expected_urls)
 
-            expected_set = set(expected_urls)
+        matched = found_urls & expected_set
+        missing = expected_set - found_urls
+        extra = found_urls - expected_set
 
-            matched = found_urls & expected_set
-            missing = expected_set - found_urls
-            extra = found_urls - expected_set
+        match_rate = len(matched) / len(expected_set) if expected_set else 0
+        verdict = "GOOD" if match_rate >= 0.8 else "NEEDS_WORK"
 
-            match_rate = len(matched) / len(expected_set) if expected_set else 0
-            duration_ms = (time.perf_counter() - start_time) * 1000
-
-            verdict = "GOOD" if match_rate >= 0.8 else "NEEDS_WORK"
-
-            if slog:
-                slog.info(
-                    event=LogEvent(
-                        category=EventCategory.TOOL_EXECUTION,
-                        event_type="tool.selector.verify.complete",
-                        name="Selector verification completed",
-                    ),
-                    message=f"Selector '{selector}' match rate: {match_rate:.0%} ({verdict})",
-                    data={
-                        "selector": selector,
-                        "match_rate": round(match_rate, 2),
-                        "matched_count": len(matched),
-                        "missing_count": len(missing),
-                        "extra_count": len(extra),
-                        "verdict": verdict,
-                    },
-                    tags=["selector", "verify", "success"],
-                    duration_ms=duration_ms,
-                )
-
-            return {
-                "success": True,
-                "result": {
-                    "match_rate": round(match_rate, 2),
-                    "matched_count": len(matched),
-                    "missing_count": len(missing),
-                    "extra_count": len(extra),
-                    "matched": list(matched)[:5],
-                    "missing": list(missing)[:5],
-                    "extra": list(extra)[:5],
-                    "verdict": verdict
-                }
+        return {
+            "success": True,
+            "result": {
+                "match_rate": round(match_rate, 2),
+                "matched_count": len(matched),
+                "missing_count": len(missing),
+                "extra_count": len(extra),
+                "matched": list(matched)[:5],
+                "missing": list(missing)[:5],
+                "extra": list(extra)[:5],
+                "verdict": verdict
             }
-        except Exception as e:
-            if slog:
-                slog.error(
-                    event=LogEvent(
-                        category=EventCategory.ERROR,
-                        event_type="tool.selector.verify.error",
-                        name="Selector verification failed",
-                    ),
-                    message=f"Failed to verify selector: {e}",
-                    data={"selector": selector, "error": str(e)},
-                    tags=["selector", "verify", "error"],
-                )
-            return {"success": False, "error": str(e)}
+        }
 
     def get_parameters_schema(self) -> dict[str, Any]:
         return {
@@ -366,82 +255,48 @@ class CompareSelectorsTool(BaseTool):
     def __init__(self, session: BrowserSession):
         self.session = session
 
+    @traced_tool(name="compare_selectors")
     def execute(
         self,
         selectors: list[str],
         expected_urls: list[str],
         base_url: str | None = None
     ) -> dict[str, Any]:
-        slog = get_logger()
-        start_time = time.perf_counter()
+        """Compare multiple selectors. Instrumented by @traced_tool."""
+        results = []
+        expected_set = set(expected_urls)
 
-        try:
-            results = []
-            expected_set = set(expected_urls)
+        for selector in selectors:
+            elements = self.session.query_selector_all(selector)
+            found_urls = set()
 
-            for selector in selectors:
-                elements = self.session.query_selector_all(selector)
-                found_urls = set()
+            for el in elements:
+                href = el.get("href", "")
+                if href and not href.startswith(("#", "javascript:")):
+                    if base_url and not href.startswith("http"):
+                        href = urljoin(base_url, href)
+                    found_urls.add(href)
 
-                for el in elements:
-                    href = el.get("href", "")
-                    if href and not href.startswith(("#", "javascript:")):
-                        if base_url and not href.startswith("http"):
-                            href = urljoin(base_url, href)
-                        found_urls.add(href)
+            matched = found_urls & expected_set
+            match_rate = len(matched) / len(expected_set) if expected_set else 0
 
-                matched = found_urls & expected_set
-                match_rate = len(matched) / len(expected_set) if expected_set else 0
+            results.append({
+                "selector": selector,
+                "match_rate": round(match_rate, 2),
+                "matched_count": len(matched),
+                "total_found": len(found_urls),
+                "precision": round(len(matched) / len(found_urls), 2) if found_urls else 0
+            })
 
-                results.append({
-                    "selector": selector,
-                    "match_rate": round(match_rate, 2),
-                    "matched_count": len(matched),
-                    "total_found": len(found_urls),
-                    "precision": round(len(matched) / len(found_urls), 2) if found_urls else 0
-                })
+        # Sort by match rate, then precision
+        results.sort(key=lambda x: (x["match_rate"], x["precision"]), reverse=True)
+        best_selector = results[0]["selector"] if results else None
 
-            # Sort by match rate, then precision
-            results.sort(key=lambda x: (x["match_rate"], x["precision"]), reverse=True)
-            duration_ms = (time.perf_counter() - start_time) * 1000
-
-            best_selector = results[0]["selector"] if results else None
-
-            if slog:
-                slog.info(
-                    event=LogEvent(
-                        category=EventCategory.TOOL_EXECUTION,
-                        event_type="tool.selector.compare.complete",
-                        name="Selector comparison completed",
-                    ),
-                    message=f"Compared {len(selectors)} selectors, best: {best_selector}",
-                    data={
-                        "selectors_count": len(selectors),
-                        "best_selector": best_selector,
-                        "best_match_rate": results[0]["match_rate"] if results else 0,
-                    },
-                    tags=["selector", "compare", "success"],
-                    duration_ms=duration_ms,
-                )
-
-            return {
-                "success": True,
-                "result": results,
-                "best_selector": best_selector
-            }
-        except Exception as e:
-            if slog:
-                slog.error(
-                    event=LogEvent(
-                        category=EventCategory.ERROR,
-                        event_type="tool.selector.compare.error",
-                        name="Selector comparison failed",
-                    ),
-                    message=f"Failed to compare selectors: {e}",
-                    data={"selectors_count": len(selectors), "error": str(e)},
-                    tags=["selector", "compare", "error"],
-                )
-            return {"success": False, "error": str(e)}
+        return {
+            "success": True,
+            "result": results,
+            "best_selector": best_selector
+        }
 
     def get_parameters_schema(self) -> dict[str, Any]:
         return {

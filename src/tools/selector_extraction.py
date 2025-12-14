@@ -1,17 +1,20 @@
-"""Selector extraction tools with isolated LLM contexts per page."""
+"""Selector extraction tools with isolated LLM contexts per page.
+
+This module uses the new observability decorators for automatic logging.
+The @traced_tool decorator handles all tool instrumentation.
+"""
 import json
 import logging
 import time
+from collections import Counter
 from typing import Any
+from urllib.parse import urljoin
 
 from .base import BaseTool
 from ..core.llm import LLMClient
 from ..core.browser import BrowserSession
 from ..core.html_cleaner import clean_html_for_llm
-from ..core.log_context import get_logger
-from ..core.structured_logger import (
-    EventCategory, LogEvent, LogMetrics
-)
+from ..observability.decorators import traced_tool
 
 logger = logging.getLogger(__name__)
 
@@ -122,209 +125,82 @@ class ListingPageExtractorTool(BaseTool):
         self.llm = llm
         self.browser = browser
 
+    @traced_tool(name="extract_listing_page")
     def execute(
         self,
         url: str,
         wait_seconds: int = 5,
         listing_container_selector: str | None = None
     ) -> dict[str, Any]:
-        """Extract selectors and URLs from a listing page.
+        """Extract selectors and URLs from a listing page. Instrumented by @traced_tool."""
+        logger.info(f"Extracting listing page: {url}")
 
-        Args:
-            url: URL of the listing page to analyze
-            wait_seconds: Time to wait for page load (default: 5)
-            listing_container_selector: Optional selector to focus on main content area
+        # Navigate to page
+        self.browser.navigate(url)
+        time.sleep(wait_seconds)
 
-        Returns:
-            dict with selectors, article_urls, and metadata
-        """
-        slog = get_logger()
-        start_time = time.perf_counter()
+        # Get cleaned HTML
+        html = self.browser.get_html()
+        cleaned_html = clean_html_for_llm(html)
 
-        # Log start
-        if slog:
-            slog.debug(
-                event=LogEvent(
-                    category=EventCategory.TOOL_EXECUTION,
-                    event_type="tool.listing_extract.start",
-                    name="Listing page extraction started",
-                ),
-                message=f"Extracting listing page: {url}",
-                data={"url": url, "wait_seconds": wait_seconds},
-                tags=["tool", "selector_extraction", "listing", "start"],
+        # Truncate if too large (100KB limit - will use better model in future)
+        if len(cleaned_html) > 150000:
+            original_len = len(cleaned_html)
+            cleaned_html = cleaned_html[:150000] + "\n... [TRUNCATED]"
+            logger.warning(f"HTML truncated from {original_len} to 150000 chars")
+
+        # Fresh LLM call with isolated context
+        messages = [
+            {"role": "system", "content": LISTING_EXTRACTION_PROMPT},
+            {"role": "user", "content": f"Analyze this listing page HTML:\n\n{cleaned_html}"}
+        ]
+
+        response = self.llm.chat(messages)
+        content = response.get("content", "")
+
+        # Parse JSON response
+        result = self._parse_json_response(content)
+
+        if result:
+            article_urls = result.get("article_urls", [])
+
+            # Convert relative URLs to absolute
+            article_urls = [urljoin(url, u) for u in article_urls if u and not u.startswith("...")]
+
+            # Warn if too few URLs extracted
+            if len(article_urls) < 5:
+                logger.warning(
+                    f"Only {len(article_urls)} URLs extracted from {url}. "
+                    f"Expected 10-30. LLM may be missing main content."
+                )
+
+            logger.info(
+                f"Extracted from {url}: "
+                f"{len(article_urls)} article URLs, "
+                f"selectors: {list(result.get('selectors', {}).keys())}"
             )
 
-        try:
-            logger.info(f"Extracting listing page: {url}")
-
-            # Navigate to page
-            self.browser.navigate(url)
-            time.sleep(wait_seconds)
-
-            # Get cleaned HTML
-            html = self.browser.get_html()
-            cleaned_html = clean_html_for_llm(html)
-
-            # Truncate if too large (100KB limit - will use better model in future)
-            if len(cleaned_html) > 150000:
-                original_len = len(cleaned_html)
-                cleaned_html = cleaned_html[:150000] + "\n... [TRUNCATED]"
-                logger.warning(f"HTML truncated from {original_len} to 150000 chars")
-
-                if slog:
-                    slog.warning(
-                        event=LogEvent(
-                            category=EventCategory.TOOL_EXECUTION,
-                            event_type="tool.listing_extract.truncate",
-                            name="HTML truncated",
-                        ),
-                        message=f"HTML truncated from {original_len} to 150000 chars",
-                        data={"url": url, "original_size": original_len, "truncated_size": 150000},
-                        tags=["tool", "selector_extraction", "truncate"],
-                    )
-
-            # Fresh LLM call with isolated context
-            messages = [
-                {"role": "system", "content": LISTING_EXTRACTION_PROMPT},
-                {"role": "user", "content": f"Analyze this listing page HTML:\n\n{cleaned_html}"}
-            ]
-
-            response = self.llm.chat(messages)
-            content = response.get("content", "")
-
-            # Parse JSON response
-            result = self._parse_json_response(content)
-
-            if result:
-                article_urls = result.get("article_urls", [])
-
-                # Convert relative URLs to absolute
-                from urllib.parse import urljoin
-                article_urls = [urljoin(url, u) for u in article_urls if u and not u.startswith("...")]
-
-                # Warn if too few URLs extracted
-                if len(article_urls) < 5:
-                    logger.warning(
-                        f"Only {len(article_urls)} URLs extracted from {url}. "
-                        f"Expected 10-30. LLM may be missing main content."
-                    )
-
-                    if slog:
-                        slog.warning(
-                            event=LogEvent(
-                                category=EventCategory.TOOL_EXECUTION,
-                                event_type="tool.listing_extract.low_urls",
-                                name="Few URLs extracted",
-                            ),
-                            message=f"Only {len(article_urls)} URLs extracted (expected 10-30)",
-                            data={"url": url, "urls_count": len(article_urls)},
-                            tags=["tool", "selector_extraction", "warning"],
-                        )
-
-                duration_ms = (time.perf_counter() - start_time) * 1000
-
-                logger.info(
-                    f"Extracted from {url}: "
-                    f"{len(article_urls)} article URLs, "
-                    f"selectors: {list(result.get('selectors', {}).keys())}"
-                )
-
-                # Log sample URLs for debugging
-                if article_urls:
-                    logger.debug(f"Sample URLs: {article_urls[:3]}")
-
-                # Log completion
-                if slog:
-                    slog.info(
-                        event=LogEvent(
-                            category=EventCategory.TOOL_EXECUTION,
-                            event_type="tool.listing_extract.complete",
-                            name="Listing page extraction completed",
-                        ),
-                        message=f"Extracted {len(article_urls)} URLs from {url}",
-                        data={
-                            "url": url,
-                            "urls_count": len(article_urls),
-                            "selectors_found": list(result.get("selectors", {}).keys()),
-                        },
-                        metrics=LogMetrics(duration_ms=duration_ms),
-                        tags=["tool", "selector_extraction", "listing", "complete"],
-                    )
-
-                return {
-                    "success": True,
-                    "url": url,
-                    "selectors": result.get("selectors", {}),
-                    "article_urls": article_urls,
-                    "notes": result.get("notes", "")
-                }
-            else:
-                duration_ms = (time.perf_counter() - start_time) * 1000
-
-                if slog:
-                    slog.error(
-                        event=LogEvent(
-                            category=EventCategory.TOOL_EXECUTION,
-                            event_type="tool.listing_extract.parse_error",
-                            name="Failed to parse LLM response",
-                        ),
-                        message=f"Failed to parse LLM response for {url}",
-                        data={"url": url},
-                        metrics=LogMetrics(duration_ms=duration_ms),
-                        tags=["tool", "selector_extraction", "listing", "error"],
-                    )
-
-                return {
-                    "success": False,
-                    "url": url,
-                    "error": "Failed to parse LLM response"
-                }
-
-        except Exception as e:
-            duration_ms = (time.perf_counter() - start_time) * 1000
-            logger.error(f"Failed to extract listing page {url}: {e}")
-
-            if slog:
-                slog.error(
-                    event=LogEvent(
-                        category=EventCategory.TOOL_EXECUTION,
-                        event_type="tool.listing_extract.error",
-                        name="Listing page extraction failed",
-                    ),
-                    message=f"Failed to extract listing page: {e}",
-                    data={"url": url, "error": str(e)},
-                    metrics=LogMetrics(duration_ms=duration_ms),
-                    tags=["tool", "selector_extraction", "listing", "error"],
-                )
-
+            return {
+                "success": True,
+                "url": url,
+                "selectors": result.get("selectors", {}),
+                "article_urls": article_urls,
+                "notes": result.get("notes", "")
+            }
+        else:
             return {
                 "success": False,
                 "url": url,
-                "error": str(e)
+                "error": "Failed to parse LLM response"
             }
-
-    def _extract_container(self, html: str, selector: str) -> str | None:
-        """Extract just the container element HTML using BeautifulSoup."""
-        try:
-            from bs4 import BeautifulSoup
-            soup = BeautifulSoup(html, 'html.parser')
-            container = soup.select_one(selector)
-            if container:
-                return str(container)
-            return None
-        except Exception as e:
-            logger.warning(f"Failed to extract container '{selector}': {e}")
-            return None
 
     def _parse_json_response(self, content: str) -> dict | None:
         """Parse JSON from LLM response, handling markdown code blocks."""
         try:
-            # Try direct parse first
             return json.loads(content.strip())
         except json.JSONDecodeError:
             pass
 
-        # Try extracting from code blocks
         try:
             if "```json" in content:
                 json_str = content.split("```json")[1].split("```")[0]
@@ -335,7 +211,6 @@ class ListingPageExtractorTool(BaseTool):
         except (json.JSONDecodeError, IndexError):
             pass
 
-        # Try finding JSON object in response
         try:
             start = content.find("{")
             end = content.rfind("}") + 1
@@ -381,155 +256,62 @@ class ArticlePageExtractorTool(BaseTool):
         self.llm = llm
         self.browser = browser
 
+    @traced_tool(name="extract_article_page")
     def execute(
         self,
         url: str,
         wait_seconds: int = 5
     ) -> dict[str, Any]:
-        """Extract detail selectors from an article page.
+        """Extract detail selectors from an article page. Instrumented by @traced_tool."""
+        logger.info(f"Extracting article page: {url}")
 
-        Args:
-            url: URL of the article page to analyze
-            wait_seconds: Time to wait for page load (default: 5)
+        # Navigate to page
+        self.browser.navigate(url)
+        time.sleep(wait_seconds)
 
-        Returns:
-            dict with selectors, extracted_values, and metadata
-        """
-        slog = get_logger()
-        start_time = time.perf_counter()
+        # Get cleaned HTML
+        html = self.browser.get_html()
+        cleaned_html = clean_html_for_llm(html)
 
-        # Log start
-        if slog:
-            slog.debug(
-                event=LogEvent(
-                    category=EventCategory.TOOL_EXECUTION,
-                    event_type="tool.article_extract.start",
-                    name="Article page extraction started",
-                ),
-                message=f"Extracting article page: {url}",
-                data={"url": url, "wait_seconds": wait_seconds},
-                tags=["tool", "selector_extraction", "article", "start"],
+        # Truncate if too large
+        if len(cleaned_html) > 50000:
+            original_len = len(cleaned_html)
+            cleaned_html = cleaned_html[:50000] + "\n... [TRUNCATED]"
+            logger.warning(f"HTML truncated from {original_len} to 50000 chars")
+
+        # Fresh LLM call with isolated context
+        messages = [
+            {"role": "system", "content": ARTICLE_EXTRACTION_PROMPT},
+            {"role": "user", "content": f"Analyze this article page HTML:\n\n{cleaned_html}"}
+        ]
+
+        response = self.llm.chat(messages)
+        content = response.get("content", "")
+
+        # Parse JSON response
+        result = self._parse_json_response(content)
+
+        if result:
+            selectors = result.get("selectors", {})
+            found_count = sum(1 for s in selectors.values() if s.get("found", False))
+
+            logger.info(
+                f"Extracted from {url}: "
+                f"{found_count}/{len(selectors)} selectors found"
             )
 
-        try:
-            logger.info(f"Extracting article page: {url}")
-
-            # Navigate to page
-            self.browser.navigate(url)
-            time.sleep(wait_seconds)
-
-            # Get cleaned HTML
-            html = self.browser.get_html()
-            cleaned_html = clean_html_for_llm(html)
-
-            # Truncate if too large
-            if len(cleaned_html) > 50000:
-                original_len = len(cleaned_html)
-                cleaned_html = cleaned_html[:50000] + "\n... [TRUNCATED]"
-
-                if slog:
-                    slog.warning(
-                        event=LogEvent(
-                            category=EventCategory.TOOL_EXECUTION,
-                            event_type="tool.article_extract.truncate",
-                            name="HTML truncated",
-                        ),
-                        message=f"HTML truncated from {original_len} to 50000 chars",
-                        data={"url": url, "original_size": original_len, "truncated_size": 50000},
-                        tags=["tool", "selector_extraction", "truncate"],
-                    )
-
-            # Fresh LLM call with isolated context
-            messages = [
-                {"role": "system", "content": ARTICLE_EXTRACTION_PROMPT},
-                {"role": "user", "content": f"Analyze this article page HTML:\n\n{cleaned_html}"}
-            ]
-
-            response = self.llm.chat(messages)
-            content = response.get("content", "")
-
-            # Parse JSON response
-            result = self._parse_json_response(content)
-
-            if result:
-                selectors = result.get("selectors", {})
-                found_count = sum(1 for s in selectors.values() if s.get("found", False))
-                duration_ms = (time.perf_counter() - start_time) * 1000
-
-                logger.info(
-                    f"Extracted from {url}: "
-                    f"{found_count}/{len(selectors)} selectors found"
-                )
-
-                # Log completion
-                if slog:
-                    slog.info(
-                        event=LogEvent(
-                            category=EventCategory.TOOL_EXECUTION,
-                            event_type="tool.article_extract.complete",
-                            name="Article page extraction completed",
-                        ),
-                        message=f"Extracted {found_count}/{len(selectors)} selectors from {url}",
-                        data={
-                            "url": url,
-                            "selectors_found": found_count,
-                            "selectors_total": len(selectors),
-                            "selector_fields": list(selectors.keys()),
-                        },
-                        metrics=LogMetrics(duration_ms=duration_ms),
-                        tags=["tool", "selector_extraction", "article", "complete"],
-                    )
-
-                return {
-                    "success": True,
-                    "url": url,
-                    "selectors": selectors,
-                    "extracted_values": result.get("extracted_values", {}),
-                    "notes": result.get("notes", "")
-                }
-            else:
-                duration_ms = (time.perf_counter() - start_time) * 1000
-
-                if slog:
-                    slog.error(
-                        event=LogEvent(
-                            category=EventCategory.TOOL_EXECUTION,
-                            event_type="tool.article_extract.parse_error",
-                            name="Failed to parse LLM response",
-                        ),
-                        message=f"Failed to parse LLM response for {url}",
-                        data={"url": url},
-                        metrics=LogMetrics(duration_ms=duration_ms),
-                        tags=["tool", "selector_extraction", "article", "error"],
-                    )
-
-                return {
-                    "success": False,
-                    "url": url,
-                    "error": "Failed to parse LLM response"
-                }
-
-        except Exception as e:
-            duration_ms = (time.perf_counter() - start_time) * 1000
-            logger.error(f"Failed to extract article page {url}: {e}")
-
-            if slog:
-                slog.error(
-                    event=LogEvent(
-                        category=EventCategory.TOOL_EXECUTION,
-                        event_type="tool.article_extract.error",
-                        name="Article page extraction failed",
-                    ),
-                    message=f"Failed to extract article page: {e}",
-                    data={"url": url, "error": str(e)},
-                    metrics=LogMetrics(duration_ms=duration_ms),
-                    tags=["tool", "selector_extraction", "article", "error"],
-                )
-
+            return {
+                "success": True,
+                "url": url,
+                "selectors": selectors,
+                "extracted_values": result.get("extracted_values", {}),
+                "notes": result.get("notes", "")
+            }
+        else:
             return {
                 "success": False,
                 "url": url,
-                "error": str(e)
+                "error": "Failed to parse LLM response"
             }
 
     def _parse_json_response(self, content: str) -> dict | None:
@@ -592,102 +374,33 @@ class SelectorAggregatorTool(BaseTool):
     def __init__(self, llm: LLMClient):
         self.llm = llm
 
+    @traced_tool(name="aggregate_selectors")
     def execute(
         self,
         listing_extractions: list[dict],
         article_extractions: list[dict]
     ) -> dict[str, Any]:
-        """Aggregate selectors into ordered chains.
+        """Aggregate selectors into ordered chains. Instrumented by @traced_tool."""
+        # Aggregate listing selectors into chains
+        listing_result = self._aggregate_listing_selectors(listing_extractions)
 
-        Args:
-            listing_extractions: Results from ListingPageExtractorTool for each page
-            article_extractions: Results from ArticlePageExtractorTool for each page
+        # Aggregate article selectors into chains
+        article_result = self._aggregate_article_selectors(article_extractions)
 
-        Returns:
-            dict with listing_selectors and detail_selectors as selector chains
-        """
-        slog = get_logger()
-        start_time = time.perf_counter()
-
-        # Log start
-        if slog:
-            slog.debug(
-                event=LogEvent(
-                    category=EventCategory.TOOL_EXECUTION,
-                    event_type="tool.selector_aggregate.start",
-                    name="Selector aggregation started",
-                ),
-                message=f"Aggregating selectors from {len(listing_extractions)} listing and {len(article_extractions)} article pages",
-                data={
-                    "listing_pages": len(listing_extractions),
-                    "article_pages": len(article_extractions),
-                },
-                tags=["tool", "selector_extraction", "aggregate", "start"],
-            )
-
-        try:
-            # Aggregate listing selectors into chains
-            listing_result = self._aggregate_listing_selectors(listing_extractions)
-
-            # Aggregate article selectors into chains
-            article_result = self._aggregate_article_selectors(article_extractions)
-
-            duration_ms = (time.perf_counter() - start_time) * 1000
-
-            # Log completion
-            if slog:
-                slog.info(
-                    event=LogEvent(
-                        category=EventCategory.TOOL_EXECUTION,
-                        event_type="tool.selector_aggregate.complete",
-                        name="Selector aggregation completed",
-                    ),
-                    message=f"Aggregated selectors: {len(listing_result['selectors'])} listing, {len(article_result['selectors'])} detail fields",
-                    data={
-                        "listing_pages": len(listing_extractions),
-                        "article_pages": len(article_extractions),
-                        "listing_selector_count": len(listing_result["selectors"]),
-                        "detail_selector_count": len(article_result["selectors"]),
-                    },
-                    metrics=LogMetrics(duration_ms=duration_ms),
-                    tags=["tool", "selector_extraction", "aggregate", "complete"],
-                )
-
-            return {
-                "success": True,
-                "listing_selectors": listing_result["selectors"],
-                "detail_selectors": article_result["selectors"],
-                "analysis": {
-                    "listing_pages_analyzed": len(listing_extractions),
-                    "article_pages_analyzed": len(article_extractions),
-                    "listing_notes": listing_result.get("notes", ""),
-                    "article_notes": article_result.get("notes", "")
-                }
+        return {
+            "success": True,
+            "listing_selectors": listing_result["selectors"],
+            "detail_selectors": article_result["selectors"],
+            "analysis": {
+                "listing_pages_analyzed": len(listing_extractions),
+                "article_pages_analyzed": len(article_extractions),
+                "listing_notes": listing_result.get("notes", ""),
+                "article_notes": article_result.get("notes", "")
             }
-
-        except Exception as e:
-            duration_ms = (time.perf_counter() - start_time) * 1000
-            logger.error(f"Failed to aggregate selectors: {e}")
-
-            if slog:
-                slog.error(
-                    event=LogEvent(
-                        category=EventCategory.TOOL_EXECUTION,
-                        event_type="tool.selector_aggregate.error",
-                        name="Selector aggregation failed",
-                    ),
-                    message=f"Failed to aggregate selectors: {e}",
-                    data={"error": str(e)},
-                    metrics=LogMetrics(duration_ms=duration_ms),
-                    tags=["tool", "selector_extraction", "aggregate", "error"],
-                )
-
-            return {"success": False, "error": str(e)}
+        }
 
     def _aggregate_listing_selectors(self, extractions: list[dict]) -> dict:
         """Aggregate listing selectors into chains ordered by success rate."""
-        from collections import Counter
-
         # Collect all selector variations with counts
         selector_variations = {}
         total_pages = len([e for e in extractions if e.get("success")])
@@ -727,8 +440,6 @@ class SelectorAggregatorTool(BaseTool):
 
     def _aggregate_article_selectors(self, extractions: list[dict]) -> dict:
         """Aggregate article selectors into chains ordered by success rate."""
-        from collections import Counter
-
         # Collect all selector variations with counts
         selector_variations = {}
         total_pages = len([e for e in extractions if e.get("success")])
@@ -800,8 +511,6 @@ The crawler needs fallbacks for pages with different structures."""
 
     def _merge_with_frequency_data(self, llm_result: dict, variations: dict, total_pages: int) -> dict:
         """Merge LLM ordering with frequency/success rate data."""
-        from collections import Counter
-
         selectors = llm_result.get("selectors", {})
 
         for key, chain in selectors.items():
@@ -836,8 +545,6 @@ The crawler needs fallbacks for pages with different structures."""
 
     def _fallback_chain_aggregation(self, variations: dict, total_pages: int) -> dict:
         """Fallback: build selector chains from frequency data only."""
-        from collections import Counter
-
         selectors = {}
         for key, values in variations.items():
             if values:

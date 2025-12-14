@@ -1,6 +1,9 @@
-"""Main Agent for orchestrating the crawl plan creation workflow."""
+"""Main Agent for orchestrating the crawl plan creation workflow.
+
+This module uses the new observability decorators for automatic logging.
+The @traced_agent decorator handles all agent instrumentation.
+"""
 import logging
-import time
 from pathlib import Path
 from typing import Any
 
@@ -11,10 +14,7 @@ from .accessibility_agent import AccessibilityAgent
 from .data_prep_agent import DataPrepAgent
 from ..core.llm import LLMClient
 from ..core.browser import BrowserSession
-from ..core.log_context import get_logger
-from ..core.structured_logger import (
-    EventCategory, LogEvent, LogMetrics
-)
+from ..observability.decorators import traced_agent
 from ..tools.memory import (
     MemoryStore,
     MemoryReadTool,
@@ -154,24 +154,12 @@ class MainAgent(BaseAgent):
 
         super().__init__(llm, tools)
 
+    @traced_agent(name="main_agent.create_crawl_plan")
     def create_crawl_plan(self, url: str) -> dict[str, Any]:
-        """High-level method to create a complete crawl plan for a URL."""
-        slog = get_logger()
-        start_time = time.perf_counter()
+        """High-level method to create a complete crawl plan for a URL.
 
-        # Log workflow start
-        if slog:
-            slog.info(
-                event=LogEvent(
-                    category=EventCategory.AGENT_LIFECYCLE,
-                    event_type="workflow.crawl_plan.start",
-                    name="Crawl plan workflow started",
-                ),
-                message=f"Starting crawl plan creation for {url}",
-                data={"target_url": url, "output_dir": str(self.output_dir)},
-                tags=["workflow", "crawl_plan", "start"],
-            )
-
+        Instrumented by @traced_agent - logs workflow lifecycle and results.
+        """
         task = f"""Create a complete crawl plan for: {url}
 
 Execute the full workflow:
@@ -187,43 +175,4 @@ Execute the full workflow:
 
 Return summary with counts when complete."""
 
-        result = self.run(task)
-        duration_ms = (time.perf_counter() - start_time) * 1000
-
-        # Log workflow completion
-        if slog:
-            if result.get("success"):
-                slog.info(
-                    event=LogEvent(
-                        category=EventCategory.AGENT_LIFECYCLE,
-                        event_type="workflow.crawl_plan.complete",
-                        name="Crawl plan workflow completed",
-                    ),
-                    message=f"Crawl plan workflow completed for {url}",
-                    data={
-                        "target_url": url,
-                        "success": True,
-                        "iterations": result.get("iterations", 0),
-                    },
-                    metrics=LogMetrics(duration_ms=duration_ms),
-                    tags=["workflow", "crawl_plan", "complete", "success"],
-                )
-            else:
-                slog.error(
-                    event=LogEvent(
-                        category=EventCategory.AGENT_LIFECYCLE,
-                        event_type="workflow.crawl_plan.error",
-                        name="Crawl plan workflow failed",
-                    ),
-                    message=f"Crawl plan workflow failed for {url}: {result.get('error', 'Unknown error')}",
-                    data={
-                        "target_url": url,
-                        "success": False,
-                        "error": result.get("error"),
-                        "iterations": result.get("iterations", 0),
-                    },
-                    metrics=LogMetrics(duration_ms=duration_ms),
-                    tags=["workflow", "crawl_plan", "error"],
-                )
-
-        return result
+        return self.run(task)

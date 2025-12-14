@@ -1,7 +1,8 @@
-"""Accessibility Validation Agent to check if site works without JavaScript."""
-import logging
-from typing import Any
+"""Accessibility Validation Agent to check if site works without JavaScript.
 
+This agent inherits from BaseAgent which uses the @traced_agent decorator
+for automatic observability instrumentation.
+"""
 from .base import BaseAgent
 from ..core.llm import LLMClient
 from ..tools.http import HTTPRequestTool
@@ -10,8 +11,6 @@ from ..tools.memory import (
     MemoryReadTool,
     MemoryWriteTool,
 )
-
-logger = logging.getLogger(__name__)
 
 ACCESSIBILITY_AGENT_PROMPT = """You are an Accessibility Validation Agent that checks if a website's content can be accessed via simple HTTP requests without JavaScript rendering.
 

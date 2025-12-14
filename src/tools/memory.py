@@ -1,18 +1,15 @@
-"""Memory tool for storing and retrieving data across agent calls."""
+"""Memory tool for storing and retrieving data across agent calls.
+
+This module uses the new observability decorators for automatic logging.
+The @traced_tool decorator handles all tool instrumentation.
+"""
 import fnmatch
 import json
-import logging
-import time
 from pathlib import Path
 from typing import Any
 
 from .base import BaseTool
-from ..core.log_context import get_logger
-from ..core.structured_logger import (
-    EventCategory, LogEvent, LogLevel, LogLevelDetail, LogMetrics
-)
-
-logger = logging.getLogger(__name__)
+from ..observability.decorators import traced_tool
 
 
 class MemoryStore:
@@ -34,7 +31,6 @@ class MemoryStore:
     def write(self, key: str, value: Any) -> None:
         """Write value to key."""
         self._data[key] = value
-        logger.debug(f"Memory write: {key}")
 
     def delete(self, key: str) -> bool:
         """Delete key if exists."""
@@ -76,7 +72,6 @@ class MemoryStore:
                     f.write(line + "\n")
                     count += 1
 
-        logger.info(f"Dumped {count} entries to {output_path}")
         return count
 
 
@@ -89,28 +84,14 @@ class MemoryReadTool(BaseTool):
     def __init__(self, store: MemoryStore | None = None):
         self.store = store or MemoryStore()
 
+    @traced_tool(name="memory_read")
     def execute(self, key: str) -> dict[str, Any]:
-        slog = get_logger()
+        """Read from memory. Instrumented by @traced_tool."""
         value = self.store.read(key)
-        found = value is not None
-
-        # Log memory read
-        if slog:
-            value_preview = str(value)[:100] + "..." if value and len(str(value)) > 100 else str(value)
-            slog.debug(
-                event=LogEvent(
-                    category=EventCategory.MEMORY_OPERATION,
-                    event_type="memory.read",
-                    name="Memory read",
-                ),
-                message=f"Memory read: {key} (found={found})",
-                data={"key": key, "found": found, "value_preview": value_preview if found else None},
-                tags=["memory", "read"],
-            )
-
         return {
             "success": True,
-            "result": value
+            "result": value,
+            "found": value is not None
         }
 
     def get_parameters_schema(self) -> dict[str, Any]:
@@ -135,37 +116,19 @@ class MemoryWriteTool(BaseTool):
     def __init__(self, store: MemoryStore | None = None):
         self.store = store or MemoryStore()
 
+    @traced_tool(name="memory_write")
     def execute(self, key: str, value: Any) -> dict[str, Any]:
-        slog = get_logger()
+        """Write to memory. Instrumented by @traced_tool."""
         overwritten = self.store.read(key) is not None
         self.store.write(key, value)
 
-        # Calculate value size
         value_size = len(json.dumps(value, default=str)) if value else 0
-
-        # Log memory write
-        if slog:
-            value_preview = str(value)[:100] + "..." if value and len(str(value)) > 100 else str(value)
-            slog.info(
-                event=LogEvent(
-                    category=EventCategory.MEMORY_OPERATION,
-                    event_type="memory.write",
-                    name="Memory write",
-                ),
-                message=f"Memory write: {key} ({value_size} bytes, overwritten={overwritten})",
-                data={
-                    "key": key,
-                    "value_size": value_size,
-                    "overwritten": overwritten,
-                    "value_preview": value_preview,
-                },
-                metrics=LogMetrics(content_size_bytes=value_size),
-                tags=["memory", "write"],
-            )
 
         return {
             "success": True,
-            "result": f"Stored value at key: {key}"
+            "result": f"Stored value at key: {key}",
+            "overwritten": overwritten,
+            "value_size": value_size
         }
 
     def get_parameters_schema(self) -> dict[str, Any]:
@@ -193,26 +156,14 @@ class MemorySearchTool(BaseTool):
     def __init__(self, store: MemoryStore | None = None):
         self.store = store or MemoryStore()
 
+    @traced_tool(name="memory_search")
     def execute(self, pattern: str) -> dict[str, Any]:
-        slog = get_logger()
+        """Search memory keys. Instrumented by @traced_tool."""
         keys = self.store.search(pattern)
-
-        # Log memory search
-        if slog:
-            slog.debug(
-                event=LogEvent(
-                    category=EventCategory.MEMORY_OPERATION,
-                    event_type="memory.search",
-                    name="Memory search",
-                ),
-                message=f"Memory search: '{pattern}' found {len(keys)} matches",
-                data={"pattern": pattern, "matches_count": len(keys), "keys": keys[:10]},
-                tags=["memory", "search"],
-            )
-
         return {
             "success": True,
-            "result": keys
+            "result": keys,
+            "count": len(keys)
         }
 
     def get_parameters_schema(self) -> dict[str, Any]:
@@ -237,26 +188,14 @@ class MemoryListTool(BaseTool):
     def __init__(self, store: MemoryStore | None = None):
         self.store = store or MemoryStore()
 
+    @traced_tool(name="memory_list")
     def execute(self) -> dict[str, Any]:
-        slog = get_logger()
+        """List all memory keys. Instrumented by @traced_tool."""
         keys = self.store.list_keys()
-
-        # Log memory list
-        if slog:
-            slog.debug(
-                event=LogEvent(
-                    category=EventCategory.MEMORY_OPERATION,
-                    event_type="memory.list",
-                    name="Memory list",
-                ),
-                message=f"Memory list: {len(keys)} total keys",
-                data={"total_keys": len(keys)},
-                tags=["memory", "list"],
-            )
-
         return {
             "success": True,
-            "result": keys
+            "result": keys,
+            "count": len(keys)
         }
 
     def get_parameters_schema(self) -> dict[str, Any]:
@@ -276,60 +215,18 @@ class MemoryDumpTool(BaseTool):
         self.store = store
         self.output_dir = output_dir
 
+    @traced_tool(name="memory_dump")
     def execute(self, keys: list[str], filename: str) -> dict[str, Any]:
-        """Dump keys to JSONL file.
+        """Dump keys to JSONL file. Instrumented by @traced_tool."""
+        output_path = self.output_dir / filename
+        count = self.store.dump_to_jsonl(keys, output_path)
 
-        Args:
-            keys: List of memory keys to dump
-            filename: Output filename (relative to output directory)
-        """
-        slog = get_logger()
-        start_time = time.perf_counter()
-
-        try:
-            output_path = self.output_dir / filename
-            count = self.store.dump_to_jsonl(keys, output_path)
-            duration_ms = (time.perf_counter() - start_time) * 1000
-
-            # Log memory dump
-            if slog:
-                slog.info(
-                    event=LogEvent(
-                        category=EventCategory.MEMORY_OPERATION,
-                        event_type="memory.dump",
-                        name="Memory dump",
-                    ),
-                    message=f"Memory dump: {count} entries to {filename}",
-                    data={
-                        "output_path": str(output_path),
-                        "entries_count": count,
-                        "keys_requested": len(keys),
-                    },
-                    metrics=LogMetrics(duration_ms=duration_ms),
-                    tags=["memory", "dump", "file"],
-                )
-
-            return {
-                "success": True,
-                "result": f"Dumped {count} entries to {filename}",
-                "path": str(output_path),
-                "count": count
-            }
-        except Exception as e:
-            duration_ms = (time.perf_counter() - start_time) * 1000 if 'start_time' in dir() else 0
-            if slog:
-                slog.error(
-                    event=LogEvent(
-                        category=EventCategory.MEMORY_OPERATION,
-                        event_type="memory.dump",
-                        name="Memory dump failed",
-                    ),
-                    message=f"Memory dump failed: {e}",
-                    data={"filename": filename, "error": str(e)},
-                    metrics=LogMetrics(duration_ms=duration_ms),
-                    tags=["memory", "dump", "error"],
-                )
-            return {"success": False, "error": str(e)}
+        return {
+            "success": True,
+            "result": f"Dumped {count} entries to {filename}",
+            "path": str(output_path),
+            "count": count
+        }
 
     def get_parameters_schema(self) -> dict[str, Any]:
         return {

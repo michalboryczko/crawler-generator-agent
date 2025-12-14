@@ -1,7 +1,8 @@
-"""Contract Data Preparation Agent for creating test datasets."""
-import logging
-from typing import Any
+"""Contract Data Preparation Agent for creating test datasets.
 
+This agent inherits from BaseAgent which uses the @traced_agent decorator
+for automatic observability instrumentation.
+"""
 from .base import BaseAgent
 from ..core.llm import LLMClient
 from ..core.browser import BrowserSession
@@ -17,8 +18,6 @@ from ..tools.extraction import (
     BatchExtractArticlesTool,
     BatchExtractListingsTool,
 )
-
-logger = logging.getLogger(__name__)
 
 DATA_PREP_AGENT_PROMPT = """You are a Contract Data Preparation Agent that creates test datasets for web crawlers.
 

@@ -1,15 +1,15 @@
-"""HTTP request tool for making web requests without browser."""
-import logging
-import time
+"""HTTP request tool for making web requests without browser.
+
+This module uses the new observability decorators for automatic logging.
+The @traced_tool decorator handles all tool instrumentation.
+"""
+import asyncio
 from typing import Any
 
 import aiohttp
 
 from .base import BaseTool
-from ..core.log_context import get_logger
-from ..core.structured_logger import EventCategory, LogEvent
-
-logger = logging.getLogger(__name__)
+from ..observability.decorators import traced_tool
 
 
 class HTTPRequestTool(BaseTool):
@@ -22,6 +22,7 @@ class HTTPRequestTool(BaseTool):
     def __init__(self, timeout: int = 30):
         self.timeout = timeout
 
+    @traced_tool(name="http_request")
     def execute(
         self,
         url: str,
@@ -29,30 +30,7 @@ class HTTPRequestTool(BaseTool):
         headers: dict[str, str] | None = None,
         body: str | None = None
     ) -> dict[str, Any]:
-        """Make HTTP request.
-
-        Args:
-            url: URL to request
-            method: HTTP method (GET, POST, etc.)
-            headers: Optional request headers
-            body: Optional request body
-        """
-        import asyncio
-
-        slog = get_logger()
-        start_time = time.perf_counter()
-
-        if slog:
-            slog.info(
-                event=LogEvent(
-                    category=EventCategory.BROWSER_OPERATION,
-                    event_type="tool.http.request.start",
-                    name="HTTP request started",
-                ),
-                message=f"{method} {url}",
-                data={"url": url, "method": method},
-                tags=["http", "request", "start"],
-            )
+        """Make HTTP request. Instrumented by @traced_tool."""
 
         async def _request():
             default_headers = {
@@ -80,51 +58,14 @@ class HTTPRequestTool(BaseTool):
                         "truncated": False
                     }
 
-        try:
-            loop = asyncio.new_event_loop()
-            result = loop.run_until_complete(_request())
-            loop.close()
+        loop = asyncio.new_event_loop()
+        result = loop.run_until_complete(_request())
+        loop.close()
 
-            duration_ms = (time.perf_counter() - start_time) * 1000
-
-            if slog:
-                slog.info(
-                    event=LogEvent(
-                        category=EventCategory.BROWSER_OPERATION,
-                        event_type="tool.http.request.complete",
-                        name="HTTP request completed",
-                    ),
-                    message=f"{method} {url} -> {result['status_code']}",
-                    data={
-                        "url": url,
-                        "method": method,
-                        "status_code": result["status_code"],
-                        "body_length": len(result["body"]),
-                    },
-                    tags=["http", "request", "success"],
-                    duration_ms=duration_ms,
-                )
-
-            return {
-                "success": True,
-                "result": result
-            }
-        except Exception as e:
-            duration_ms = (time.perf_counter() - start_time) * 1000
-            logger.error(f"HTTP request failed: {e}")
-            if slog:
-                slog.error(
-                    event=LogEvent(
-                        category=EventCategory.ERROR,
-                        event_type="tool.http.request.error",
-                        name="HTTP request failed",
-                    ),
-                    message=f"{method} {url} failed: {e}",
-                    data={"url": url, "method": method, "error": str(e)},
-                    tags=["http", "request", "error"],
-                    duration_ms=duration_ms,
-                )
-            return {"success": False, "error": str(e)}
+        return {
+            "success": True,
+            "result": result
+        }
 
     def get_parameters_schema(self) -> dict[str, Any]:
         return {

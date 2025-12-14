@@ -1,67 +1,74 @@
-# Scratchpad - Complex Reasoning & Debugging
+# Scratchpad - Complex Reasoning Notes
 
-## Phase 8: Selector Agent Refactoring
+## Current Problem Being Solved
 
-### Tool Design Decisions
-
-**ListingPagesGeneratorTool:**
-- 2% sampling with min 5, max 20 is purely mathematical
-- URL pattern construction (adding ?page=N) is deterministic
-- **Decision**: Pure logic, no LLM needed
-
-**ArticlePagesGeneratorTool:**
-- URL pattern grouping requires understanding URL structure
-- LLM can identify semantic patterns (e.g., /publikacje/{slug} vs /news/{year}/{slug})
-- **Decision**: LLM-based for pattern grouping, math for sampling percentages
-
-### Isolated Context Implementation
-
-Each extraction tool needs:
-1. Fresh LLM conversation (no history from previous pages)
-2. Browser navigation to the specific URL
-3. Return structured data back to main agent
-
-**Decision**: Single LLM call per page with structured JSON output (simpler than mini-agents)
-
-### Storage Strategy
-
-Current approach: Everything in MemoryStore under generic keys
-**Better approach:**
-- listing-selectors-page-{N} for each listing page
-- article-selectors-{index} for each article page
-- Final aggregation combines all
+Working on: Observability Refactoring (OpenTelemetry Logs + Traces Separation)
 
 ---
 
-## Implementation Order
+## Architectural Decisions
 
-1. **ListingPagesGeneratorTool** (pure math)
-   - Calculate: 2% of max_pages, min 5, max 20
-   - Generate URL list spread across range
-   - No LLM needed
+### Decision 1: Context Propagation Mechanism
 
-2. **ArticlePagesGeneratorTool** (LLM for grouping)
-   - LLM groups URLs by pattern
-   - Sample 20% per group (min 3)
-   - Return with pattern metadata
+**Options Considered:**
+1. Thread-local storage
+2. contextvars (chosen)
+3. Explicit context passing
 
-3. **ListingPageExtractorTool** (browser + LLM)
-   - Navigate, get HTML
-   - Fresh LLM call to find selectors
-   - Return {selectors, article_urls}
+**Decision:** Use `contextvars` because:
+- Native Python 3.7+ support
+- Works correctly with asyncio
+- Automatic isolation for concurrent operations
+- Similar to OpenTelemetry's approach
 
-4. **ArticlePageExtractorTool** (browser + LLM)
-   - Navigate, get HTML
-   - Fresh LLM call for detail selectors
-   - Return {detail_selectors}
+### Decision 2: Decorator vs Explicit Calls
 
-5. **SelectorAggregatorTool** (LLM)
-   - Compare all selectors
-   - Choose most consistent
-   - Return final set with confidence
+**Decision:** Decorator-based instrumentation because:
+- Cleaner component code
+- Consistent logging patterns
+- Harder to forget logging
+- Easy to apply uniformly
+
+### Decision 3: Log Level as Metadata
+
+**Decision:** Level is metadata only, never filter because:
+- "Log everything" philosophy
+- Filter at query time, not emission time
+- No lost data
+- Can always filter down, can't filter up
 
 ---
 
-## Debug Log
+## Debugging Notes
 
-(Empty - will be used for troubleshooting)
+(Empty - to be filled as issues arise)
+
+---
+
+## Implementation Notes
+
+### Phase 0 Files to Create:
+1. `src/observability/__init__.py` - Module exports
+2. `src/observability/context.py` - ObservabilityContext, contextvars
+3. `src/observability/schema.py` - LogRecord dataclass
+4. `src/observability/serializers.py` - safe_serialize function
+5. `src/observability/config.py` - ObservabilityConfig, initialization
+6. `src/observability/outputs.py` - ConsoleOutput, JSONLinesOutput, OTLPOutput
+7. `src/observability/emitters.py` - emit_log, emit_trace_event
+
+### Key Implementation Details:
+- ObservabilityContext uses dataclass with frozen=False for mutability
+- LogRecord includes all fields from original TraceContext + LogMetrics
+- safe_serialize handles circular refs via max_depth
+- Outputs are thread-safe with locks
+
+---
+
+## Risk Register
+
+| Risk | Mitigation | Status |
+|------|------------|--------|
+| Async context loss | Test with async functions extensively | Pending |
+| Missing metrics | Compare output before/after migration | Pending |
+| Performance regression | Benchmark before/after | Pending |
+| Breaking changes | Keep old module as fallback | Pending |
