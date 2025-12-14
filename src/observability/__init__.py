@@ -1,22 +1,29 @@
-"""Observability module for unconditional logging and tracing.
+"""Observability module for logging and tracing.
 
 This module provides:
 - Decorator-based instrumentation (@traced_agent, @traced_tool, @traced_llm_client)
-- Automatic context propagation via contextvars
-- Separate Trace Events (spans) and Logs (detailed data)
-- Zero log filtering - everything is always logged
+- Automatic context propagation via OTel and contextvars
+- OTel spans created by decorators for proper trace hierarchy
+- Logs correlated to spans via trace_id/span_id
 
 Architecture:
-- LogHandler: Abstract backend interface (OTel, etc.)
+- Tracer: Creates OTel spans (in decorators)
+- LogHandler: Sends logs to OTel Collector → Elasticsearch
 - ConsoleOutput: Optional human-readable output for development
-- Emitters: Send data to both handler and console
+- Emitters: Create LogRecords with trace_id/span_id from active span
+
+Data Flow:
+- Spans: decorators → OTel tracer → OTel Collector → Jaeger/Tempo
+- Logs: emitters → handler.send_log() → OTel Collector → Elasticsearch
 
 Usage:
     from src.observability import initialize_observability, ObservabilityConfig
     from src.observability.decorators import traced_tool, traced_agent
+    from src.observability.handlers import OTelGrpcHandler, OTelConfig
 
     # Initialize at application start
-    initialize_observability(ObservabilityConfig.from_env())
+    handler = OTelGrpcHandler(OTelConfig())
+    initialize_observability(handler=handler)
 
     # Apply decorators to components
     @traced_tool(name="MyTool")
@@ -25,9 +32,9 @@ Usage:
 
 Key Concepts:
     - Level is METADATA only, never used for filtering
-    - All events are always emitted to the handler
-    - Context propagation is automatic via decorators
-    - Traces and Logs are separate concerns
+    - All logs are always emitted
+    - Spans are created by decorators with proper parent-child hierarchy
+    - Logs get trace_id/span_id from active OTel span
 """
 
 from .config import (
@@ -46,9 +53,16 @@ from .context import (
     reset_context,
     ObservabilitySpan,
 )
+from .tracer import (
+    init_tracer,
+    get_tracer,
+    get_current_span,
+    shutdown_tracer,
+    format_trace_id,
+    format_span_id,
+)
 from .emitters import (
     emit_log,
-    emit_trace_event,
     emit_debug,
     emit_info,
     emit_warning,
@@ -91,9 +105,15 @@ __all__ = [
     "set_context",
     "reset_context",
     "ObservabilitySpan",
+    # Tracer
+    "init_tracer",
+    "get_tracer",
+    "get_current_span",
+    "shutdown_tracer",
+    "format_trace_id",
+    "format_span_id",
     # Emitters
     "emit_log",
-    "emit_trace_event",
     "emit_debug",
     "emit_info",
     "emit_warning",
@@ -128,5 +148,5 @@ __all__ = [
     "traced_memory_operation",
 ]
 
-# Version
-__version__ = "2.0.0"
+# Version - bumped to 3.0.0 for OTel native spans
+__version__ = "3.0.0"

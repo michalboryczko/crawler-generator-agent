@@ -1,8 +1,12 @@
 """Abstract handler interface and implementations for observability backends.
 
 This module provides:
-- Abstract LogHandler interface for sending logs/traces to backends
+- Abstract LogHandler interface for sending logs to backends
 - OTelGrpcHandler for OpenTelemetry Collector via gRPC
+
+Architecture:
+- Logs are sent via send_log() to OTel Collector → Elasticsearch
+- Spans are created by decorators via OTel tracer → OTel Collector → Jaeger/Tempo
 
 The handler is injected into the observability system, making the rest
 of the code unaware of the specific backend.
@@ -10,7 +14,7 @@ of the code unaware of the specific backend.
 
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
-from typing import Any, Dict, Optional
+from typing import Optional
 import threading
 
 from .schema import LogRecord, TraceEvent
@@ -19,8 +23,8 @@ from .schema import LogRecord, TraceEvent
 class LogHandler(ABC):
     """Abstract interface for observability backends.
 
-    Implementations send logs and traces to specific backends
-    (OTel Collector, file, console, etc.)
+    Implementations send logs to specific backends (OTel Collector, file, etc.).
+    Spans are handled separately by decorators - not by this handler.
     """
 
     @abstractmethod
@@ -34,10 +38,13 @@ class LogHandler(ABC):
 
     @abstractmethod
     def send_trace(self, event: TraceEvent) -> None:
-        """Send a trace event to the backend.
+        """Handle a trace event.
+
+        Note: Spans are created by decorators. This method exists for
+        interface compatibility but may be a no-op in implementations.
 
         Args:
-            event: TraceEvent to send.
+            event: TraceEvent (may be ignored).
         """
         pass
 
@@ -65,8 +72,8 @@ class OTelConfig:
 class OTelGrpcHandler(LogHandler):
     """OpenTelemetry Collector handler via gRPC.
 
-    Sends logs and traces to OTel Collector using OTLP gRPC protocol.
-    Handles batching and automatic flushing.
+    Sends logs to OTel Collector using OTLP gRPC protocol.
+    Spans are NOT created here - they are created by decorators.
     """
 
     def __init__(self, config: OTelConfig):
@@ -77,47 +84,32 @@ class OTelGrpcHandler(LogHandler):
         """
         self.config = config
         self._lock = threading.Lock()
-        self._log_batch: list = []
-        self._trace_batch: list = []
         self._initialized = False
-        self._log_exporter = None
-        self._trace_exporter = None
+        self._logger_provider = None
         self._initialize()
 
     def _initialize(self) -> None:
-        """Initialize OTel exporters."""
+        """Initialize OTel log exporter only.
+
+        Note: Trace exporter is initialized in tracer.py, not here.
+        """
         try:
-            from opentelemetry.exporter.otlp.proto.grpc.trace_exporter import OTLPSpanExporter
             from opentelemetry.exporter.otlp.proto.grpc._log_exporter import OTLPLogExporter
-            from opentelemetry.sdk.trace import TracerProvider
-            from opentelemetry.sdk.trace.export import BatchSpanProcessor
             from opentelemetry.sdk._logs import LoggerProvider
             from opentelemetry.sdk._logs.export import BatchLogRecordProcessor
             from opentelemetry.sdk.resources import Resource, SERVICE_NAME
-            from opentelemetry import trace
             from opentelemetry._logs import set_logger_provider
 
             resource = Resource.create({SERVICE_NAME: self.config.service_name})
 
-            # Set up trace exporter
-            self._trace_exporter = OTLPSpanExporter(
-                endpoint=self.config.endpoint,
-                insecure=self.config.insecure
-            )
-            trace_provider = TracerProvider(resource=resource)
-            trace_provider.add_span_processor(BatchSpanProcessor(self._trace_exporter))
-            trace.set_tracer_provider(trace_provider)
-            self._tracer = trace.get_tracer(self.config.service_name)
-            self._trace_provider = trace_provider
-
-            # Set up log exporter - using native API, not Python logging bridge
-            self._log_exporter = OTLPLogExporter(
+            # Set up log exporter only - trace exporter is in tracer.py
+            log_exporter = OTLPLogExporter(
                 endpoint=self.config.endpoint,
                 insecure=self.config.insecure
             )
             self._logger_provider = LoggerProvider(resource=resource)
             self._logger_provider.add_log_record_processor(
-                BatchLogRecordProcessor(self._log_exporter)
+                BatchLogRecordProcessor(log_exporter)
             )
             set_logger_provider(self._logger_provider)
 
@@ -131,7 +123,6 @@ class OTelGrpcHandler(LogHandler):
         """Send log record via OTLP.
 
         Uses OTel's native Logger.emit() API for proper structured data handling.
-        This avoids size limits of Python logging's extra attributes.
 
         Args:
             record: LogRecord to send.
@@ -163,27 +154,26 @@ class OTelGrpcHandler(LogHandler):
                 "trace_id": record.trace_id,
                 "span_id": record.span_id,
                 "parent_span_id": record.parent_span_id or "",
+                "session_id": record.session_id or "",
+                "request_id": record.request_id or "",
                 "triggered_by": record.triggered_by,
                 "tags": ",".join(record.tags) if record.tags else "",
             }
 
             # Add data fields as individual attributes
-            # Prefix with "data." to namespace them
             if record.data:
                 for key, value in record.data.items():
                     attr_key = f"data.{key}"
                     if isinstance(value, (str, int, float, bool)):
                         attributes[attr_key] = value
                     elif value is not None:
-                        # Serialize complex values as JSON
                         try:
                             json_str = json.dumps(value, default=str)
-                            # OTel has attribute value limits - truncate if needed
                             if len(json_str) > 65000:
                                 json_str = json_str[:65000] + "...[TRUNCATED]"
                             attributes[attr_key] = json_str
                         except Exception:
-                            attributes[attr_key] = f"<serialization error>"
+                            attributes[attr_key] = "<serialization error>"
 
             # Add metrics as individual attributes
             if record.metrics:
@@ -198,7 +188,7 @@ class OTelGrpcHandler(LogHandler):
             self._logger_provider.get_logger(
                 self.config.service_name
             ).emit(
-                timestamp=int(record.timestamp.timestamp() * 1e9),  # nanoseconds
+                timestamp=int(record.timestamp.timestamp() * 1e9),
                 observed_timestamp=time.time_ns(),
                 severity_number=severity_number,
                 severity_text=severity_text,
@@ -210,61 +200,30 @@ class OTelGrpcHandler(LogHandler):
             pass  # Don't let OTel errors break the application
 
     def send_trace(self, event: TraceEvent) -> None:
-        """Send trace event via OTLP.
+        """Handle trace event - NO-OP.
+
+        Spans are created by decorators using OTel tracer directly.
+        This method exists only for interface compatibility.
 
         Args:
-            event: TraceEvent to send.
+            event: TraceEvent (ignored).
         """
-        if not self._initialized or not self._tracer:
-            return
-
-        try:
-            from opentelemetry.trace import SpanKind, Status, StatusCode
-
-            event_name = event.name
-            attributes = event.attributes
-
-            # Flatten nested attributes for OTel
-            flat_attrs = {}
-            for k, v in attributes.items():
-                if isinstance(v, (str, int, float, bool)):
-                    flat_attrs[k] = v
-                elif v is not None:
-                    flat_attrs[k] = str(v)
-
-            # Create span for the trace event
-            with self._tracer.start_as_current_span(
-                name=event_name,
-                kind=SpanKind.INTERNAL,
-                attributes=flat_attrs
-            ) as span:
-                if "error" in event_name.lower():
-                    error_msg = attributes.get("error_message", "Unknown error")
-                    span.set_status(Status(StatusCode.ERROR, str(error_msg)))
-                else:
-                    span.set_status(Status(StatusCode.OK))
-        except Exception:
-            pass
+        # Spans are created by decorators, not here
+        pass
 
     def flush(self) -> None:
-        """Force flush exporters."""
-        if self._initialized:
+        """Force flush log exporter."""
+        if self._initialized and self._logger_provider:
             try:
-                if hasattr(self, '_trace_provider'):
-                    self._trace_provider.force_flush()
-                if hasattr(self, '_logger_provider'):
-                    self._logger_provider.force_flush()
+                self._logger_provider.force_flush()
             except Exception:
                 pass
 
     def close(self) -> None:
-        """Shutdown exporters."""
-        if self._initialized:
+        """Shutdown log exporter."""
+        if self._initialized and self._logger_provider:
             try:
-                if hasattr(self, '_trace_provider'):
-                    self._trace_provider.shutdown()
-                if hasattr(self, '_logger_provider'):
-                    self._logger_provider.shutdown()
+                self._logger_provider.shutdown()
             except Exception:
                 pass
             self._initialized = False

@@ -153,13 +153,13 @@ class D:
 # LOG RECORD SCHEMA - Fields with ES types
 # =============================================================================
 LOG_RECORD_FIELDS: Dict[str, FieldDef] = {
-    # Core identity fields
+    # Core identity fields - OTel standard format
     F.TIMESTAMP: FieldDef(F.TIMESTAMP, ESType.DATE, "When the event occurred (UTC)", required=True),
-    F.TRACE_ID: FieldDef(F.TRACE_ID, ESType.KEYWORD, "Correlation ID for the entire trace", required=True),
-    F.SPAN_ID: FieldDef(F.SPAN_ID, ESType.KEYWORD, "Unique identifier for this span", required=True),
-    F.PARENT_SPAN_ID: FieldDef(F.PARENT_SPAN_ID, ESType.KEYWORD, "Parent span ID (None for root)"),
-    F.SESSION_ID: FieldDef(F.SESSION_ID, ESType.KEYWORD, "Session identifier"),
-    F.REQUEST_ID: FieldDef(F.REQUEST_ID, ESType.KEYWORD, "Request identifier"),
+    F.TRACE_ID: FieldDef(F.TRACE_ID, ESType.KEYWORD, "OTel trace ID (32 hex chars, 128-bit)", required=True),
+    F.SPAN_ID: FieldDef(F.SPAN_ID, ESType.KEYWORD, "OTel span ID (16 hex chars, 64-bit)", required=True),
+    F.PARENT_SPAN_ID: FieldDef(F.PARENT_SPAN_ID, ESType.KEYWORD, "Parent span ID (None for root, 16 hex chars)"),
+    F.SESSION_ID: FieldDef(F.SESSION_ID, ESType.KEYWORD, "Session identifier (sess_ prefix)"),
+    F.REQUEST_ID: FieldDef(F.REQUEST_ID, ESType.KEYWORD, "Request identifier (req_ prefix)"),
 
     # Event classification
     F.LEVEL: FieldDef(F.LEVEL, ESType.KEYWORD, "Log level (DEBUG, INFO, WARNING, ERROR) - metadata only!", required=True),
@@ -192,14 +192,16 @@ LOG_RECORD_FIELDS: Dict[str, FieldDef] = {
 
 # =============================================================================
 # TRACE EVENT SCHEMA - Fields with ES types
+# Note: Spans are now created by OTel tracer, not stored in ES directly.
+# This schema is kept for reference and any custom span events.
 # =============================================================================
 TRACE_EVENT_FIELDS: Dict[str, FieldDef] = {
     F.TYPE: FieldDef(F.TYPE, ESType.KEYWORD, "Record type discriminator (trace_event)"),
     F.NAME: FieldDef(F.NAME, ESType.KEYWORD, "Event name (e.g., tool.triggered)", required=True),
     F.TIMESTAMP: FieldDef(F.TIMESTAMP, ESType.DATE, "When the event occurred", required=True),
-    F.TRACE_ID: FieldDef(F.TRACE_ID, ESType.KEYWORD, "Trace correlation ID", required=True),
-    F.SPAN_ID: FieldDef(F.SPAN_ID, ESType.KEYWORD, "Span identifier", required=True),
-    F.PARENT_SPAN_ID: FieldDef(F.PARENT_SPAN_ID, ESType.KEYWORD, "Parent span ID"),
+    F.TRACE_ID: FieldDef(F.TRACE_ID, ESType.KEYWORD, "OTel trace ID (32 hex chars)", required=True),
+    F.SPAN_ID: FieldDef(F.SPAN_ID, ESType.KEYWORD, "OTel span ID (16 hex chars)", required=True),
+    F.PARENT_SPAN_ID: FieldDef(F.PARENT_SPAN_ID, ESType.KEYWORD, "Parent span ID (16 hex chars)"),
 
     # Attributes (typed fields within dynamic object)
     F.ATTRIBUTES: FieldDef(F.ATTRIBUTES, ESType.OBJECT, "Span attributes", nested_fields={

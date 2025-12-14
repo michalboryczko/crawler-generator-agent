@@ -1,13 +1,14 @@
 #!/usr/bin/env python3
 """Main entry point for the web crawler agent.
 
-This module uses the new observability system for structured logging.
+This module uses the observability system for structured logging and tracing.
 The observability decorators handle automatic instrumentation of all components.
 """
 import argparse
 import logging
 import shutil
 import sys
+import os
 
 # Load .env file before any other imports that use os.environ
 from dotenv import load_dotenv
@@ -19,15 +20,14 @@ from src.core.browser import BrowserSession
 from src.tools.memory import MemoryStore
 from src.agents.main_agent import MainAgent
 
-# New observability imports
-import os
+# Observability imports
 from src.observability.config import (
     ObservabilityConfig,
     initialize_observability,
     shutdown,
 )
 from src.observability.handlers import OTelGrpcHandler, OTelConfig
-from src.observability.context import get_or_create_context
+from src.observability.context import get_or_create_context, set_context
 from src.observability.emitters import emit_info, emit_warning, emit_error
 
 
@@ -63,18 +63,33 @@ def main() -> int:
     setup_logging(args.log_level)
     legacy_logger = logging.getLogger(__name__)
 
-    # Initialize the new observability system
-    # Create handler from environment config (dependency injection)
-    otel_handler = OTelGrpcHandler(OTelConfig(
-        endpoint=os.environ.get("OTEL_ENDPOINT", "localhost:4317"),
-        insecure=os.environ.get("OTEL_INSECURE", "true").lower() == "true",
-        service_name=os.environ.get("SERVICE_NAME", "crawler-agent"),
-    ))
-    config = ObservabilityConfig.from_env()
-    initialize_observability(handler=otel_handler, config=config)
+    # Get config from environment
+    otel_endpoint = os.environ.get("OTEL_ENDPOINT", "localhost:4317")
+    otel_insecure = os.environ.get("OTEL_INSECURE", "true").lower() == "true"
+    service_name = os.environ.get("SERVICE_NAME", "crawler-agent")
 
-    # Create root context for the session
+    # Initialize the observability system
+    # Create handler for logs (traces are handled by tracer in config)
+    otel_handler = OTelGrpcHandler(OTelConfig(
+        endpoint=otel_endpoint,
+        insecure=otel_insecure,
+        service_name=service_name,
+    ))
+
+    # Create config with same settings
+    obs_config = ObservabilityConfig(
+        service_name=service_name,
+        otel_endpoint=otel_endpoint,
+        otel_insecure=otel_insecure,
+    )
+
+    # Initialize observability (this also initializes tracer)
+    initialize_observability(handler=otel_handler, config=obs_config)
+
+    # Create root context for the session (business metadata only)
+    # OTel spans will be created by decorators
     ctx = get_or_create_context("application")
+    set_context(ctx)
 
     # Log application start
     emit_info(

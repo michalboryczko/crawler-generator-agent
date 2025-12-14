@@ -1,11 +1,14 @@
-"""Log and trace event emitters.
+"""Log emitters for observability.
 
-This module provides the core emission functions for observability.
+This module provides the core emission functions for logs.
 All emissions are UNCONDITIONAL - level is metadata only, not a filter.
 
-Emitters send data to:
-1. LogHandler (abstract backend - OTel, etc.)
+Logs are sent to:
+1. LogHandler (OTel backend → Elasticsearch)
 2. ConsoleOutput (optional, for development)
+
+OTel spans are created by decorators in decorators.py - NOT here.
+Logs are correlated to spans via trace_id/span_id extracted from OTel span context.
 """
 
 from datetime import datetime, timezone
@@ -13,7 +16,7 @@ from typing import Any, Dict, Optional, List
 
 from .context import ObservabilityContext
 from .config import get_handler, get_console_output, is_initialized, get_config
-from .schema import LogRecord, TraceEvent, F, D, M
+from .schema import LogRecord, F, D, M
 from .serializers import safe_serialize, redact_sensitive
 
 
@@ -30,10 +33,13 @@ def emit_log(
     Level is metadata only - never used for filtering.
     All logs are always emitted.
 
+    trace_id/span_id are automatically extracted from the OTel span
+    attached to the ObservabilityContext.
+
     Args:
         level: Log level (DEBUG, INFO, WARNING, ERROR) - metadata only!
         event: Event type (e.g., "tool.input", "agent.error")
-        ctx: Current observability context
+        ctx: Current observability context (hybrid: OTel span + business metadata)
         data: Event data payload
         metrics: Optional metrics dict
         tags: Optional tags list
@@ -59,24 +65,25 @@ def emit_log(
     else:
         data = safe_serialize(data)
 
+    # Create LogRecord - trace_id/span_id come from OTel span via context properties
     record = LogRecord(
         timestamp=datetime.now(timezone.utc),
-        trace_id=ctx.trace_id,
-        span_id=ctx.span_id,
-        parent_span_id=ctx.parent_span_id,
-        session_id=ctx.session_id,
-        request_id=ctx.request_id,
+        trace_id=ctx.trace_id,           # From OTel span context
+        span_id=ctx.span_id,             # From OTel span context
+        parent_span_id=ctx.parent_span_id,  # From OTel span context
+        session_id=ctx.session_id,       # Business metadata (we manage)
+        request_id=ctx.request_id,       # Business metadata (we manage)
         level=level,
         event=event,
         component_type=component_type,
         component_name=component_name,
-        triggered_by=ctx.triggered_by,
+        triggered_by=ctx.triggered_by,   # Derived from component_stack
         data=data,
         metrics=metrics or {},
         tags=tags or []
     )
 
-    # Send to handler (OTel backend)
+    # Send to handler (OTel backend → Elasticsearch)
     handler = get_handler()
     if handler:
         try:
@@ -93,60 +100,6 @@ def emit_log(
             pass
 
 
-def emit_trace_event(
-    event: str,
-    ctx: ObservabilityContext,
-    attributes: Dict[str, Any]
-) -> None:
-    """Emit a trace event (span event).
-
-    Creates an OTel-compatible span event with proper hierarchy.
-
-    Args:
-        event: Event name (e.g., "tool.triggered")
-        ctx: Current observability context
-        attributes: Event attributes
-    """
-    if not is_initialized():
-        return
-
-    # Serialize attributes
-    serialized_attrs = safe_serialize(attributes)
-
-    # Apply PII redaction if configured
-    config = get_config()
-    if config and config.redact_pii:
-        serialized_attrs = redact_sensitive(serialized_attrs)
-
-    trace_event = TraceEvent(
-        name=event,
-        timestamp=datetime.now(timezone.utc),
-        trace_id=ctx.trace_id,
-        span_id=ctx.span_id,
-        parent_span_id=ctx.parent_span_id,
-        attributes={
-            **serialized_attrs,
-            F.TRIGGERED_BY: ctx.triggered_by
-        }
-    )
-
-    # Send to handler (OTel backend)
-    handler = get_handler()
-    if handler:
-        try:
-            handler.send_trace(trace_event)
-        except Exception:
-            pass
-
-    # Also write to console if enabled (for dev)
-    console = get_console_output()
-    if console and hasattr(console, 'write_trace_event'):
-        try:
-            console.write_trace_event(trace_event.to_dict())
-        except Exception:
-            pass
-
-
 def emit_debug(
     event: str,
     ctx: ObservabilityContext,
@@ -154,15 +107,7 @@ def emit_debug(
     metrics: Optional[Dict[str, Any]] = None,
     tags: Optional[List[str]] = None
 ) -> None:
-    """Convenience function to emit DEBUG level log.
-    
-    Args:
-        event: Event type
-        ctx: Observability context
-        data: Event data
-        metrics: Optional metrics
-        tags: Optional tags
-    """
+    """Convenience function to emit DEBUG level log."""
     emit_log("DEBUG", event, ctx, data, metrics, tags)
 
 
@@ -173,15 +118,7 @@ def emit_info(
     metrics: Optional[Dict[str, Any]] = None,
     tags: Optional[List[str]] = None
 ) -> None:
-    """Convenience function to emit INFO level log.
-    
-    Args:
-        event: Event type
-        ctx: Observability context
-        data: Event data
-        metrics: Optional metrics
-        tags: Optional tags
-    """
+    """Convenience function to emit INFO level log."""
     emit_log("INFO", event, ctx, data, metrics, tags)
 
 
@@ -192,15 +129,7 @@ def emit_warning(
     metrics: Optional[Dict[str, Any]] = None,
     tags: Optional[List[str]] = None
 ) -> None:
-    """Convenience function to emit WARNING level log.
-    
-    Args:
-        event: Event type
-        ctx: Observability context
-        data: Event data
-        metrics: Optional metrics
-        tags: Optional tags
-    """
+    """Convenience function to emit WARNING level log."""
     emit_log("WARNING", event, ctx, data, metrics, tags)
 
 
@@ -211,15 +140,7 @@ def emit_error(
     metrics: Optional[Dict[str, Any]] = None,
     tags: Optional[List[str]] = None
 ) -> None:
-    """Convenience function to emit ERROR level log.
-    
-    Args:
-        event: Event type
-        ctx: Observability context
-        data: Event data
-        metrics: Optional metrics
-        tags: Optional tags
-    """
+    """Convenience function to emit ERROR level log."""
     emit_log("ERROR", event, ctx, data, metrics, tags)
 
 
@@ -229,9 +150,9 @@ def emit_component_start(
     ctx: ObservabilityContext,
     input_data: Dict[str, Any]
 ) -> None:
-    """Emit component start events (log + trace).
+    """Emit component start log.
 
-    Standard pattern for component entry points.
+    OTel span is created by the decorator - this only emits the log.
 
     Args:
         component_type: Type of component (agent, tool, llm_client)
@@ -239,7 +160,6 @@ def emit_component_start(
         ctx: Observability context
         input_data: Input data for the component
     """
-    # Build component name key dynamically (e.g., "tool_name", "agent_name")
     name_key = f"{component_type}_name"
 
     emit_log(
@@ -253,11 +173,6 @@ def emit_component_start(
         }
     )
 
-    emit_trace_event(f"{component_type}.triggered", ctx, {
-        name_key: component_name,
-        F.TRIGGERED_BY: ctx.triggered_by
-    })
-
 
 def emit_component_end(
     component_type: str,
@@ -267,9 +182,9 @@ def emit_component_end(
     duration_ms: float,
     metrics: Optional[Dict[str, Any]] = None
 ) -> None:
-    """Emit component completion events (log + trace).
+    """Emit component completion log.
 
-    Standard pattern for component completion.
+    OTel span status is set by the decorator - this only emits the log.
 
     Args:
         component_type: Type of component
@@ -297,12 +212,6 @@ def emit_component_end(
         metrics=all_metrics
     )
 
-    emit_trace_event(f"{component_type}.execution_completed", ctx, {
-        name_key: component_name,
-        M.DURATION_MS: duration_ms,
-        **(metrics or {})
-    })
-
 
 def emit_component_error(
     component_type: str,
@@ -312,9 +221,9 @@ def emit_component_error(
     input_data: Dict[str, Any],
     duration_ms: float
 ) -> None:
-    """Emit component error events (log + trace).
+    """Emit component error log.
 
-    Standard pattern for component errors.
+    OTel span error status is set by the decorator - this only emits the log.
 
     Args:
         component_type: Type of component
@@ -345,9 +254,3 @@ def emit_component_error(
         data=error_data,
         metrics={M.DURATION_MS: duration_ms}
     )
-
-    emit_trace_event(f"{component_type}.error", ctx, {
-        name_key: component_name,
-        D.ERROR_TYPE: type(exception).__name__,
-        D.ERROR_MESSAGE: str(exception)
-    })

@@ -7,6 +7,7 @@ All events are always emitted.
 Architecture:
     - Config is just data, no knowledge of handler implementations
     - Handler is injected via initialize_observability()
+    - Tracer is initialized for OTel span creation
     - ConsoleOutput is optional for development
 """
 
@@ -28,11 +29,17 @@ class ObservabilityConfig:
 
     Attributes:
         service_name: Service name for logs/traces identification
+        otel_endpoint: OTel Collector endpoint (host:port)
+        otel_insecure: Whether to use insecure connection to collector
         console_enabled: Whether to output to console (dev only)
         console_color: Whether to use colored console output
         redact_pii: Whether to redact PII from logs
     """
     service_name: str = "crawler-agent"
+
+    # OTel Collector settings
+    otel_endpoint: str = "localhost:4317"
+    otel_insecure: bool = True
 
     # Console output (for development)
     console_enabled: bool = True
@@ -59,6 +66,8 @@ class ObservabilityConfig:
 
         Environment Variables:
             SERVICE_NAME: Service name for logs/traces
+            OTEL_ENDPOINT: OTel Collector endpoint (default: localhost:4317)
+            OTEL_INSECURE: Use insecure connection (default: true)
             LOG_CONSOLE: Enable console output (default: true)
             LOG_COLOR: Enable colored console (default: true)
             LOG_REDACT_PII: Enable PII redaction (default: true)
@@ -68,10 +77,13 @@ class ObservabilityConfig:
         """
         return cls(
             service_name=os.environ.get("SERVICE_NAME", "crawler-agent"),
+            otel_endpoint=os.environ.get("OTEL_ENDPOINT", "localhost:4317"),
+            otel_insecure=os.environ.get("OTEL_INSECURE", "true").lower() == "true",
             console_enabled=os.environ.get("LOG_CONSOLE", "true").lower() == "true",
             console_color=os.environ.get("LOG_COLOR", "true").lower() == "true",
             redact_pii=os.environ.get("LOG_REDACT_PII", "true").lower() == "true",
         )
+
 
 # Global state
 _handler: Optional['LogHandler'] = None
@@ -86,6 +98,11 @@ def initialize_observability(
 ) -> None:
     """Initialize the observability system.
 
+    This initializes:
+    1. OTel tracer (for span creation in decorators)
+    2. Log handler (for log emission)
+    3. Console output (optional)
+
     Args:
         handler: LogHandler instance (injected by caller).
         config: Configuration to use. Loads from env if None.
@@ -96,6 +113,15 @@ def initialize_observability(
         config = ObservabilityConfig.from_env()
 
     _config = config
+
+    # Initialize OTel tracer for span creation
+    from .tracer import init_tracer
+    init_tracer(
+        endpoint=config.otel_endpoint,
+        service_name=config.service_name,
+        insecure=config.otel_insecure
+    )
+
     _handler = handler
     _console_output = config.create_console_output()
     _initialized = True
@@ -124,6 +150,10 @@ def is_initialized() -> bool:
 def shutdown() -> None:
     """Shutdown the observability system."""
     global _handler, _console_output, _initialized, _config
+
+    # Shutdown tracer
+    from .tracer import shutdown_tracer
+    shutdown_tracer()
 
     if _handler:
         try:
