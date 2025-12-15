@@ -241,6 +241,53 @@ def _prepare_input_data(args: tuple, kwargs: dict, func: Callable) -> dict:
         }
 
 
+def _prepare_llm_input_data(args: tuple, kwargs: dict) -> dict:
+    """Prepare simplified LLM input data for logging.
+
+    Only logs essential fields:
+    - messages: The conversation messages
+    - tools: Just tool names (not full schemas)
+    - extra_params: Any additional kwargs
+
+    Args:
+        args: Positional arguments (self, messages, tools, ...)
+        kwargs: Keyword arguments
+
+    Returns:
+        Simplified input data for logging
+    """
+    result = {}
+
+    # Extract messages (first positional arg after self)
+    if len(args) > 1:
+        messages = args[1]
+        result["messages"] = safe_serialize(messages)
+
+    # Extract tools (second positional arg after self) - just names
+    if len(args) > 2 and args[2]:
+        tools = args[2]
+        if isinstance(tools, (list, tuple)):
+            result["tools"] = [
+                getattr(t, 'name', str(t)) for t in tools
+            ]
+
+    # Include tool_choice if provided
+    if len(args) > 3:
+        result["tool_choice"] = args[3]
+    if "tool_choice" in kwargs:
+        result["tool_choice"] = kwargs["tool_choice"]
+
+    # Collect extra params from kwargs (excluding internal ones)
+    extra_params = {
+        k: v for k, v in kwargs.items()
+        if k not in ('tool_choice', 'parallel_tool_calls')
+    }
+    if extra_params:
+        result["extra_params"] = safe_serialize(extra_params)
+
+    return result
+
+
 def _get_span_name(component_type: str, name: str) -> str:
     """Generate OTel span name.
 
@@ -285,7 +332,11 @@ def _execute_with_tracing_sync(
     parent_ctx = get_or_create_context(name)
 
     # Prepare input data before starting span
-    input_data = _prepare_input_data(args, kwargs, func)
+    # Use simplified format for LLM calls
+    if component_type == "llm":
+        input_data = _prepare_llm_input_data(args, kwargs)
+    else:
+        input_data = _prepare_input_data(args, kwargs, func)
 
     # Start OTel span - this creates proper parent-child relationship
     with tracer.start_as_current_span(
@@ -391,7 +442,11 @@ async def _execute_with_tracing_async(
     parent_ctx = get_or_create_context(name)
 
     # Prepare input data before starting span
-    input_data = _prepare_input_data(args, kwargs, func)
+    # Use simplified format for LLM calls
+    if component_type == "llm":
+        input_data = _prepare_llm_input_data(args, kwargs)
+    else:
+        input_data = _prepare_input_data(args, kwargs, func)
 
     # Start OTel span - this creates proper parent-child relationship
     with tracer.start_as_current_span(
@@ -507,6 +562,9 @@ def _extract_llm_metrics(result: Any, kwargs: dict) -> dict:
             metrics["llm.response.finish_reason"] = result["finish_reason"]
         if "tool_called" in result:
             metrics["llm.response.tool_called"] = result["tool_called"]
+        # Extract tool_calls with full details (id, name, arguments)
+        if "tool_calls" in result and result["tool_calls"]:
+            metrics["llm.response.tool_calls"] = result["tool_calls"]
 
     # Model info - check result first (from LLMClient.chat), then kwargs, then fallback
     if isinstance(result, dict) and "model" in result:
