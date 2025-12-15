@@ -10,7 +10,6 @@ import uuid
 from src.observability.serializers import (
     safe_serialize,
     truncate_for_display,
-    redact_sensitive,
     extract_error_info,
 )
 
@@ -165,47 +164,6 @@ class TestTruncateForDisplay:
         result = truncate_for_display(data, max_length=10)
         
         assert "..." in result["key"]
-
-
-class TestRedactSensitive:
-    """Tests for redact_sensitive function."""
-
-    def test_redacts_password(self):
-        """Test that password fields are redacted."""
-        data = {"username": "alice", "password": "secret123"}
-        result = redact_sensitive(data)
-        
-        assert result["username"] == "alice"
-        assert result["password"] == "[REDACTED]"
-
-    def test_redacts_api_key(self):
-        """Test that API key fields are redacted."""
-        data = {"api_key": "sk-xxx", "API_KEY": "abc123"}
-        result = redact_sensitive(data)
-        
-        assert result["api_key"] == "[REDACTED]"
-        assert result["API_KEY"] == "[REDACTED]"
-
-    def test_redacts_nested(self):
-        """Test that nested sensitive data is redacted."""
-        data = {
-            "config": {
-                "token": "secret-token",
-                "endpoint": "https://api.example.com"
-            }
-        }
-        result = redact_sensitive(data)
-        
-        assert result["config"]["token"] == "[REDACTED]"
-        assert result["config"]["endpoint"] == "https://api.example.com"
-
-    def test_custom_patterns(self):
-        """Test custom redaction patterns."""
-        data = {"ssn": "123-45-6789", "name": "Alice"}
-        result = redact_sensitive(data, patterns=["ssn"])
-        
-        assert result["ssn"] == "[REDACTED]"
-        assert result["name"] == "Alice"
 
 
 class TestExtractErrorInfo:

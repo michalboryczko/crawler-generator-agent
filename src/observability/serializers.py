@@ -127,38 +127,6 @@ def truncate_for_display(obj: Any, max_length: int = 1000) -> Any:
     return obj
 
 
-def redact_sensitive(obj: Any, patterns: list = None) -> Any:
-    """Redact sensitive data from objects.
-    
-    Args:
-        obj: Object to redact
-        patterns: List of key patterns to redact (default: password, secret, token, key, auth)
-        
-    Returns:
-        Object with sensitive values redacted
-    """
-    if patterns is None:
-        patterns = ['password', 'secret', 'token', 'key', 'auth', 'credential', 'api_key', 'apikey']
-    
-    def should_redact(key: str) -> bool:
-        key_lower = key.lower()
-        return any(pattern in key_lower for pattern in patterns)
-    
-    if isinstance(obj, dict):
-        result = {}
-        for k, v in obj.items():
-            if isinstance(k, str) and should_redact(k):
-                result[k] = "[REDACTED]"
-            else:
-                result[k] = redact_sensitive(v, patterns)
-        return result
-    
-    if isinstance(obj, (list, tuple)):
-        return [redact_sensitive(item, patterns) for item in obj]
-    
-    return obj
-
-
 def extract_error_info(exception: Exception) -> dict:
     """Extract detailed error information from an exception.
     

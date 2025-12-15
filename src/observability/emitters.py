@@ -15,9 +15,9 @@ from datetime import datetime, timezone
 from typing import Any, Dict, Optional, List
 
 from .context import ObservabilityContext
-from .config import get_handler, get_console_output, is_initialized, get_config
+from .config import get_handler, get_console_output, is_initialized
 from .schema import LogRecord, F, D, M
-from .serializers import safe_serialize, redact_sensitive
+from .serializers import safe_serialize
 
 
 def emit_log(
@@ -58,12 +58,8 @@ def emit_log(
         (ctx.component_stack[-1] if ctx.component_stack else "unknown")
     )
 
-    # Apply PII redaction if configured
-    config = get_config()
-    if config and config.redact_pii:
-        data = redact_sensitive(safe_serialize(data))
-    else:
-        data = safe_serialize(data)
+    # Serialize data for logging (no redaction - log everything as-is)
+    data = safe_serialize(data)
 
     # Create LogRecord - trace_id/span_id come from OTel span via context properties
     record = LogRecord(

@@ -72,7 +72,7 @@ from .emitters import (
     emit_component_error,
 )
 from .schema import LogRecord, TraceEvent, ComponentType
-from .serializers import safe_serialize, redact_sensitive, extract_error_info
+from .serializers import safe_serialize, extract_error_info
 from .outputs import LogOutput, ConsoleOutput, NullOutput
 from .handlers import (
     LogHandler,
@@ -127,7 +127,6 @@ __all__ = [
     "ComponentType",
     # Serializers
     "safe_serialize",
-    "redact_sensitive",
     "extract_error_info",
     # Outputs (local)
     "LogOutput",
