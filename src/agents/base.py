@@ -60,7 +60,7 @@ class BaseAgent:
         self.tools = tools or []
         self._tool_map = {t.name: t for t in self.tools}
 
-    @traced_agent(name="base_agent")
+    @traced_agent()  # Uses self.name dynamically
     def run(self, task: str) -> dict[str, Any]:
         """Execute agent task with tool loop.
 

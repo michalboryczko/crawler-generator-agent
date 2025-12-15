@@ -40,7 +40,37 @@ from .serializers import safe_serialize
 F = TypeVar('F', bound=Callable[..., Any])
 
 
-def traced_tool(name: str) -> Callable[[F], F]:
+def _get_effective_name(
+    provided_name: str | None,
+    args: tuple,
+    func: Callable
+) -> str:
+    """Get effective component name, checking self.name for methods.
+
+    Priority:
+    1. If self.name exists (for class methods), use it
+    2. If provided_name is given, use it
+    3. Fall back to function name
+
+    Args:
+        provided_name: Name explicitly provided to decorator
+        args: Function arguments (first may be self)
+        func: The decorated function
+
+    Returns:
+        Effective name to use for tracing
+    """
+    # Check if this is a method call with self.name
+    if args and hasattr(args[0], 'name'):
+        instance_name = getattr(args[0], 'name', None)
+        if instance_name:
+            return instance_name
+
+    # Use provided name or function name
+    return provided_name or func.__name__
+
+
+def traced_tool(name: str | None = None) -> Callable[[F], F]:
     """Decorator for tool functions/methods.
 
     Creates a child OTel span under the current active span.
@@ -55,28 +85,36 @@ def traced_tool(name: str) -> Callable[[F], F]:
     - Re-raises exceptions after logging
 
     Args:
-        name: Tool name for identification (e.g., "NavigateTool", "MemoryRead")
+        name: Tool name for identification. If None, uses self.name from the
+              instance (for class methods) or the function name as fallback.
 
     Usage:
         @traced_tool(name="WebSearch")
         def search(query: str, max_results: int = 10) -> dict:
             return {"results": [...]}
+
+        # Or let it auto-detect from self.name:
+        @traced_tool()
+        def execute(self, **kwargs) -> dict:
+            ...  # Uses self.name
     """
     def decorator(func: F) -> F:
         if asyncio.iscoroutinefunction(func):
             @wraps(func)
             async def async_wrapper(*args, **kwargs):
-                return await _execute_with_tracing_async(func, name, "tool", args, kwargs)
+                effective_name = _get_effective_name(name, args, func)
+                return await _execute_with_tracing_async(func, effective_name, "tool", args, kwargs)
             return async_wrapper
         else:
             @wraps(func)
             def sync_wrapper(*args, **kwargs):
-                return _execute_with_tracing_sync(func, name, "tool", args, kwargs)
+                effective_name = _get_effective_name(name, args, func)
+                return _execute_with_tracing_sync(func, effective_name, "tool", args, kwargs)
             return sync_wrapper
     return decorator
 
 
-def traced_agent(name: str) -> Callable[[F], F]:
+def traced_agent(name: str | None = None) -> Callable[[F], F]:
     """Decorator for agent run methods.
 
     Creates an OTel span for the agent execution.
@@ -90,18 +128,21 @@ def traced_agent(name: str) -> Callable[[F], F]:
     - Emits trace events for agent lifecycle
 
     Args:
-        name: Agent name for identification (e.g., "BrowserAgent", "MainAgent")
+        name: Agent name for identification. If None, uses self.name from the
+              instance (for class methods) or the function name as fallback.
     """
     def decorator(func: F) -> F:
         if asyncio.iscoroutinefunction(func):
             @wraps(func)
             async def async_wrapper(*args, **kwargs):
-                return await _execute_with_tracing_async(func, name, "agent", args, kwargs)
+                effective_name = _get_effective_name(name, args, func)
+                return await _execute_with_tracing_async(func, effective_name, "agent", args, kwargs)
             return async_wrapper
         else:
             @wraps(func)
             def sync_wrapper(*args, **kwargs):
-                return _execute_with_tracing_sync(func, name, "agent", args, kwargs)
+                effective_name = _get_effective_name(name, args, func)
+                return _execute_with_tracing_sync(func, effective_name, "agent", args, kwargs)
             return sync_wrapper
     return decorator
 
@@ -118,6 +159,9 @@ def traced_llm_client(provider: str) -> Callable[[F], F]:
     - Logs llm.error with stack trace on exception
     - Calculates and logs token usage and cost metrics
 
+    The span name includes component_name if available on the LLM client instance,
+    e.g., "openai:main_agent" instead of just "openai".
+
     Args:
         provider: LLM provider name (e.g., "openai", "anthropic")
     """
@@ -125,14 +169,33 @@ def traced_llm_client(provider: str) -> Callable[[F], F]:
         if asyncio.iscoroutinefunction(func):
             @wraps(func)
             async def async_wrapper(*args, **kwargs):
-                return await _execute_with_tracing_async(func, provider, "llm", args, kwargs)
+                effective_name = _get_llm_effective_name(provider, args)
+                return await _execute_with_tracing_async(func, effective_name, "llm", args, kwargs)
             return async_wrapper
         else:
             @wraps(func)
             def sync_wrapper(*args, **kwargs):
-                return _execute_with_tracing_sync(func, provider, "llm", args, kwargs)
+                effective_name = _get_llm_effective_name(provider, args)
+                return _execute_with_tracing_sync(func, effective_name, "llm", args, kwargs)
             return sync_wrapper
     return decorator
+
+
+def _get_llm_effective_name(provider: str, args: tuple) -> str:
+    """Get effective name for LLM client, including component context.
+
+    Args:
+        provider: Base provider name (e.g., "openai")
+        args: Function arguments (first may be self with component_name)
+
+    Returns:
+        Name like "openai:main_agent" or just "openai"
+    """
+    if args and hasattr(args[0], 'component_name'):
+        component_name = getattr(args[0], 'component_name', None)
+        if component_name:
+            return f"{provider}:{component_name}"
+    return provider
 
 
 def _prepare_input_data(args: tuple, kwargs: dict, func: Callable) -> dict:
