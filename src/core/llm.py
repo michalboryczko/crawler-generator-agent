@@ -67,6 +67,15 @@ MODEL_COSTS: dict[str, dict[str, float]] = {
     "claude-3-haiku-20240307": {"input": 0.00025, "output": 0.00125},
     "claude-3-5-sonnet-20241022": {"input": 0.003, "output": 0.015},
 
+    # Kimi/Moonshot models (pricing per 1K tokens, converted from per 1M)
+    # Source: https://platform.moonshot.cn/docs/pricing
+    # Using cache miss pricing for input
+    "kimi-k2-0905-preview": {"input": 0.0006, "output": 0.0025},
+    "kimi-k2-0711-preview": {"input": 0.0006, "output": 0.0025},
+    "kimi-k2-turbo-preview": {"input": 0.00115, "output": 0.008},
+    "kimi-k2-thinking": {"input": 0.0006, "output": 0.0025},
+    "kimi-k2-thinking-turbo": {"input": 0.00115, "output": 0.008},
+
     # Embeddings
     "text-embedding-3-small": {"input": 0.00002, "output": 0.0},
     "text-embedding-3-large": {"input": 0.00013, "output": 0.0},
