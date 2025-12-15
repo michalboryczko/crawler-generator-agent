@@ -199,6 +199,9 @@ class LLMClient:
         result = self._parse_response(response)
 
         # Add metrics to result for decorator to extract
+        # Always include model for observability decorator
+        result["model"] = self.model
+
         if response.usage:
             result["tokens_input"] = response.usage.prompt_tokens
             result["tokens_output"] = response.usage.completion_tokens

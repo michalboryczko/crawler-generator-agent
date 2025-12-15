@@ -445,8 +445,12 @@ def _extract_llm_metrics(result: Any, kwargs: dict) -> dict:
         if "tool_called" in result:
             metrics["llm.response.tool_called"] = result["tool_called"]
 
-    # Model info from kwargs
-    metrics["llm.model"] = kwargs.get("model", "unknown")
+    # Model info - check result first (from LLMClient.chat), then kwargs, then fallback
+    if isinstance(result, dict) and "model" in result:
+        metrics["llm.model"] = result["model"]
+    else:
+        metrics["llm.model"] = kwargs.get("model", "unknown")
+
     if kwargs.get("temperature") is not None:
         metrics["llm.temperature"] = kwargs["temperature"]
     if kwargs.get("max_tokens") is not None:
