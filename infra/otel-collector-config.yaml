@@ -1,0 +1,49 @@
+receivers:
+  # OTLP receiver for gRPC connections from the app
+  otlp:
+    protocols:
+      grpc:
+        endpoint: 0.0.0.0:4317
+      http:
+        endpoint: 0.0.0.0:4318
+
+processors:
+  batch:
+    timeout: 1s
+    send_batch_size: 1024
+
+  # Add service name if not present
+  resource:
+    attributes:
+      - key: service.name
+        value: crawler-agent
+        action: upsert
+
+exporters:
+  # Export logs to Elasticsearch
+  elasticsearch/logs:
+    endpoints: ["http://elasticsearch:9200"]
+    logs_index: crawler-logs
+
+  # Export traces to Elasticsearch
+  elasticsearch/traces:
+    endpoints: ["http://elasticsearch:9200"]
+    traces_index: crawler-traces
+
+  # Debug logging (optional, disable in production)
+  debug:
+    verbosity: detailed
+
+service:
+  pipelines:
+    # Logs pipeline: OTLP -> ES
+    logs:
+      receivers: [otlp]
+      processors: [batch, resource]
+      exporters: [elasticsearch/logs, debug]
+
+    # Traces pipeline: OTLP -> ES
+    traces:
+      receivers: [otlp]
+      processors: [batch, resource]
+      exporters: [elasticsearch/traces, debug]

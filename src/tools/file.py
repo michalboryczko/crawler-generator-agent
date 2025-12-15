@@ -1,9 +1,14 @@
-"""File tool for reading and writing files in output directory."""
+"""File tool for reading and writing files in output directory.
+
+This module uses the new observability decorators for automatic logging.
+The @traced_tool decorator handles all tool instrumentation.
+"""
 import logging
 from pathlib import Path
 from typing import Any
 
 from .base import BaseTool
+from ..observability.decorators import traced_tool
 
 logger = logging.getLogger(__name__)
 
@@ -17,28 +22,27 @@ class FileCreateTool(BaseTool):
     def __init__(self, output_dir: Path):
         self.output_dir = output_dir
 
+    @traced_tool(name="file_create")
     def execute(self, filename: str, content: str) -> dict[str, Any]:
-        """Create a file with content."""
-        try:
-            filepath = self.output_dir / filename
-            # Ensure parent directories exist
-            filepath.parent.mkdir(parents=True, exist_ok=True)
+        """Create a file with content. Instrumented by @traced_tool."""
+        filepath = self.output_dir / filename
+        # Ensure parent directories exist
+        filepath.parent.mkdir(parents=True, exist_ok=True)
 
-            if filepath.exists():
-                return {
-                    "success": False,
-                    "error": f"File already exists: {filename}. Use file_replace to overwrite."
-                }
-
-            filepath.write_text(content, encoding="utf-8")
-            logger.info(f"Created file: {filepath}")
+        if filepath.exists():
             return {
-                "success": True,
-                "result": f"Created file: {filename}",
-                "path": str(filepath)
+                "success": False,
+                "error": f"File already exists: {filename}. Use file_replace to overwrite."
             }
-        except Exception as e:
-            return {"success": False, "error": str(e)}
+
+        filepath.write_text(content, encoding="utf-8")
+        logger.info(f"Created file: {filepath}")
+
+        return {
+            "success": True,
+            "result": f"Created file: {filename}",
+            "path": str(filepath)
+        }
 
     def get_parameters_schema(self) -> dict[str, Any]:
         return {
@@ -66,35 +70,34 @@ class FileReadTool(BaseTool):
     def __init__(self, output_dir: Path):
         self.output_dir = output_dir
 
+    @traced_tool(name="file_read")
     def execute(
         self,
         filename: str,
         head: int | None = None,
         tail: int | None = None
     ) -> dict[str, Any]:
-        """Read file content with optional head/tail."""
-        try:
-            filepath = self.output_dir / filename
+        """Read file content with optional head/tail. Instrumented by @traced_tool."""
+        filepath = self.output_dir / filename
 
-            if not filepath.exists():
-                return {"success": False, "error": f"File not found: {filename}"}
+        if not filepath.exists():
+            return {"success": False, "error": f"File not found: {filename}"}
 
-            content = filepath.read_text(encoding="utf-8")
-            lines = content.splitlines()
+        content = filepath.read_text(encoding="utf-8")
+        lines = content.splitlines()
+        total_lines = len(lines)
 
-            if head is not None:
-                lines = lines[:head]
-            elif tail is not None:
-                lines = lines[-tail:]
+        if head is not None:
+            lines = lines[:head]
+        elif tail is not None:
+            lines = lines[-tail:]
 
-            return {
-                "success": True,
-                "result": "\n".join(lines),
-                "total_lines": len(content.splitlines()),
-                "returned_lines": len(lines)
-            }
-        except Exception as e:
-            return {"success": False, "error": str(e)}
+        return {
+            "success": True,
+            "result": "\n".join(lines),
+            "total_lines": total_lines,
+            "returned_lines": len(lines)
+        }
 
     def get_parameters_schema(self) -> dict[str, Any]:
         return {
@@ -126,27 +129,26 @@ class FileAppendTool(BaseTool):
     def __init__(self, output_dir: Path):
         self.output_dir = output_dir
 
+    @traced_tool(name="file_append")
     def execute(self, filename: str, content: str) -> dict[str, Any]:
-        """Append content to file."""
-        try:
-            filepath = self.output_dir / filename
+        """Append content to file. Instrumented by @traced_tool."""
+        filepath = self.output_dir / filename
 
-            if not filepath.exists():
-                return {
-                    "success": False,
-                    "error": f"File not found: {filename}. Use file_create first."
-                }
-
-            with filepath.open("a", encoding="utf-8") as f:
-                f.write(content)
-
-            logger.info(f"Appended to file: {filepath}")
+        if not filepath.exists():
             return {
-                "success": True,
-                "result": f"Appended content to: {filename}"
+                "success": False,
+                "error": f"File not found: {filename}. Use file_create first."
             }
-        except Exception as e:
-            return {"success": False, "error": str(e)}
+
+        with filepath.open("a", encoding="utf-8") as f:
+            f.write(content)
+
+        logger.info(f"Appended to file: {filepath}")
+
+        return {
+            "success": True,
+            "result": f"Appended content to: {filename}"
+        }
 
     def get_parameters_schema(self) -> dict[str, Any]:
         return {
@@ -174,21 +176,20 @@ class FileReplaceTool(BaseTool):
     def __init__(self, output_dir: Path):
         self.output_dir = output_dir
 
+    @traced_tool(name="file_replace")
     def execute(self, filename: str, content: str) -> dict[str, Any]:
-        """Replace file content."""
-        try:
-            filepath = self.output_dir / filename
-            filepath.parent.mkdir(parents=True, exist_ok=True)
+        """Replace file content. Instrumented by @traced_tool."""
+        filepath = self.output_dir / filename
+        filepath.parent.mkdir(parents=True, exist_ok=True)
 
-            filepath.write_text(content, encoding="utf-8")
-            logger.info(f"Replaced file: {filepath}")
-            return {
-                "success": True,
-                "result": f"Replaced content of: {filename}",
-                "path": str(filepath)
-            }
-        except Exception as e:
-            return {"success": False, "error": str(e)}
+        filepath.write_text(content, encoding="utf-8")
+        logger.info(f"Replaced file: {filepath}")
+
+        return {
+            "success": True,
+            "result": f"Replaced content of: {filename}",
+            "path": str(filepath)
+        }
 
     def get_parameters_schema(self) -> dict[str, Any]:
         return {

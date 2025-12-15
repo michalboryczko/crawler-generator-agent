@@ -1,14 +1,18 @@
-"""Extraction tools that process data with separate agent contexts."""
-import logging
+"""Extraction tools that process data with separate agent contexts.
+
+This module uses the new observability decorators for automatic logging.
+The @traced_tool decorator handles all tool instrumentation.
+"""
 import json
+import re
+import time
 from typing import Any
 
 from .base import BaseTool
 from .memory import MemoryStore
 from ..core.browser import BrowserSession
 from ..core.html_cleaner import clean_html_for_llm
-
-logger = logging.getLogger(__name__)
+from ..observability.decorators import traced_tool
 
 
 class FetchAndStoreHTMLTool(BaseTool):
@@ -23,34 +27,27 @@ class FetchAndStoreHTMLTool(BaseTool):
         self.browser_session = browser_session
         self.memory_store = memory_store
 
+    @traced_tool(name="fetch_and_store_html")
     def execute(self, url: str, memory_key: str, wait_seconds: int = 3) -> dict[str, Any]:
-        """Fetch URL and store in memory."""
-        try:
-            import time
+        """Fetch URL and store in memory. Instrumented by @traced_tool."""
+        self.browser_session.navigate(url)
+        time.sleep(wait_seconds)
 
-            self.browser_session.navigate(url)
-            time.sleep(wait_seconds)
+        html = self.browser_session.get_html()
+        cleaned_html = clean_html_for_llm(html)
 
-            html = self.browser_session.get_html()
-            cleaned_html = clean_html_for_llm(html)
+        self.memory_store.write(memory_key, {
+            "url": url,
+            "html": cleaned_html,
+            "html_length": len(cleaned_html)
+        })
 
-            self.memory_store.write(memory_key, {
-                "url": url,
-                "html": cleaned_html,
-                "html_length": len(cleaned_html)
-            })
-
-            logger.info(f"Fetched and stored {url} -> {memory_key} ({len(cleaned_html)} bytes)")
-
-            return {
-                "success": True,
-                "result": f"Stored HTML ({len(cleaned_html)} bytes) at key: {memory_key}",
-                "url": url,
-                "memory_key": memory_key
-            }
-        except Exception as e:
-            logger.error(f"Failed to fetch {url}: {e}")
-            return {"success": False, "error": str(e)}
+        return {
+            "success": True,
+            "result": f"Stored HTML ({len(cleaned_html)} bytes) at key: {memory_key}",
+            "url": url,
+            "memory_key": memory_key
+        }
 
     def get_parameters_schema(self) -> dict[str, Any]:
         return {
@@ -76,21 +73,17 @@ class BatchFetchURLsTool(BaseTool):
         self.browser_session = browser_session
         self.memory_store = memory_store
 
+    @traced_tool(name="batch_fetch_urls")
     def execute(
         self,
         urls: list[str],
         key_prefix: str = "fetched",
         wait_seconds: int = 3
     ) -> dict[str, Any]:
-        """Fetch multiple URLs."""
-        import time
-
-        logger.info(f"BatchFetchURLsTool: Starting fetch of {len(urls)} URLs with prefix '{key_prefix}'")
-
+        """Fetch multiple URLs. Instrumented by @traced_tool."""
         results = []
         for i, url in enumerate(urls):
             try:
-                logger.info(f"BatchFetchURLsTool: Navigating to ({i+1}/{len(urls)}): {url}")
                 self.browser_session.navigate(url)
                 time.sleep(wait_seconds)
 
@@ -110,11 +103,9 @@ class BatchFetchURLsTool(BaseTool):
                     "success": True,
                     "html_length": len(cleaned_html)
                 })
-                logger.info(f"Fetched {i+1}/{len(urls)}: {url}")
 
             except Exception as e:
                 results.append({"url": url, "success": False, "error": str(e)})
-                logger.error(f"Failed {i+1}/{len(urls)}: {url} - {e}")
 
         successful = sum(1 for r in results if r.get("success"))
 
@@ -150,74 +141,63 @@ class RunExtractionAgentTool(BaseTool):
         self.llm = llm_client
         self.memory_store = memory_store
 
+    @traced_tool(name="run_extraction_agent")
     def execute(
         self,
         html_memory_key: str,
         output_memory_key: str
     ) -> dict[str, Any]:
-        """Run extraction agent on stored HTML.
+        """Run extraction agent on stored HTML. Instrumented by @traced_tool."""
+        stored = self.memory_store.read(html_memory_key)
+        if not stored:
+            return {"success": False, "error": f"No HTML at: {html_memory_key}"}
 
-        Args:
-            html_memory_key: Key containing {url, html}
-            output_memory_key: Key to store test entry
-        """
+        html = stored.get("html", "")
+        url = stored.get("url", "")
+
+        # Truncate for LLM
+        if len(html) > 40000:
+            html = html[:40000] + "\n... [TRUNCATED]"
+
+        # Get discovered selectors for dynamic field extraction
+        detail_selectors = self.memory_store.read("detail_selectors") or {}
+
+        # Build dynamic extraction prompt based on discovered fields
+        extraction_prompt = self._build_extraction_prompt(detail_selectors)
+
+        messages = [
+            {"role": "system", "content": extraction_prompt},
+            {"role": "user", "content": f"URL: {url}\n\nHTML:\n{html}"}
+        ]
+
+        response = self.llm.chat(messages)
+        extracted_text = response.get("content", "{}")
+
+        # Parse JSON
         try:
-            stored = self.memory_store.read(html_memory_key)
-            if not stored:
-                return {"success": False, "error": f"No HTML at: {html_memory_key}"}
+            json_match = re.search(r'\{[\s\S]*\}', extracted_text)
+            if json_match:
+                extracted = json.loads(json_match.group())
+            else:
+                extracted = {"error": "No JSON found", "raw": extracted_text[:200]}
+        except json.JSONDecodeError as e:
+            extracted = {"error": str(e), "raw": extracted_text[:200]}
 
-            html = stored.get("html", "")
-            url = stored.get("url", "")
+        # Create test entry
+        test_entry = {
+            "type": "article",
+            "url": url,
+            "given": stored.get("html", ""),
+            "expected": extracted
+        }
 
-            # Truncate for LLM
-            if len(html) > 40000:
-                html = html[:40000] + "\n... [TRUNCATED]"
+        self.memory_store.write(output_memory_key, test_entry)
 
-            # Get discovered selectors for dynamic field extraction
-            detail_selectors = self.memory_store.read("detail_selectors") or {}
-
-            # Build dynamic extraction prompt based on discovered fields
-            extraction_prompt = self._build_extraction_prompt(detail_selectors)
-
-            messages = [
-                {"role": "system", "content": extraction_prompt},
-                {"role": "user", "content": f"URL: {url}\n\nHTML:\n{html}"}
-            ]
-
-            logger.info(f"Running extraction agent for: {url}")
-            response = self.llm.chat(messages)
-            extracted_text = response.get("content", "{}")
-
-            # Parse JSON
-            try:
-                import re
-                json_match = re.search(r'\{[\s\S]*\}', extracted_text)
-                if json_match:
-                    extracted = json.loads(json_match.group())
-                else:
-                    extracted = {"error": "No JSON found", "raw": extracted_text[:200]}
-            except json.JSONDecodeError as e:
-                extracted = {"error": str(e), "raw": extracted_text[:200]}
-
-            # Create test entry
-            test_entry = {
-                "type": "article",
-                "url": url,
-                "given": stored.get("html", ""),
-                "expected": extracted
-            }
-
-            self.memory_store.write(output_memory_key, test_entry)
-            logger.info(f"Extraction complete: {html_memory_key} -> {output_memory_key}")
-
-            return {
-                "success": True,
-                "result": f"Extracted to: {output_memory_key}",
-                "fields": list(extracted.keys()) if isinstance(extracted, dict) else []
-            }
-        except Exception as e:
-            logger.error(f"Extraction failed: {e}")
-            return {"success": False, "error": str(e)}
+        return {
+            "success": True,
+            "result": f"Extracted to: {output_memory_key}",
+            "fields": list(extracted.keys()) if isinstance(extracted, dict) else []
+        }
 
     def _build_extraction_prompt(self, detail_selectors: dict) -> str:
         """Build dynamic extraction prompt based on discovered selectors."""
@@ -235,18 +215,15 @@ class RunExtractionAgentTool(BaseTool):
             # Build fields from discovered selectors
             fields = {}
             for field_name, selector_chain in detail_selectors.items():
-                # Skip empty chains
                 if not selector_chain:
                     continue
 
-                # Get the primary selector info
                 if isinstance(selector_chain, list) and len(selector_chain) > 0:
                     primary = selector_chain[0]
                     selector = primary.get("selector", "") if isinstance(primary, dict) else str(primary)
                 else:
                     selector = str(selector_chain)
 
-                # Define field type hints based on field name
                 if field_name in ["authors", "tags"]:
                     fields[field_name] = ["value1", "value2"]
                 elif field_name in ["files", "attachments", "images", "related_articles"]:
@@ -258,16 +235,13 @@ class RunExtractionAgentTool(BaseTool):
                 else:
                     fields[field_name] = f"{field_name} value or null"
 
-            # Ensure we have at least title and content
             if "title" not in fields:
                 fields["title"] = "article title"
             if "content" not in fields:
                 fields["content"] = "first 500 characters of main content"
 
-        # Build the JSON example
         json_example = json.dumps(fields, indent=4)
 
-        # Build selector hints
         selector_hints = ""
         if detail_selectors:
             hints = []
@@ -318,12 +292,13 @@ class BatchExtractArticlesTool(BaseTool):
         self.llm = llm_client
         self.memory_store = memory_store
 
+    @traced_tool(name="batch_extract_articles")
     def execute(
         self,
         html_key_prefix: str,
         output_key_prefix: str = "test-data-article"
     ) -> dict[str, Any]:
-        """Extract from all article HTML with matching prefix."""
+        """Extract from all article HTML with matching prefix. Instrumented by @traced_tool."""
         html_keys = self.memory_store.search(f"{html_key_prefix}-*")
 
         if not html_keys:
@@ -372,70 +347,56 @@ class RunListingExtractionAgentTool(BaseTool):
         self.llm = llm_client
         self.memory_store = memory_store
 
+    @traced_tool(name="run_listing_extraction_agent")
     def execute(
         self,
         html_memory_key: str,
         output_memory_key: str,
         article_selector: str | None = None
     ) -> dict[str, Any]:
-        """Extract article URLs from listing page HTML."""
-        try:
-            stored = self.memory_store.read(html_memory_key)
-            if not stored:
-                return {"success": False, "error": f"No HTML at: {html_memory_key}"}
+        """Extract article URLs from listing page HTML. Instrumented by @traced_tool."""
+        stored = self.memory_store.read(html_memory_key)
+        if not stored:
+            return {"success": False, "error": f"No HTML at: {html_memory_key}"}
 
-            html = stored.get("html", "")
-            url = stored.get("url", "")
+        html = stored.get("html", "")
+        url = stored.get("url", "")
 
-            # Try to extract just the main content area using listing_container_selector
-            main_content_html = html
-            listing_container_selector = self.memory_store.read("listing_container_selector")
+        # Try to extract just the main content area using listing_container_selector
+        main_content_html = html
+        listing_container_selector = self.memory_store.read("listing_container_selector")
 
-            if listing_container_selector:
-                focused_html = self._extract_main_content(html, listing_container_selector)
-                if focused_html and len(focused_html) < len(html):
-                    logger.info(f"Extracted main content using '{listing_container_selector}': {len(focused_html)} chars (was {len(html)})")
-                    main_content_html = focused_html
-                else:
-                    logger.warning(f"Container selector '{listing_container_selector}' did not match - using full HTML")
-            else:
-                logger.info("No listing_container_selector in memory - using full HTML")
+        if listing_container_selector:
+            focused_html = self._extract_main_content(html, listing_container_selector)
+            if focused_html and len(focused_html) < len(html):
+                main_content_html = focused_html
 
-            # Use LLM for extraction
-            article_urls = self._extract_urls_with_llm(main_content_html, url, article_selector)
+        # Use LLM for extraction
+        article_urls = self._extract_urls_with_llm(main_content_html, url, article_selector)
 
-            extracted = {
-                "article_urls": article_urls,
-                "article_count": len(article_urls),
-                "has_pagination": True,
-                "next_page_url": None
-            }
+        extracted = {
+            "article_urls": article_urls,
+            "article_count": len(article_urls),
+            "has_pagination": True,
+            "next_page_url": None
+        }
 
-            # Create listing test entry
-            test_entry = {
-                "type": "listing",
-                "url": url,
-                "given": stored.get("html", ""),
-                "expected": extracted
-            }
+        # Create listing test entry
+        test_entry = {
+            "type": "listing",
+            "url": url,
+            "given": stored.get("html", ""),
+            "expected": extracted
+        }
 
-            self.memory_store.write(output_memory_key, test_entry)
-            logger.info(f"Listing extraction complete: {html_memory_key} -> {output_memory_key}")
+        self.memory_store.write(output_memory_key, test_entry)
 
-            actual_count = len(article_urls)
-            logger.info(f"RunListingExtractionAgentTool: Extracted {actual_count} URLs from {url}")
-            if actual_count > 0:
-                logger.info(f"  Sample URLs: {article_urls[:3]}")
-
-            return {
-                "success": True,
-                "result": f"Extracted {actual_count} article URLs to: {output_memory_key}",
-                "article_urls": article_urls,
-                "article_count": actual_count
-            }
-        except Exception as e:
-            logger.error(f"Listing extraction failed: {e}")
-            return {"success": False, "error": str(e)}
+        return {
+            "success": True,
+            "result": f"Extracted {len(article_urls)} article URLs to: {output_memory_key}",
+            "article_urls": article_urls,
+            "article_count": len(article_urls)
+        }
 
     def _extract_main_content(self, html: str, container_selector: str) -> str | None:
         """Extract just the main content container HTML using the selector."""
@@ -446,13 +407,11 @@ class RunListingExtractionAgentTool(BaseTool):
             if container:
                 return str(container)
             return None
-        except Exception as e:
-            logger.warning(f"Failed to extract main content with '{container_selector}': {e}")
+        except Exception:
             return None
 
     def _extract_urls_with_llm(self, html: str, url: str, article_selector: str | None) -> list[str]:
         """Extract URLs using LLM."""
-        # Truncate for LLM (100KB limit - will use better model in future)
         if len(html) > 150000:
             html = html[:150000] + "\n... [TRUNCATED]"
 
@@ -495,13 +454,10 @@ Convert relative URLs to absolute using base: {url}"""
             {"role": "user", "content": f"Listing URL: {url}\n\nHTML:\n{html}"}
         ]
 
-        logger.info(f"Running LLM extraction for: {url}")
         response = self.llm.chat(messages)
         extracted_text = response.get("content", "{}")
 
-        # Parse JSON
         try:
-            import re
             json_match = re.search(r'\{[\s\S]*\}', extracted_text)
             if json_match:
                 extracted = json.loads(json_match.group())
@@ -536,13 +492,14 @@ class BatchExtractListingsTool(BaseTool):
         self.llm = llm_client
         self.memory_store = memory_store
 
+    @traced_tool(name="batch_extract_listings")
     def execute(
         self,
         html_key_prefix: str,
         output_key_prefix: str = "test-data-listing",
         article_selector: str | None = None
     ) -> dict[str, Any]:
-        """Extract from all listing HTML with matching prefix."""
+        """Extract from all listing HTML with matching prefix. Instrumented by @traced_tool."""
         html_keys = self.memory_store.search(f"{html_key_prefix}-*")
 
         if not html_keys:
@@ -562,9 +519,7 @@ class BatchExtractListingsTool(BaseTool):
                 "success": result.get("success", False),
                 "article_count": len(extracted_urls)
             })
-            # Collect article URLs
             if result.get("success") and extracted_urls:
-                logger.info(f"BatchExtractListingsTool: {html_key} yielded {len(extracted_urls)} URLs")
                 all_article_urls.extend(extracted_urls)
 
         successful = sum(1 for r in results if r["success"])
@@ -579,12 +534,9 @@ class BatchExtractListingsTool(BaseTool):
 
         total_articles = len(unique_article_urls)
 
-        # Store collected article URLs for later use (use unique key to avoid conflicts)
+        # Store collected article URLs for later use
         self.memory_store.write("extracted_listing_article_urls", unique_article_urls)
-        # Also update the standard key for backwards compatibility
         self.memory_store.write("collected_article_urls", unique_article_urls)
-
-        logger.info(f"BatchExtractListingsTool: Stored {total_articles} unique article URLs")
 
         return {
             "success": successful > 0,

@@ -1,13 +1,15 @@
-"""Browser interaction tools for agents."""
-import logging
+"""Browser interaction tools for agents.
+
+This module uses the new observability decorators for automatic logging.
+The @traced_tool decorator handles all tool instrumentation.
+"""
 import time
 from typing import Any
 
 from .base import BaseTool
 from ..core.browser import BrowserSession
 from ..core.html_cleaner import clean_html_for_llm, get_html_summary
-
-logger = logging.getLogger(__name__)
+from ..observability.decorators import traced_tool
 
 
 class NavigateTool(BaseTool):
@@ -19,19 +21,15 @@ class NavigateTool(BaseTool):
     def __init__(self, session: BrowserSession):
         self.session = session
 
+    @traced_tool(name="browser_navigate")
     def execute(self, url: str) -> dict[str, Any]:
-        try:
-            logger.info(f">>> BROWSER NAVIGATING TO: {url}")
-            result = self.session.navigate(url)
-            logger.info(f">>> BROWSER NAVIGATION COMPLETE: {url}")
-            return {
-                "success": True,
-                "result": f"Navigated to {url}",
-                "details": result
-            }
-        except Exception as e:
-            logger.error(f">>> BROWSER NAVIGATION FAILED: {e}")
-            return {"success": False, "error": str(e)}
+        """Navigate to URL. Instrumented by @traced_tool."""
+        result = self.session.navigate(url)
+        return {
+            "success": True,
+            "result": f"Navigated to {url}",
+            "details": result
+        }
 
     def get_parameters_schema(self) -> dict[str, Any]:
         return {
@@ -57,33 +55,30 @@ class GetHTMLTool(BaseTool):
     def __init__(self, session: BrowserSession):
         self.session = session
 
+    @traced_tool(name="browser_get_html")
     def execute(self, raw: bool = False) -> dict[str, Any]:
-        try:
-            html = self.session.get_html()
-            original_length = len(html)
+        """Get page HTML. Instrumented by @traced_tool."""
+        html = self.session.get_html()
+        original_length = len(html)
 
-            if not raw:
-                # Clean HTML for LLM consumption
-                html = clean_html_for_llm(html)
-                summary = get_html_summary(html)
-                logger.info(
-                    f"HTML cleaned: {original_length} -> {len(html)} bytes "
-                    f"({summary['reduction_percent']}% reduction)"
-                )
+        if not raw:
+            html = clean_html_for_llm(html)
+            get_html_summary(html)  # For internal stats
 
-            # Truncate if still too large
-            if len(html) > 150000:
-                html = html[:150000] + "\n... [TRUNCATED]"
+        # Truncate if still too large
+        truncated = False
+        if len(html) > 150000:
+            html = html[:150000] + "\n... [TRUNCATED]"
+            truncated = True
 
-            return {
-                "success": True,
-                "result": html,
-                "original_length": original_length,
-                "cleaned_length": len(html),
-                "raw": raw
-            }
-        except Exception as e:
-            return {"success": False, "error": str(e)}
+        return {
+            "success": True,
+            "result": html,
+            "original_length": original_length,
+            "cleaned_length": len(html),
+            "raw": raw,
+            "truncated": truncated
+        }
 
     def get_parameters_schema(self) -> dict[str, Any]:
         return {
@@ -106,20 +101,21 @@ class ClickTool(BaseTool):
     def __init__(self, session: BrowserSession):
         self.session = session
 
+    @traced_tool(name="browser_click")
     def execute(self, selector: str) -> dict[str, Any]:
-        try:
-            result = self.session.click(selector)
-            if result.get("success"):
-                return {
-                    "success": True,
-                    "result": f"Clicked element: {selector}"
-                }
+        """Click element. Instrumented by @traced_tool."""
+        result = self.session.click(selector)
+
+        if result.get("success"):
             return {
-                "success": False,
-                "error": result.get("error", "Click failed")
+                "success": True,
+                "result": f"Clicked element: {selector}"
             }
-        except Exception as e:
-            return {"success": False, "error": str(e)}
+
+        return {
+            "success": False,
+            "error": result.get("error", "Click failed")
+        }
 
     def get_parameters_schema(self) -> dict[str, Any]:
         return {
@@ -143,16 +139,15 @@ class QuerySelectorTool(BaseTool):
     def __init__(self, session: BrowserSession):
         self.session = session
 
+    @traced_tool(name="browser_query")
     def execute(self, selector: str) -> dict[str, Any]:
-        try:
-            elements = self.session.query_selector_all(selector)
-            return {
-                "success": True,
-                "result": elements,
-                "count": len(elements)
-            }
-        except Exception as e:
-            return {"success": False, "error": str(e)}
+        """Query DOM elements. Instrumented by @traced_tool."""
+        elements = self.session.query_selector_all(selector)
+        return {
+            "success": True,
+            "result": elements,
+            "count": len(elements)
+        }
 
     def get_parameters_schema(self) -> dict[str, Any]:
         return {
@@ -176,35 +171,35 @@ class WaitTool(BaseTool):
     def __init__(self, session: BrowserSession):
         self.session = session
 
+    @traced_tool(name="browser_wait")
     def execute(
         self,
         selector: str | None = None,
         seconds: int | None = None
     ) -> dict[str, Any]:
-        try:
-            if seconds:
-                time.sleep(seconds)
+        """Wait for selector or time. Instrumented by @traced_tool."""
+        if seconds:
+            time.sleep(seconds)
+            return {
+                "success": True,
+                "result": f"Waited {seconds} seconds"
+            }
+        elif selector:
+            found = self.session.wait_for_selector(selector)
+            if found:
                 return {
                     "success": True,
-                    "result": f"Waited {seconds} seconds"
-                }
-            elif selector:
-                found = self.session.wait_for_selector(selector)
-                if found:
-                    return {
-                        "success": True,
-                        "result": f"Found element: {selector}"
-                    }
-                return {
-                    "success": False,
-                    "error": f"Timeout waiting for: {selector}"
+                    "result": f"Found element: {selector}"
                 }
             return {
                 "success": False,
-                "error": "Must provide selector or seconds"
+                "error": f"Timeout waiting for: {selector}"
             }
-        except Exception as e:
-            return {"success": False, "error": str(e)}
+
+        return {
+            "success": False,
+            "error": "Must provide selector or seconds"
+        }
 
     def get_parameters_schema(self) -> dict[str, Any]:
         return {
@@ -231,21 +226,21 @@ class ExtractLinksTool(BaseTool):
     def __init__(self, session: BrowserSession):
         self.session = session
 
+    @traced_tool(name="browser_extract_links")
     def execute(self) -> dict[str, Any]:
-        try:
-            elements = self.session.query_selector_all("a[href]")
-            links = [
-                {"text": el["text"], "href": el["href"]}
-                for el in elements
-                if el.get("href") and not el["href"].startswith("javascript:")
-            ]
-            return {
-                "success": True,
-                "result": links,
-                "count": len(links)
-            }
-        except Exception as e:
-            return {"success": False, "error": str(e)}
+        """Extract links from page. Instrumented by @traced_tool."""
+        elements = self.session.query_selector_all("a[href]")
+        links = [
+            {"text": el["text"], "href": el["href"]}
+            for el in elements
+            if el.get("href") and not el["href"].startswith("javascript:")
+        ]
+
+        return {
+            "success": True,
+            "result": links,
+            "count": len(links)
+        }
 
     def get_parameters_schema(self) -> dict[str, Any]:
         return {"type": "object", "properties": {}}

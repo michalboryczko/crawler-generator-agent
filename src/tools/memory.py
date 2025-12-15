@@ -1,13 +1,15 @@
-"""Memory tool for storing and retrieving data across agent calls."""
+"""Memory tool for storing and retrieving data across agent calls.
+
+This module uses the new observability decorators for automatic logging.
+The @traced_tool decorator handles all tool instrumentation.
+"""
 import fnmatch
 import json
-import logging
 from pathlib import Path
 from typing import Any
 
 from .base import BaseTool
-
-logger = logging.getLogger(__name__)
+from ..observability.decorators import traced_tool
 
 
 class MemoryStore:
@@ -29,7 +31,6 @@ class MemoryStore:
     def write(self, key: str, value: Any) -> None:
         """Write value to key."""
         self._data[key] = value
-        logger.debug(f"Memory write: {key}")
 
     def delete(self, key: str) -> bool:
         """Delete key if exists."""
@@ -71,7 +72,6 @@ class MemoryStore:
                     f.write(line + "\n")
                     count += 1
 
-        logger.info(f"Dumped {count} entries to {output_path}")
         return count
 
 
@@ -84,11 +84,14 @@ class MemoryReadTool(BaseTool):
     def __init__(self, store: MemoryStore | None = None):
         self.store = store or MemoryStore()
 
+    @traced_tool(name="memory_read")
     def execute(self, key: str) -> dict[str, Any]:
+        """Read from memory. Instrumented by @traced_tool."""
         value = self.store.read(key)
         return {
             "success": True,
-            "result": value
+            "result": value,
+            "found": value is not None
         }
 
     def get_parameters_schema(self) -> dict[str, Any]:
@@ -113,11 +116,19 @@ class MemoryWriteTool(BaseTool):
     def __init__(self, store: MemoryStore | None = None):
         self.store = store or MemoryStore()
 
+    @traced_tool(name="memory_write")
     def execute(self, key: str, value: Any) -> dict[str, Any]:
+        """Write to memory. Instrumented by @traced_tool."""
+        overwritten = self.store.read(key) is not None
         self.store.write(key, value)
+
+        value_size = len(json.dumps(value, default=str)) if value else 0
+
         return {
             "success": True,
-            "result": f"Stored value at key: {key}"
+            "result": f"Stored value at key: {key}",
+            "overwritten": overwritten,
+            "value_size": value_size
         }
 
     def get_parameters_schema(self) -> dict[str, Any]:
@@ -145,11 +156,14 @@ class MemorySearchTool(BaseTool):
     def __init__(self, store: MemoryStore | None = None):
         self.store = store or MemoryStore()
 
+    @traced_tool(name="memory_search")
     def execute(self, pattern: str) -> dict[str, Any]:
+        """Search memory keys. Instrumented by @traced_tool."""
         keys = self.store.search(pattern)
         return {
             "success": True,
-            "result": keys
+            "result": keys,
+            "count": len(keys)
         }
 
     def get_parameters_schema(self) -> dict[str, Any]:
@@ -174,11 +188,14 @@ class MemoryListTool(BaseTool):
     def __init__(self, store: MemoryStore | None = None):
         self.store = store or MemoryStore()
 
+    @traced_tool(name="memory_list")
     def execute(self) -> dict[str, Any]:
+        """List all memory keys. Instrumented by @traced_tool."""
         keys = self.store.list_keys()
         return {
             "success": True,
-            "result": keys
+            "result": keys,
+            "count": len(keys)
         }
 
     def get_parameters_schema(self) -> dict[str, Any]:
@@ -198,24 +215,18 @@ class MemoryDumpTool(BaseTool):
         self.store = store
         self.output_dir = output_dir
 
+    @traced_tool(name="memory_dump")
     def execute(self, keys: list[str], filename: str) -> dict[str, Any]:
-        """Dump keys to JSONL file.
+        """Dump keys to JSONL file. Instrumented by @traced_tool."""
+        output_path = self.output_dir / filename
+        count = self.store.dump_to_jsonl(keys, output_path)
 
-        Args:
-            keys: List of memory keys to dump
-            filename: Output filename (relative to output directory)
-        """
-        try:
-            output_path = self.output_dir / filename
-            count = self.store.dump_to_jsonl(keys, output_path)
-            return {
-                "success": True,
-                "result": f"Dumped {count} entries to {filename}",
-                "path": str(output_path),
-                "count": count
-            }
-        except Exception as e:
-            return {"success": False, "error": str(e)}
+        return {
+            "success": True,
+            "result": f"Dumped {count} entries to {filename}",
+            "path": str(output_path),
+            "count": count
+        }
 
     def get_parameters_schema(self) -> dict[str, Any]:
         return {

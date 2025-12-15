@@ -1,10 +1,15 @@
-"""Selector finding and verification tools."""
+"""Selector finding and verification tools.
+
+This module uses the new observability decorators for automatic logging.
+The @traced_tool decorator handles all tool instrumentation.
+"""
 import logging
 from typing import Any
-from urllib.parse import urljoin, urlparse
+from urllib.parse import urljoin
 
 from .base import BaseTool
 from ..core.browser import BrowserSession
+from ..observability.decorators import traced_tool
 
 logger = logging.getLogger(__name__)
 
@@ -19,23 +24,24 @@ class FindSelectorTool(BaseTool):
     def __init__(self, session: BrowserSession):
         self.session = session
 
+    @traced_tool(name="find_selector")
     def execute(
         self,
         selector_type: str,
         hint: str | None = None
     ) -> dict[str, Any]:
-        """Find potential selectors based on type and hints."""
-        try:
-            if selector_type == "articles":
-                return self._find_article_selectors(hint)
-            elif selector_type == "pagination":
-                return self._find_pagination_selectors(hint)
+        """Find potential selectors based on type and hints. Instrumented by @traced_tool."""
+        if selector_type == "articles":
+            result = self._find_article_selectors(hint)
+        elif selector_type == "pagination":
+            result = self._find_pagination_selectors(hint)
+        else:
             return {
                 "success": False,
                 "error": f"Unknown selector type: {selector_type}"
             }
-        except Exception as e:
-            return {"success": False, "error": str(e)}
+
+        return result
 
     def _find_article_selectors(self, hint: str | None) -> dict[str, Any]:
         """Find selectors for article links."""
@@ -144,16 +150,15 @@ class TestSelectorTool(BaseTool):
     def __init__(self, session: BrowserSession):
         self.session = session
 
+    @traced_tool(name="test_selector")
     def execute(self, selector: str) -> dict[str, Any]:
-        try:
-            elements = self.session.query_selector_all(selector)
-            return {
-                "success": True,
-                "result": elements,
-                "count": len(elements)
-            }
-        except Exception as e:
-            return {"success": False, "error": str(e)}
+        """Test a CSS selector. Instrumented by @traced_tool."""
+        elements = self.session.query_selector_all(selector)
+        return {
+            "success": True,
+            "result": elements,
+            "count": len(elements)
+        }
 
     def get_parameters_schema(self) -> dict[str, Any]:
         return {
@@ -178,46 +183,46 @@ class VerifySelectorTool(BaseTool):
     def __init__(self, session: BrowserSession):
         self.session = session
 
+    @traced_tool(name="verify_selector")
     def execute(
         self,
         selector: str,
         expected_urls: list[str],
         base_url: str | None = None
     ) -> dict[str, Any]:
-        try:
-            elements = self.session.query_selector_all(selector)
-            found_urls = set()
+        """Verify selector matches expected URLs. Instrumented by @traced_tool."""
+        elements = self.session.query_selector_all(selector)
+        found_urls = set()
 
-            for el in elements:
-                href = el.get("href", "")
-                if href and not href.startswith(("#", "javascript:")):
-                    if base_url and not href.startswith("http"):
-                        href = urljoin(base_url, href)
-                    found_urls.add(href)
+        for el in elements:
+            href = el.get("href", "")
+            if href and not href.startswith(("#", "javascript:")):
+                if base_url and not href.startswith("http"):
+                    href = urljoin(base_url, href)
+                found_urls.add(href)
 
-            expected_set = set(expected_urls)
+        expected_set = set(expected_urls)
 
-            matched = found_urls & expected_set
-            missing = expected_set - found_urls
-            extra = found_urls - expected_set
+        matched = found_urls & expected_set
+        missing = expected_set - found_urls
+        extra = found_urls - expected_set
 
-            match_rate = len(matched) / len(expected_set) if expected_set else 0
+        match_rate = len(matched) / len(expected_set) if expected_set else 0
+        verdict = "GOOD" if match_rate >= 0.8 else "NEEDS_WORK"
 
-            return {
-                "success": True,
-                "result": {
-                    "match_rate": round(match_rate, 2),
-                    "matched_count": len(matched),
-                    "missing_count": len(missing),
-                    "extra_count": len(extra),
-                    "matched": list(matched)[:5],
-                    "missing": list(missing)[:5],
-                    "extra": list(extra)[:5],
-                    "verdict": "GOOD" if match_rate >= 0.8 else "NEEDS_WORK"
-                }
+        return {
+            "success": True,
+            "result": {
+                "match_rate": round(match_rate, 2),
+                "matched_count": len(matched),
+                "missing_count": len(missing),
+                "extra_count": len(extra),
+                "matched": list(matched)[:5],
+                "missing": list(missing)[:5],
+                "extra": list(extra)[:5],
+                "verdict": verdict
             }
-        except Exception as e:
-            return {"success": False, "error": str(e)}
+        }
 
     def get_parameters_schema(self) -> dict[str, Any]:
         return {
@@ -250,48 +255,48 @@ class CompareSelectorsTool(BaseTool):
     def __init__(self, session: BrowserSession):
         self.session = session
 
+    @traced_tool(name="compare_selectors")
     def execute(
         self,
         selectors: list[str],
         expected_urls: list[str],
         base_url: str | None = None
     ) -> dict[str, Any]:
-        try:
-            results = []
-            expected_set = set(expected_urls)
+        """Compare multiple selectors. Instrumented by @traced_tool."""
+        results = []
+        expected_set = set(expected_urls)
 
-            for selector in selectors:
-                elements = self.session.query_selector_all(selector)
-                found_urls = set()
+        for selector in selectors:
+            elements = self.session.query_selector_all(selector)
+            found_urls = set()
 
-                for el in elements:
-                    href = el.get("href", "")
-                    if href and not href.startswith(("#", "javascript:")):
-                        if base_url and not href.startswith("http"):
-                            href = urljoin(base_url, href)
-                        found_urls.add(href)
+            for el in elements:
+                href = el.get("href", "")
+                if href and not href.startswith(("#", "javascript:")):
+                    if base_url and not href.startswith("http"):
+                        href = urljoin(base_url, href)
+                    found_urls.add(href)
 
-                matched = found_urls & expected_set
-                match_rate = len(matched) / len(expected_set) if expected_set else 0
+            matched = found_urls & expected_set
+            match_rate = len(matched) / len(expected_set) if expected_set else 0
 
-                results.append({
-                    "selector": selector,
-                    "match_rate": round(match_rate, 2),
-                    "matched_count": len(matched),
-                    "total_found": len(found_urls),
-                    "precision": round(len(matched) / len(found_urls), 2) if found_urls else 0
-                })
+            results.append({
+                "selector": selector,
+                "match_rate": round(match_rate, 2),
+                "matched_count": len(matched),
+                "total_found": len(found_urls),
+                "precision": round(len(matched) / len(found_urls), 2) if found_urls else 0
+            })
 
-            # Sort by match rate, then precision
-            results.sort(key=lambda x: (x["match_rate"], x["precision"]), reverse=True)
+        # Sort by match rate, then precision
+        results.sort(key=lambda x: (x["match_rate"], x["precision"]), reverse=True)
+        best_selector = results[0]["selector"] if results else None
 
-            return {
-                "success": True,
-                "result": results,
-                "best_selector": results[0]["selector"] if results else None
-            }
-        except Exception as e:
-            return {"success": False, "error": str(e)}
+        return {
+            "success": True,
+            "result": results,
+            "best_selector": best_selector
+        }
 
     def get_parameters_schema(self) -> dict[str, Any]:
         return {

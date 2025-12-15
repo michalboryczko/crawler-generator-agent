@@ -1,4 +1,8 @@
-"""Plan generation tool with comprehensive templates."""
+"""Plan generation tool with comprehensive templates.
+
+This module uses the new observability decorators for automatic logging.
+The @traced_tool decorator handles all tool instrumentation.
+"""
 import logging
 from datetime import datetime
 from typing import Any
@@ -6,6 +10,7 @@ from urllib.parse import urlparse
 
 from .base import BaseTool
 from .memory import MemoryStore
+from ..observability.decorators import traced_tool
 
 logger = logging.getLogger(__name__)
 
@@ -20,51 +25,51 @@ class GeneratePlanTool(BaseTool):
     def __init__(self, memory_store: MemoryStore):
         self.memory_store = memory_store
 
+    @traced_tool(name="generate_plan_md")
     def execute(self) -> dict[str, Any]:
-        try:
-            # Read all data from memory
-            target_url = self.memory_store.read("target_url") or "Unknown"
-            article_selector = self.memory_store.read("article_selector") or "Not found"
-            article_confidence = self.memory_store.read("article_selector_confidence") or 0
-            listing_container_selector = self.memory_store.read("listing_container_selector") or "Not found"
-            pagination_selector = self.memory_store.read("pagination_selector") or "None"
-            pagination_type = self.memory_store.read("pagination_type") or "none"
-            pagination_max_pages = self.memory_store.read("pagination_max_pages")
-            extracted_articles = self.memory_store.read("extracted_articles") or []
-            accessibility = self.memory_store.read("accessibility_result") or {}
-            detail_selectors = self.memory_store.read("detail_selectors") or {}
-            listing_selectors = self.memory_store.read("listing_selectors") or {}
+        """Generate plan markdown. Instrumented by @traced_tool."""
+        # Read all data from memory
+        target_url = self.memory_store.read("target_url") or "Unknown"
+        article_selector = self.memory_store.read("article_selector") or "Not found"
+        article_confidence = self.memory_store.read("article_selector_confidence") or 0
+        listing_container_selector = self.memory_store.read("listing_container_selector") or "Not found"
+        pagination_selector = self.memory_store.read("pagination_selector") or "None"
+        pagination_type = self.memory_store.read("pagination_type") or "none"
+        pagination_max_pages = self.memory_store.read("pagination_max_pages")
+        extracted_articles = self.memory_store.read("extracted_articles") or []
+        accessibility = self.memory_store.read("accessibility_result") or {}
+        detail_selectors = self.memory_store.read("detail_selectors") or {}
+        listing_selectors = self.memory_store.read("listing_selectors") or {}
 
-            # Parse URL for site info
-            parsed = urlparse(target_url)
-            site_name = parsed.netloc.replace("www.", "")
-            base_url = f"{parsed.scheme}://{parsed.netloc}"
+        # Parse URL for site info
+        parsed = urlparse(target_url)
+        site_name = parsed.netloc.replace("www.", "")
+        base_url = f"{parsed.scheme}://{parsed.netloc}"
 
-            # Determine browser requirement
-            requires_browser = accessibility.get("requires_browser", True)
-            listing_accessible = accessibility.get("listing_accessible", False)
-            articles_accessible = accessibility.get("articles_accessible", False)
+        # Determine browser requirement
+        requires_browser = accessibility.get("requires_browser", True)
+        listing_accessible = accessibility.get("listing_accessible", False)
+        articles_accessible = accessibility.get("articles_accessible", False)
 
-            # Build the comprehensive plan
-            plan = self._build_header(site_name, target_url)
-            plan += self._build_scope_section(target_url, pagination_max_pages, detail_selectors)
-            plan += self._build_start_urls_section(target_url, pagination_type, pagination_max_pages)
-            plan += self._build_listing_section(article_selector, listing_container_selector, listing_selectors, article_confidence)
-            plan += self._build_pagination_section(pagination_type, pagination_selector, pagination_max_pages)
-            plan += self._build_detail_section(detail_selectors)
-            plan += self._build_data_model_section(target_url, detail_selectors)
-            plan += self._build_config_section(
-                target_url, article_selector, listing_container_selector, pagination_selector,
-                pagination_type, pagination_max_pages, requires_browser, detail_selectors
-            )
-            plan += self._build_accessibility_section(requires_browser, listing_accessible, articles_accessible)
-            plan += self._build_sample_articles_section(extracted_articles)
-            plan += self._build_notes_section(requires_browser)
+        # Build the comprehensive plan
+        plan = self._build_header(site_name, target_url)
+        plan += self._build_scope_section(target_url, pagination_max_pages, detail_selectors)
+        plan += self._build_start_urls_section(target_url, pagination_type, pagination_max_pages)
+        plan += self._build_listing_section(article_selector, listing_container_selector, listing_selectors, article_confidence)
+        plan += self._build_pagination_section(pagination_type, pagination_selector, pagination_max_pages)
+        plan += self._build_detail_section(detail_selectors)
+        plan += self._build_data_model_section(target_url, detail_selectors)
+        plan += self._build_config_section(
+            target_url, article_selector, listing_container_selector, pagination_selector,
+            pagination_type, pagination_max_pages, requires_browser, detail_selectors
+        )
+        plan += self._build_accessibility_section(requires_browser, listing_accessible, articles_accessible)
+        plan += self._build_sample_articles_section(extracted_articles)
+        plan += self._build_notes_section(requires_browser)
 
-            return {"success": True, "result": plan}
-        except Exception as e:
-            logger.error(f"Failed to generate plan: {e}")
-            return {"success": False, "error": str(e)}
+        logger.info(f"Generated plan.md for {site_name}")
+
+        return {"success": True, "result": plan}
 
     def _build_header(self, site_name: str, target_url: str) -> str:
         return f"""# Crawl Plan for {site_name}
@@ -580,28 +585,29 @@ class GenerateTestPlanTool(BaseTool):
     def __init__(self, memory_store: MemoryStore):
         self.memory_store = memory_store
 
+    @traced_tool(name="generate_test_md")
     def execute(self) -> dict[str, Any]:
-        try:
-            target_url = self.memory_store.read("target_url") or "Unknown"
-            test_description = self.memory_store.read("test-data-description") or ""
-            detail_selectors = self.memory_store.read("detail_selectors") or {}
+        """Generate test plan markdown. Instrumented by @traced_tool."""
+        target_url = self.memory_store.read("target_url") or "Unknown"
+        test_description = self.memory_store.read("test-data-description") or ""
+        detail_selectors = self.memory_store.read("detail_selectors") or {}
 
-            # Find all test data keys
-            listing_keys = self.memory_store.search("test-data-listing-*")
-            article_keys = self.memory_store.search("test-data-article-*")
+        # Find all test data keys
+        listing_keys = self.memory_store.search("test-data-listing-*")
+        article_keys = self.memory_store.search("test-data-article-*")
 
-            listing_count = len(listing_keys)
-            article_count = len(article_keys)
-            total_count = listing_count + article_count
+        listing_count = len(listing_keys)
+        article_count = len(article_keys)
+        total_count = listing_count + article_count
 
-            # Determine site name
-            parsed = urlparse(target_url)
-            site_name = parsed.netloc.replace("www.", "")
+        # Determine site name
+        parsed = urlparse(target_url)
+        site_name = parsed.netloc.replace("www.", "")
 
-            # Build dynamic expected fields based on discovered selectors
-            expected_fields = self._build_expected_fields(detail_selectors)
+        # Build dynamic expected fields based on discovered selectors
+        expected_fields = self._build_expected_fields(detail_selectors)
 
-            test_plan = f"""# Test Plan: {site_name}
+        test_plan = f"""# Test Plan: {site_name}
 
 ## Test Dataset Overview
 
@@ -689,34 +695,34 @@ for test in articles:
 
 ### Listing Pages ({listing_count})
 """
-            # Add listing URLs
-            for i, key in enumerate(listing_keys[:10], 1):
-                data = self.memory_store.read(key)
-                if data and isinstance(data, dict):
-                    url = data.get("url", "Unknown")
-                    test_plan += f"{i}. {url}\n"
+        # Add listing URLs
+        for i, key in enumerate(listing_keys[:10], 1):
+            data = self.memory_store.read(key)
+            if data and isinstance(data, dict):
+                url = data.get("url", "Unknown")
+                test_plan += f"{i}. {url}\n"
 
-            if listing_count > 10:
-                test_plan += f"... and {listing_count - 10} more\n"
-            elif listing_count == 0:
-                test_plan += "No listing entries found.\n"
+        if listing_count > 10:
+            test_plan += f"... and {listing_count - 10} more\n"
+        elif listing_count == 0:
+            test_plan += "No listing entries found.\n"
 
-            test_plan += f"""
+        test_plan += f"""
 ### Article Pages ({article_count})
 """
-            # Add article URLs
-            for i, key in enumerate(article_keys[:10], 1):
-                data = self.memory_store.read(key)
-                if data and isinstance(data, dict):
-                    url = data.get("url", "Unknown")
-                    test_plan += f"{i}. {url}\n"
+        # Add article URLs
+        for i, key in enumerate(article_keys[:10], 1):
+            data = self.memory_store.read(key)
+            if data and isinstance(data, dict):
+                url = data.get("url", "Unknown")
+                test_plan += f"{i}. {url}\n"
 
-            if article_count > 10:
-                test_plan += f"... and {article_count - 10} more\n"
-            elif article_count == 0:
-                test_plan += "No article entries found.\n"
+        if article_count > 10:
+            test_plan += f"... and {article_count - 10} more\n"
+        elif article_count == 0:
+            test_plan += "No article entries found.\n"
 
-            test_plan += f"""
+        test_plan += f"""
 ---
 
 ## Notes
@@ -728,10 +734,9 @@ for test in articles:
 - HTML content is cleaned but preserves structure for selector testing
 """
 
-            return {"success": True, "result": test_plan}
-        except Exception as e:
-            logger.error(f"Failed to generate test plan: {e}")
-            return {"success": False, "error": str(e)}
+        logger.info(f"Generated test.md for {site_name}")
+
+        return {"success": True, "result": test_plan}
 
     def _build_expected_fields(self, detail_selectors: dict) -> str:
         """Build expected fields JSON based on discovered selectors."""

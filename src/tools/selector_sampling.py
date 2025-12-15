@@ -1,4 +1,8 @@
-"""Selector sampling tools for generating page URLs to analyze."""
+"""Selector sampling tools for generating page URLs to analyze.
+
+This module uses the new observability decorators for automatic logging.
+The @traced_tool decorator handles all tool instrumentation.
+"""
 import json
 import logging
 import random
@@ -8,6 +12,7 @@ from urllib.parse import urlparse, parse_qs, urlencode, urlunparse
 
 from .base import BaseTool
 from ..core.llm import LLMClient
+from ..observability.decorators import traced_tool
 
 logger = logging.getLogger(__name__)
 
@@ -32,66 +37,53 @@ class ListingPagesGeneratorTool(BaseTool):
     def __init__(self, llm: LLMClient):
         self.llm = llm
 
+    @traced_tool(name="generate_listing_pages")
     def execute(
         self,
         target_url: str,
         max_pages: int,
         pagination_links: list[str] | None = None
     ) -> dict[str, Any]:
-        """Generate listing page URLs to analyze.
-
-        Args:
-            target_url: Base URL of the listing page
-            max_pages: Total number of pages available
-            pagination_links: Sample pagination URLs to analyze for pattern detection
-
-        Returns:
-            dict with success, urls list, detected pattern, and metadata
-        """
-        try:
-            # Detect pagination pattern from links
-            if pagination_links and len(pagination_links) >= 2:
-                pattern_info = self._detect_pagination_pattern(target_url, pagination_links)
-            else:
-                # Fallback to simple ?page={n} pattern
-                pattern_info = {
-                    "pattern_type": "page_number",
-                    "param_name": "page",
-                    "base_url": target_url,
-                    "url_template": f"{target_url}?page={{n}}"
-                }
-
-            # Calculate sample size: 2% of total, min 5, max 20
-            sample_size = max(5, min(20, int(max_pages * 0.02)))
-
-            # If there are fewer pages than sample_size, use all
-            if max_pages <= sample_size:
-                page_numbers = list(range(1, max_pages + 1))
-            else:
-                # Generate page numbers spread across the range
-                page_numbers = self._generate_spread_pages(max_pages, sample_size)
-
-            # Generate URLs using detected pattern
-            urls = self._generate_urls(target_url, page_numbers, pattern_info)
-
-            logger.info(
-                f"Generated {len(urls)} listing URLs from {max_pages} total pages "
-                f"(sample: {sample_size}, pattern: {pattern_info.get('pattern_type', 'unknown')})"
-            )
-
-            return {
-                "success": True,
-                "urls": urls,
-                "page_numbers": page_numbers,
-                "sample_size": sample_size,
-                "total_pages": max_pages,
-                "sample_percentage": round(sample_size / max_pages * 100, 1),
-                "pagination_pattern": pattern_info
+        """Generate listing page URLs to analyze. Instrumented by @traced_tool."""
+        # Detect pagination pattern from links
+        if pagination_links and len(pagination_links) >= 2:
+            pattern_info = self._detect_pagination_pattern(target_url, pagination_links)
+        else:
+            # Fallback to simple ?page={n} pattern
+            pattern_info = {
+                "pattern_type": "page_number",
+                "param_name": "page",
+                "base_url": target_url,
+                "url_template": f"{target_url}?page={{n}}"
             }
 
-        except Exception as e:
-            logger.error(f"Failed to generate listing pages: {e}")
-            return {"success": False, "error": str(e)}
+        # Calculate sample size: 2% of total, min 5, max 20
+        sample_size = max(5, min(20, int(max_pages * 0.02)))
+
+        # If there are fewer pages than sample_size, use all
+        if max_pages <= sample_size:
+            page_numbers = list(range(1, max_pages + 1))
+        else:
+            # Generate page numbers spread across the range
+            page_numbers = self._generate_spread_pages(max_pages, sample_size)
+
+        # Generate URLs using detected pattern
+        urls = self._generate_urls(target_url, page_numbers, pattern_info)
+
+        logger.info(
+            f"Generated {len(urls)} listing URLs from {max_pages} total pages "
+            f"(sample: {sample_size}, pattern: {pattern_info.get('pattern_type', 'unknown')})"
+        )
+
+        return {
+            "success": True,
+            "urls": urls,
+            "page_numbers": page_numbers,
+            "sample_size": sample_size,
+            "total_pages": max_pages,
+            "sample_percentage": round(sample_size / max_pages * 100, 1),
+            "pagination_pattern": pattern_info
+        }
 
     def _detect_pagination_pattern(self, target_url: str, pagination_links: list[str]) -> dict:
         """Use LLM to analyze pagination links and detect the URL pattern."""
@@ -313,68 +305,55 @@ class ArticlePagesGeneratorTool(BaseTool):
     def __init__(self, llm: LLMClient):
         self.llm = llm
 
+    @traced_tool(name="generate_article_pages")
     def execute(
         self,
         article_urls: list[str],
         min_per_group: int = 3,
         sample_percentage: float = 0.20
     ) -> dict[str, Any]:
-        """Generate article URLs to analyze.
-
-        Args:
-            article_urls: All collected article URLs
-            min_per_group: Minimum samples per pattern group (default: 3)
-            sample_percentage: Percentage to sample per group (default: 20%)
-
-        Returns:
-            dict with success, selected_urls, and pattern groupings
-        """
-        try:
-            if not article_urls:
-                return {
-                    "success": False,
-                    "error": "No article URLs provided"
-                }
-
-            # Group URLs by pattern using LLM
-            groups = self._group_urls_by_pattern(article_urls)
-
-            # Sample from each group
-            selected_urls = []
-            group_samples = {}
-
-            for pattern, urls in groups.items():
-                # Calculate sample size: 20% of group, minimum 3
-                sample_count = max(min_per_group, int(len(urls) * sample_percentage))
-                # Don't sample more than available
-                sample_count = min(sample_count, len(urls))
-
-                # Random sample
-                sampled = random.sample(urls, sample_count)
-                selected_urls.extend(sampled)
-                group_samples[pattern] = {
-                    "total_in_group": len(urls),
-                    "sampled_count": sample_count,
-                    "sampled_urls": sampled
-                }
-
-            logger.info(
-                f"Generated {len(selected_urls)} article URLs from {len(article_urls)} total "
-                f"across {len(groups)} pattern groups"
-            )
-
+        """Generate article URLs to analyze. Instrumented by @traced_tool."""
+        if not article_urls:
             return {
-                "success": True,
-                "selected_urls": selected_urls,
-                "total_urls": len(article_urls),
-                "selected_count": len(selected_urls),
-                "pattern_groups": group_samples,
-                "num_patterns": len(groups)
+                "success": False,
+                "error": "No article URLs provided"
             }
 
-        except Exception as e:
-            logger.error(f"Failed to generate article pages: {e}")
-            return {"success": False, "error": str(e)}
+        # Group URLs by pattern using LLM
+        groups = self._group_urls_by_pattern(article_urls)
+
+        # Sample from each group
+        selected_urls = []
+        group_samples = {}
+
+        for pattern, urls in groups.items():
+            # Calculate sample size: 20% of group, minimum 3
+            sample_count = max(min_per_group, int(len(urls) * sample_percentage))
+            # Don't sample more than available
+            sample_count = min(sample_count, len(urls))
+
+            # Random sample
+            sampled = random.sample(urls, sample_count)
+            selected_urls.extend(sampled)
+            group_samples[pattern] = {
+                "total_in_group": len(urls),
+                "sampled_count": sample_count,
+                "sampled_urls": sampled
+            }
+
+        logger.info(
+            f"Generated {len(selected_urls)} article URLs from {len(article_urls)} total "
+            f"across {len(groups)} pattern groups"
+        )
+
+        return {
+            "success": True,
+            "selected_urls": selected_urls,
+            "total_urls": len(article_urls),
+            "selected_count": len(selected_urls),
+            "pattern_groups": group_samples,
+            "num_patterns": len(groups)
+        }
 
     def _group_urls_by_pattern(self, urls: list[str]) -> dict[str, list[str]]:
         """Use LLM to group URLs by their structural pattern."""
@@ -412,7 +391,6 @@ Respond with JSON only:
             content = response.get("content", "")
 
             # Parse JSON from response
-            import json
             # Extract JSON from markdown code blocks if present
             if "```json" in content:
                 content = content.split("```json")[1].split("```")[0]

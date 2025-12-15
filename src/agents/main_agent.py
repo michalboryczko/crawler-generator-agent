@@ -1,4 +1,8 @@
-"""Main Agent for orchestrating the crawl plan creation workflow."""
+"""Main Agent for orchestrating the crawl plan creation workflow.
+
+This module uses the new observability decorators for automatic logging.
+The @traced_agent decorator handles all agent instrumentation.
+"""
 import logging
 from pathlib import Path
 from typing import Any
@@ -10,6 +14,7 @@ from .accessibility_agent import AccessibilityAgent
 from .data_prep_agent import DataPrepAgent
 from ..core.llm import LLMClient
 from ..core.browser import BrowserSession
+from ..observability.decorators import traced_agent
 from ..tools.memory import (
     MemoryStore,
     MemoryReadTool,
@@ -149,8 +154,12 @@ class MainAgent(BaseAgent):
 
         super().__init__(llm, tools)
 
+    @traced_agent(name="main_agent.create_crawl_plan")
     def create_crawl_plan(self, url: str) -> dict[str, Any]:
-        """High-level method to create a complete crawl plan for a URL."""
+        """High-level method to create a complete crawl plan for a URL.
+
+        Instrumented by @traced_agent - logs workflow lifecycle and results.
+        """
         task = f"""Create a complete crawl plan for: {url}
 
 Execute the full workflow:

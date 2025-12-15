@@ -1,6 +1,8 @@
-"""Selector Agent for finding and verifying CSS selectors."""
-import logging
+"""Selector Agent for finding and verifying CSS selectors.
 
+This agent inherits from BaseAgent which uses the @traced_agent decorator
+for automatic observability instrumentation.
+"""
 from .base import BaseAgent
 from ..core.llm import LLMClient
 from ..core.browser import BrowserSession
@@ -19,8 +21,6 @@ from ..tools.selector_extraction import (
     ArticlePageExtractorTool,
     SelectorAggregatorTool,
 )
-
-logger = logging.getLogger(__name__)
 
 SELECTOR_AGENT_PROMPT = """You are a Selector Agent. Find CSS selectors by visiting multiple listing and article pages.
 

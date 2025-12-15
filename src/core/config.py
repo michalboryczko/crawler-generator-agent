@@ -3,7 +3,12 @@ import os
 import re
 from dataclasses import dataclass
 from pathlib import Path
+from typing import TYPE_CHECKING
 from urllib.parse import urlparse
+
+if TYPE_CHECKING:
+    from .model_registry import ModelRegistry
+    from .component_models import ComponentModelConfig
 
 
 def url_to_dirname(url: str) -> str:
@@ -44,19 +49,32 @@ class OutputConfig:
 
 @dataclass
 class OpenAIConfig:
-    """OpenAI API configuration."""
+    """Legacy OpenAI API configuration.
+
+    This class is maintained for backward compatibility. For new code,
+    use LLMClientFactory with ModelConfig and ComponentModelConfig instead.
+
+    See docs/multi-model-configuration.md for migration guide.
+    """
     api_key: str
     model: str = "gpt-4o"
     temperature: float = 0.0
 
     @classmethod
     def from_env(cls) -> "OpenAIConfig":
-        api_key = os.environ.get("OPENAI_API_KEY")
+        """Load configuration from environment variables.
+
+        Supports both legacy (OPENAI_API_KEY) and new (OPENAI_KEY) variable names.
+        """
+        # Support both old and new env var names
+        api_key = os.environ.get("OPENAI_API_KEY") or os.environ.get("OPENAI_KEY")
         if not api_key:
-            raise ValueError("OPENAI_API_KEY environment variable required")
+            raise ValueError(
+                "OpenAI API key not found. Set OPENAI_API_KEY or OPENAI_KEY environment variable"
+            )
         return cls(
             api_key=api_key,
-            model=os.environ.get("OPENAI_MODEL", "gpt-4o"),
+            model=os.environ.get("OPENAI_MODEL", os.environ.get("DEFAULT_MODEL", "gpt-4o")),
             temperature=float(os.environ.get("OPENAI_TEMPERATURE", "0.0")),
         )
 
