@@ -247,7 +247,7 @@ def _prepare_llm_input_data(args: tuple, kwargs: dict) -> dict:
     Only logs essential fields:
     - messages: The conversation messages
     - tools: Just tool names (not full schemas)
-    - extra_params: Any additional kwargs
+    - tool_choice: If specified
 
     Args:
         args: Positional arguments (self, messages, tools, ...)
@@ -277,28 +277,149 @@ def _prepare_llm_input_data(args: tuple, kwargs: dict) -> dict:
     if "tool_choice" in kwargs:
         result["tool_choice"] = kwargs["tool_choice"]
 
-    # Collect extra params from kwargs (excluding internal ones)
-    extra_params = {
-        k: v for k, v in kwargs.items()
-        if k not in ('tool_choice', 'parallel_tool_calls')
-    }
-    if extra_params:
-        result["extra_params"] = safe_serialize(extra_params)
-
     return result
 
 
-def _get_span_name(component_type: str, name: str) -> str:
-    """Generate OTel span name.
+def _prepare_llm_output_data(result: Any) -> dict:
+    """Prepare simplified LLM output data for logging.
+
+    Only logs essential fields:
+    - content: The response text
+    - tool_calls: Full tool call details (id, name, arguments)
+    - finish_reason: Why the response ended
 
     Args:
-        component_type: Type of component (tool, agent, llm)
-        name: Component name
+        result: LLM response (dict or object)
 
     Returns:
-        Span name in format "component_type.name"
+        Simplified output data for logging
     """
+    output = {}
+
+    if isinstance(result, dict):
+        # Content
+        if "content" in result:
+            output["content"] = result["content"]
+
+        # Tool calls with full details
+        if "tool_calls" in result and result["tool_calls"]:
+            output["tool_calls"] = result["tool_calls"]
+
+        # Finish reason
+        if "finish_reason" in result:
+            output["finish_reason"] = result["finish_reason"]
+
+        # Tool called flag (for quick filtering)
+        if "tool_called" in result:
+            output["tool_called"] = result["tool_called"]
+
+    return safe_serialize(output)
+
+
+def _get_span_name(component_type: str, name: str) -> str:
+    """Generate OTel span name."""
     return f"{component_type}.{name}"
+
+
+def _prepare_tracing(
+    component_type: str,
+    name: str,
+    args: tuple,
+    kwargs: dict,
+    func: Callable
+) -> tuple:
+    """Prepare tracing context before span creation.
+
+    Returns:
+        Tuple of (tracer, span_name, parent_ctx, input_data)
+    """
+    tracer = get_tracer()
+    span_name = _get_span_name(component_type, name)
+    parent_ctx = get_or_create_context(name)
+
+    # Prepare input data - use simplified format for LLM calls
+    if component_type == "llm":
+        input_data = _prepare_llm_input_data(args, kwargs)
+    else:
+        input_data = _prepare_input_data(args, kwargs, func)
+
+    return tracer, span_name, parent_ctx, input_data
+
+
+def _setup_span(
+    span,
+    parent_ctx: ObservabilityContext,
+    component_type: str,
+    name: str,
+    input_data: dict
+) -> tuple:
+    """Setup span attributes and context.
+
+    Returns:
+        Tuple of (ctx, token)
+    """
+    span.set_attribute("component.type", component_type)
+    span.set_attribute("component.name", name)
+    span.set_attribute("session.id", parent_ctx.session_id or "")
+    span.set_attribute("request.id", parent_ctx.request_id or "")
+
+    ctx = parent_ctx.create_child(name, span)
+    token = set_context(ctx)
+
+    emit_component_start(component_type, name, ctx, input_data)
+
+    return ctx, token
+
+
+def _handle_success(
+    span,
+    component_type: str,
+    name: str,
+    ctx: ObservabilityContext,
+    result: Any,
+    start_time: float,
+    kwargs: dict
+) -> None:
+    """Handle successful execution - set span status and emit logs."""
+    duration_ms = (time.perf_counter() - start_time) * 1000
+
+    span.set_status(Status(StatusCode.OK))
+    span.set_attribute("duration_ms", duration_ms)
+
+    # Extract metrics for LLM calls
+    metrics = {}
+    if component_type == "llm":
+        metrics = _extract_llm_metrics(result, kwargs)
+        for key, value in metrics.items():
+            if isinstance(value, (str, int, float, bool)):
+                span.set_attribute(key, value)
+
+    # Prepare output data - use simplified format for LLM
+    if component_type == "llm":
+        output_data = _prepare_llm_output_data(result)
+    else:
+        output_data = safe_serialize(result)
+
+    emit_component_end(component_type, name, ctx, output_data, duration_ms, metrics)
+
+
+def _handle_error(
+    span,
+    component_type: str,
+    name: str,
+    ctx: ObservabilityContext,
+    exception: Exception,
+    input_data: dict,
+    start_time: float
+) -> None:
+    """Handle execution error - set span status and emit error logs."""
+    duration_ms = (time.perf_counter() - start_time) * 1000
+
+    span.set_status(Status(StatusCode.ERROR, str(exception)))
+    span.record_exception(exception)
+    span.set_attribute("duration_ms", duration_ms)
+
+    emit_component_error(component_type, name, ctx, exception, input_data, duration_ms)
 
 
 def _execute_with_tracing_sync(
@@ -308,105 +429,22 @@ def _execute_with_tracing_sync(
     args: tuple,
     kwargs: dict
 ) -> Any:
-    """Core tracing execution logic for synchronous functions.
+    """Core tracing execution logic for synchronous functions."""
+    tracer, span_name, parent_ctx, input_data = _prepare_tracing(
+        component_type, name, args, kwargs, func
+    )
 
-    Creates an OTel span and manages our hybrid context.
-
-    Args:
-        func: Function to execute
-        name: Component name
-        component_type: Type of component (tool, agent, llm)
-        args: Positional arguments
-        kwargs: Keyword arguments
-
-    Returns:
-        Function result
-
-    Raises:
-        Any exception from the function (after logging)
-    """
-    tracer = get_tracer()
-    span_name = _get_span_name(component_type, name)
-
-    # Get or create parent context (for business metadata)
-    parent_ctx = get_or_create_context(name)
-
-    # Prepare input data before starting span
-    # Use simplified format for LLM calls
-    if component_type == "llm":
-        input_data = _prepare_llm_input_data(args, kwargs)
-    else:
-        input_data = _prepare_input_data(args, kwargs, func)
-
-    # Start OTel span - this creates proper parent-child relationship
-    with tracer.start_as_current_span(
-        name=span_name,
-        kind=SpanKind.INTERNAL
-    ) as span:
-        # Set span attributes
-        span.set_attribute("component.type", component_type)
-        span.set_attribute("component.name", name)
-        span.set_attribute("session.id", parent_ctx.session_id or "")
-        span.set_attribute("request.id", parent_ctx.request_id or "")
-
-        # Create child context with this span
-        ctx = parent_ctx.create_child(name, span)
-        token = set_context(ctx)
-
-        # Log entry - ALWAYS (no level filtering)
-        emit_component_start(component_type, name, ctx, input_data)
-
+    with tracer.start_as_current_span(name=span_name, kind=SpanKind.INTERNAL) as span:
+        ctx, token = _setup_span(span, parent_ctx, component_type, name, input_data)
         start_time = time.perf_counter()
 
         try:
             result = func(*args, **kwargs)
-
-            duration_ms = (time.perf_counter() - start_time) * 1000
-
-            # Set span status to OK
-            span.set_status(Status(StatusCode.OK))
-            span.set_attribute("duration_ms", duration_ms)
-
-            # Extract additional metrics for LLM calls
-            metrics = {}
-            if component_type == "llm":
-                metrics = _extract_llm_metrics(result, kwargs)
-                for key, value in metrics.items():
-                    if isinstance(value, (str, int, float, bool)):
-                        span.set_attribute(key, value)
-
-            # Log output
-            emit_component_end(
-                component_type,
-                name,
-                ctx,
-                safe_serialize(result),
-                duration_ms,
-                metrics
-            )
-
+            _handle_success(span, component_type, name, ctx, result, start_time, kwargs)
             return result
-
         except Exception as e:
-            duration_ms = (time.perf_counter() - start_time) * 1000
-
-            # Set span status to ERROR
-            span.set_status(Status(StatusCode.ERROR, str(e)))
-            span.record_exception(e)
-            span.set_attribute("duration_ms", duration_ms)
-
-            # Log error with full context
-            emit_component_error(
-                component_type,
-                name,
-                ctx,
-                e,
-                input_data,
-                duration_ms
-            )
-
-            raise  # Re-raise after logging
-
+            _handle_error(span, component_type, name, ctx, e, input_data, start_time)
+            raise
         finally:
             reset_context(token)
 
@@ -418,105 +456,22 @@ async def _execute_with_tracing_async(
     args: tuple,
     kwargs: dict
 ) -> Any:
-    """Core tracing execution logic for async functions.
+    """Core tracing execution logic for async functions."""
+    tracer, span_name, parent_ctx, input_data = _prepare_tracing(
+        component_type, name, args, kwargs, func
+    )
 
-    Creates an OTel span and manages our hybrid context.
-
-    Args:
-        func: Async function to execute
-        name: Component name
-        component_type: Type of component (tool, agent, llm)
-        args: Positional arguments
-        kwargs: Keyword arguments
-
-    Returns:
-        Function result
-
-    Raises:
-        Any exception from the function (after logging)
-    """
-    tracer = get_tracer()
-    span_name = _get_span_name(component_type, name)
-
-    # Get or create parent context (for business metadata)
-    parent_ctx = get_or_create_context(name)
-
-    # Prepare input data before starting span
-    # Use simplified format for LLM calls
-    if component_type == "llm":
-        input_data = _prepare_llm_input_data(args, kwargs)
-    else:
-        input_data = _prepare_input_data(args, kwargs, func)
-
-    # Start OTel span - this creates proper parent-child relationship
-    with tracer.start_as_current_span(
-        name=span_name,
-        kind=SpanKind.INTERNAL
-    ) as span:
-        # Set span attributes
-        span.set_attribute("component.type", component_type)
-        span.set_attribute("component.name", name)
-        span.set_attribute("session.id", parent_ctx.session_id or "")
-        span.set_attribute("request.id", parent_ctx.request_id or "")
-
-        # Create child context with this span
-        ctx = parent_ctx.create_child(name, span)
-        token = set_context(ctx)
-
-        # Log entry - ALWAYS (no level filtering)
-        emit_component_start(component_type, name, ctx, input_data)
-
+    with tracer.start_as_current_span(name=span_name, kind=SpanKind.INTERNAL) as span:
+        ctx, token = _setup_span(span, parent_ctx, component_type, name, input_data)
         start_time = time.perf_counter()
 
         try:
             result = await func(*args, **kwargs)
-
-            duration_ms = (time.perf_counter() - start_time) * 1000
-
-            # Set span status to OK
-            span.set_status(Status(StatusCode.OK))
-            span.set_attribute("duration_ms", duration_ms)
-
-            # Extract additional metrics for LLM calls
-            metrics = {}
-            if component_type == "llm":
-                metrics = _extract_llm_metrics(result, kwargs)
-                for key, value in metrics.items():
-                    if isinstance(value, (str, int, float, bool)):
-                        span.set_attribute(key, value)
-
-            # Log output
-            emit_component_end(
-                component_type,
-                name,
-                ctx,
-                safe_serialize(result),
-                duration_ms,
-                metrics
-            )
-
+            _handle_success(span, component_type, name, ctx, result, start_time, kwargs)
             return result
-
         except Exception as e:
-            duration_ms = (time.perf_counter() - start_time) * 1000
-
-            # Set span status to ERROR
-            span.set_status(Status(StatusCode.ERROR, str(e)))
-            span.record_exception(e)
-            span.set_attribute("duration_ms", duration_ms)
-
-            # Log error with full context
-            emit_component_error(
-                component_type,
-                name,
-                ctx,
-                e,
-                input_data,
-                duration_ms
-            )
-
-            raise  # Re-raise after logging
-
+            _handle_error(span, component_type, name, ctx, e, input_data, start_time)
+            raise
         finally:
             reset_context(token)
 
