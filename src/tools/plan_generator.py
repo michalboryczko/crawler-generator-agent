@@ -4,13 +4,12 @@ This module uses the new observability decorators for automatic logging.
 The @traced_tool decorator handles all tool instrumentation.
 """
 import logging
-from datetime import datetime
 from typing import Any
 from urllib.parse import urlparse
 
+from ..observability.decorators import traced_tool
 from .base import BaseTool
 from .memory import MemoryStore
-from ..observability.decorators import traced_tool
 
 logger = logging.getLogger(__name__)
 
@@ -44,7 +43,6 @@ class GeneratePlanTool(BaseTool):
         # Parse URL for site info
         parsed = urlparse(target_url)
         site_name = parsed.netloc.replace("www.", "")
-        base_url = f"{parsed.scheme}://{parsed.netloc}"
 
         # Determine browser requirement
         requires_browser = accessibility.get("requires_browser", True)

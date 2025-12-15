@@ -6,7 +6,7 @@ The @traced_agent decorator handles all agent instrumentation.
 Supports both single LLMClient (legacy) and LLMClientFactory (multi-model) modes.
 """
 import logging
-from typing import Any, Optional, Union, TYPE_CHECKING
+from typing import TYPE_CHECKING, Any, Union
 
 from ..core.llm import LLMClient
 from ..observability.decorators import traced_agent
@@ -35,7 +35,7 @@ class BaseAgent:
         self,
         llm: Union[LLMClient, "LLMClientFactory"],
         tools: list[BaseTool] | None = None,
-        component_name: Optional[str] = None,
+        component_name: str | None = None,
     ):
         """Initialize the agent.
 

@@ -7,8 +7,8 @@ import logging
 import random
 from typing import Any
 
-from .base import BaseTool
 from ..observability.decorators import traced_tool
+from .base import BaseTool
 
 logger = logging.getLogger(__name__)
 

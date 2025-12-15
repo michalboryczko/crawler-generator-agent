@@ -7,8 +7,7 @@ from typing import TYPE_CHECKING
 from urllib.parse import urlparse
 
 if TYPE_CHECKING:
-    from .model_registry import ModelRegistry
-    from .component_models import ComponentModelConfig
+    pass
 
 
 def url_to_dirname(url: str) -> str:

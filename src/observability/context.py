@@ -10,13 +10,12 @@ The ObservabilityContext wraps an OTel span and carries our business fields.
 import contextvars
 import uuid
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
-from typing import Optional, List, Any
+from datetime import UTC, datetime
+from typing import Any, Optional
 
 from opentelemetry import trace
 
-from .tracer import format_trace_id, format_span_id
-
+from .tracer import format_span_id, format_trace_id
 
 # Global context storage for business metadata
 _observability_context: contextvars.ContextVar['ObservabilityContext'] = \
@@ -38,13 +37,13 @@ class ObservabilityContext:
         _span: Reference to OTel span (for extracting IDs)
     """
     # Business metadata (WE manage these - not OTel)
-    session_id: Optional[str] = None
-    request_id: Optional[str] = None
-    component_stack: List[str] = field(default_factory=list)
-    start_time: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
+    session_id: str | None = None
+    request_id: str | None = None
+    component_stack: list[str] = field(default_factory=list)
+    start_time: datetime = field(default_factory=lambda: datetime.now(UTC))
 
     # OTel span reference (for extracting IDs) - not serialized
-    _span: Optional[Any] = field(default=None, repr=False, compare=False)
+    _span: Any | None = field(default=None, repr=False, compare=False)
 
     @property
     def trace_id(self) -> str:
@@ -73,7 +72,7 @@ class ObservabilityContext:
         return ""
 
     @property
-    def parent_span_id(self) -> Optional[str]:
+    def parent_span_id(self) -> str | None:
         """Get parent span ID from OTel span.
 
         Note: OTel manages parent-child relationships internally.
@@ -122,7 +121,7 @@ class ObservabilityContext:
         return _observability_context.get()
 
     @classmethod
-    def create_root(cls, session_id: str = None) -> 'ObservabilityContext':
+    def create_root(cls, session_id: str | None = None) -> 'ObservabilityContext':
         """Create a new root context (no parent span yet).
 
         This creates the business metadata. OTel span will be attached
@@ -263,8 +262,8 @@ class ObservabilitySpan:
             component_name: Name of the component for this span.
         """
         self.component_name = component_name
-        self.token: Optional[contextvars.Token] = None
-        self.context: Optional[ObservabilityContext] = None
+        self.token: contextvars.Token | None = None
+        self.context: ObservabilityContext | None = None
         self._otel_span = None
         self._otel_token = None
 

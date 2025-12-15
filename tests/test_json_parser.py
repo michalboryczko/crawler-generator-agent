@@ -11,9 +11,9 @@ Tests various formats that LLMs might return JSON in:
 import pytest
 
 from src.core.json_parser import (
-    parse_json_response,
-    extract_json,
     JSONParseError,
+    extract_json,
+    parse_json_response,
 )
 
 
@@ -266,8 +266,8 @@ class TestEdgeCases:
     def test_json_with_escaped_characters(self):
         content = '{"text": "line1\\nline2\\ttabbed", "quote": "say \\"hello\\""}'
         result = parse_json_response(content)
-        assert "line1\nline2\ttabbed" == result["text"]
-        assert 'say "hello"' == result["quote"]
+        assert result["text"] == "line1\nline2\ttabbed"
+        assert result["quote"] == 'say "hello"'
 
     def test_json_with_unicode(self):
         content = '{"emoji": "🚀", "chinese": "中文", "math": "∑∏∫"}'
@@ -399,7 +399,7 @@ Here's my analysis:
 }'''
         # Standard JSON doesn't support comments, so this might fail
         # But the brace matching should still extract something
-        result = parse_json_response(content)
+        parse_json_response(content)
         # This is a known limitation - JSON with comments won't parse
         # The test documents the expected behavior
 

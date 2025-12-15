@@ -1,18 +1,19 @@
 """Tests for context propagation with OTel spans."""
 
 import pytest
+
 from src.observability import (
-    initialize_observability,
     ObservabilityConfig,
+    initialize_observability,
     shutdown,
 )
 from src.observability.context import (
     ObservabilityContext,
-    get_or_create_context,
-    set_context,
-    reset_context,
     ObservabilitySpan,
     _observability_context,
+    get_or_create_context,
+    reset_context,
+    set_context,
 )
 from src.observability.handlers import NullHandler
 

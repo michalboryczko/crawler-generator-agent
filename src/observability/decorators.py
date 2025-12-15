@@ -13,29 +13,28 @@ Usage:
         return {"success": True}
 """
 
-from functools import wraps
-import time
-import traceback
 import asyncio
 import inspect
-from typing import Callable, Any, TypeVar, Optional
+import time
+from collections.abc import Callable
+from functools import wraps
+from typing import Any, TypeVar
 
-from opentelemetry import trace
 from opentelemetry.trace import SpanKind, Status, StatusCode
 
-from .tracer import get_tracer
 from .context import (
     ObservabilityContext,
     get_or_create_context,
-    set_context,
     reset_context,
+    set_context,
 )
 from .emitters import (
-    emit_component_start,
     emit_component_end,
     emit_component_error,
+    emit_component_start,
 )
 from .serializers import safe_serialize
+from .tracer import get_tracer
 
 F = TypeVar('F', bound=Callable[..., Any])
 
@@ -302,7 +301,7 @@ def _prepare_llm_output_data(result: Any) -> dict:
             output["content"] = result["content"]
 
         # Tool calls with full details
-        if "tool_calls" in result and result["tool_calls"]:
+        if result.get("tool_calls"):
             output["tool_calls"] = result["tool_calls"]
 
         # Finish reason
@@ -518,7 +517,7 @@ def _extract_llm_metrics(result: Any, kwargs: dict) -> dict:
         if "tool_called" in result:
             metrics["llm.response.tool_called"] = result["tool_called"]
         # Extract tool_calls with full details (id, name, arguments)
-        if "tool_calls" in result and result["tool_calls"]:
+        if result.get("tool_calls"):
             metrics["llm.response.tool_calls"] = result["tool_calls"]
 
     # Model info - check result first (from LLMClient.chat), then kwargs, then fallback

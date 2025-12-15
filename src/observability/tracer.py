@@ -15,16 +15,15 @@ Usage:
         ...
 """
 
-from typing import Optional
+
 from opentelemetry import trace
+from opentelemetry.sdk.resources import SERVICE_NAME, Resource
 from opentelemetry.sdk.trace import TracerProvider
 from opentelemetry.sdk.trace.export import BatchSpanProcessor
-from opentelemetry.sdk.resources import Resource, SERVICE_NAME
-
 
 # Global tracer instance
-_tracer: Optional[trace.Tracer] = None
-_provider: Optional[TracerProvider] = None
+_tracer: trace.Tracer | None = None
+_provider: TracerProvider | None = None
 
 
 def init_tracer(

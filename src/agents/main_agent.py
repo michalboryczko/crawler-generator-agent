@@ -7,106 +7,39 @@ import logging
 from pathlib import Path
 from typing import Any
 
-from .base import BaseAgent
-from .browser_agent import BrowserAgent
-from .selector_agent import SelectorAgent
-from .accessibility_agent import AccessibilityAgent
-from .data_prep_agent import DataPrepAgent
-from ..core.llm import LLMClient
 from ..core.browser import BrowserSession
+from ..core.llm import LLMClient
 from ..observability.decorators import traced_agent
-from ..tools.memory import (
-    MemoryStore,
-    MemoryReadTool,
-    MemoryWriteTool,
-    MemoryListTool,
-    MemorySearchTool,
-    MemoryDumpTool,
-)
 from ..tools.file import (
     FileCreateTool,
     FileReplaceTool,
+)
+from ..tools.memory import (
+    MemoryDumpTool,
+    MemoryListTool,
+    MemoryReadTool,
+    MemorySearchTool,
+    MemoryStore,
+    MemoryWriteTool,
+)
+from ..tools.orchestration import (
+    RunAccessibilityAgentTool,
+    RunBrowserAgentTool,
+    RunDataPrepAgentTool,
+    RunSelectorAgentTool,
 )
 from ..tools.plan_generator import (
     GeneratePlanTool,
     GenerateTestPlanTool,
 )
-from ..tools.orchestration import (
-    RunBrowserAgentTool,
-    RunSelectorAgentTool,
-    RunAccessibilityAgentTool,
-    RunDataPrepAgentTool,
-)
+from .accessibility_agent import AccessibilityAgent
+from .base import BaseAgent
+from .browser_agent import BrowserAgent
+from .data_prep_agent import DataPrepAgent
+from .prompts import MAIN_AGENT_PROMPT
+from .selector_agent import SelectorAgent
 
 logger = logging.getLogger(__name__)
-
-MAIN_AGENT_PROMPT = """You are the Main Orchestrator Agent for creating web crawler plans.
-
-Your goal is to analyze a website and create a complete crawl plan with comprehensive test data.
-
-## Output Files
-- plan.md - Comprehensive crawl configuration (from generate_plan_md)
-- test.md - Test dataset documentation (from generate_test_md)
-- data/test_set.jsonl - Test entries for both listing and article pages
-
-## Workflow - EXECUTE IN ORDER
-
-### Phase 1: Site Analysis
-1. Store target URL: memory_write("target_url", url)
-2. Run browser agent: "Navigate to {url}, extract article links, find pagination, determine max pages"
-   - Stores: extracted_articles, pagination_type, pagination_selector, pagination_max_pages
-
-### Phase 2: Selector Discovery
-3. Run selector agent: "Find CSS selectors for articles and detail page fields"
-   - Stores: article_selector, article_selector_confidence, detail_selectors, listing_selectors
-
-### Phase 3: Accessibility Check
-4. Run accessibility agent: "Check if site works without JavaScript"
-   - Stores: accessibility_result (includes requires_browser, listing_accessible, articles_accessible)
-
-### Phase 4: Test Data Preparation - CRITICAL
-5. Run data prep agent: "Create test dataset with 5+ listing pages and 20+ article pages"
-   - Agent fetches listing pages from different pagination positions
-   - Agent extracts article URLs from listings
-   - Agent fetches article pages randomly selected across listings
-   - Stores: test-data-listing-1..N and test-data-article-1..N
-
-   Listing entry: {"type": "listing", "url": "...", "given": "<HTML>", "expected": {"article_urls": [...], ...}}
-   Article entry: {"type": "article", "url": "...", "given": "<HTML>", "expected": {"title": "...", ...}}
-
-### Phase 5: Generate Output Files
-6. Call generate_plan_md -> returns comprehensive plan markdown
-7. Call file_create with path="plan.md" and the plan content
-8. Call generate_test_md -> returns test documentation (includes both listing and article counts)
-9. Call file_create with path="test.md" and the test content
-
-### Phase 6: Export Test Data
-10. Call memory_search with pattern="test-data-listing-*" to get listing keys
-11. Call memory_search with pattern="test-data-article-*" to get article keys
-12. Combine both key lists
-13. Call memory_dump with ALL keys and filename="data/test_set.jsonl"
-
-## Available Tools
-- Agents: run_browser_agent, run_selector_agent, run_accessibility_agent, run_data_prep_agent
-- Generators: generate_plan_md, generate_test_md
-- Memory: memory_read, memory_write, memory_list, memory_search, memory_dump
-- Files: file_create, file_replace
-
-## Rules
-1. Run agents sequentially - each depends on previous results
-2. ALWAYS check agent success before proceeding
-3. Data prep agent should create 25+ test entries (5 listings + 20 articles)
-4. Export BOTH listing and article test entries to JSONL
-
-## CRITICAL - DO NOT SKIP ANY PHASE
-You MUST call ALL four agents in order:
-1. run_browser_agent - REQUIRED
-2. run_selector_agent - REQUIRED
-3. run_accessibility_agent - REQUIRED
-4. run_data_prep_agent - REQUIRED (this fetches additional pages for test data)
-
-Do NOT skip the data prep agent. It is essential for creating the test dataset.
-The data prep agent will navigate the browser to multiple pages - you will see page changes."""
 
 
 class MainAgent(BaseAgent):

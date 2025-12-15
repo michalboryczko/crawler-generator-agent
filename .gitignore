@@ -22,5 +22,6 @@ build/
 .DS_Store
 
 # Project
-.claude/checkpoints/
-.claude/logs/
+.claude/
+.serena/
+.taskmaster/

@@ -7,9 +7,9 @@ Field definitions include Elasticsearch types for index template generation.
 """
 
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
-from typing import Any, Optional, Dict, List
+from datetime import UTC, datetime
 from enum import Enum
+from typing import Any
 
 
 class ComponentType(Enum):
@@ -37,7 +37,7 @@ class FieldDef:
     es_type: ESType
     description: str
     required: bool = False
-    nested_fields: Dict[str, "FieldDef"] = field(default_factory=dict)
+    nested_fields: dict[str, "FieldDef"] = field(default_factory=dict)
 
 
 # =============================================================================
@@ -152,7 +152,7 @@ class D:
 # =============================================================================
 # LOG RECORD SCHEMA - Fields with ES types
 # =============================================================================
-LOG_RECORD_FIELDS: Dict[str, FieldDef] = {
+LOG_RECORD_FIELDS: dict[str, FieldDef] = {
     # Core identity fields - OTel standard format
     F.TIMESTAMP: FieldDef(F.TIMESTAMP, ESType.DATE, "When the event occurred (UTC)", required=True),
     F.TRACE_ID: FieldDef(F.TRACE_ID, ESType.KEYWORD, "OTel trace ID (32 hex chars, 128-bit)", required=True),
@@ -195,7 +195,7 @@ LOG_RECORD_FIELDS: Dict[str, FieldDef] = {
 # Note: Spans are now created by OTel tracer, not stored in ES directly.
 # This schema is kept for reference and any custom span events.
 # =============================================================================
-TRACE_EVENT_FIELDS: Dict[str, FieldDef] = {
+TRACE_EVENT_FIELDS: dict[str, FieldDef] = {
     F.TYPE: FieldDef(F.TYPE, ESType.KEYWORD, "Record type discriminator (trace_event)"),
     F.NAME: FieldDef(F.NAME, ESType.KEYWORD, "Event name (e.g., tool.triggered)", required=True),
     F.TIMESTAMP: FieldDef(F.TIMESTAMP, ESType.DATE, "When the event occurred", required=True),
@@ -306,7 +306,7 @@ def field_to_es_mapping(field_def: FieldDef) -> dict:
         return {"type": field_def.es_type.value}
 
 
-def generate_es_mappings(fields: Dict[str, FieldDef]) -> dict:
+def generate_es_mappings(fields: dict[str, FieldDef]) -> dict:
     """Generate ES mappings from field definitions."""
     return {
         "properties": {
@@ -365,17 +365,17 @@ class LogRecord:
     timestamp: datetime
     trace_id: str
     span_id: str
-    parent_span_id: Optional[str]
-    session_id: Optional[str]
-    request_id: Optional[str]
+    parent_span_id: str | None
+    session_id: str | None
+    request_id: str | None
     level: str
     event: str
     component_type: str
     component_name: str
     triggered_by: str
-    data: Dict[str, Any] = field(default_factory=dict)
-    metrics: Dict[str, Any] = field(default_factory=dict)
-    tags: List[str] = field(default_factory=list)
+    data: dict[str, Any] = field(default_factory=dict)
+    metrics: dict[str, Any] = field(default_factory=dict)
+    tags: list[str] = field(default_factory=list)
 
     def to_dict(self) -> dict:
         """Serialize to dict for output. Field names from F class constants."""
@@ -403,7 +403,7 @@ class LogRecord:
         if isinstance(timestamp, str):
             timestamp = datetime.fromisoformat(timestamp.replace("Z", "+00:00"))
         elif timestamp is None:
-            timestamp = datetime.now(timezone.utc)
+            timestamp = datetime.now(UTC)
 
         return cls(
             timestamp=timestamp,
@@ -434,8 +434,8 @@ class TraceEvent:
     timestamp: datetime
     trace_id: str
     span_id: str
-    parent_span_id: Optional[str]
-    attributes: Dict[str, Any] = field(default_factory=dict)
+    parent_span_id: str | None
+    attributes: dict[str, Any] = field(default_factory=dict)
 
     def to_dict(self) -> dict:
         """Serialize to dict for output. Field names from F class constants."""

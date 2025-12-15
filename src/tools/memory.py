@@ -8,21 +8,21 @@ import json
 from pathlib import Path
 from typing import Any
 
-from .base import BaseTool
 from ..observability.decorators import traced_tool
+from .base import BaseTool
 
 
 class MemoryStore:
-    """Singleton in-memory storage shared across all agents."""
+    """In-memory storage shared across all agents.
 
-    _instance = None
-    _data: dict[str, Any] = {}
+    Use dependency injection to share a single instance:
+        store = MemoryStore()
+        tool1 = MemoryReadTool(store=store)
+        tool2 = MemoryWriteTool(store=store)
+    """
 
-    def __new__(cls):
-        if cls._instance is None:
-            cls._instance = super().__new__(cls)
-            cls._data = {}
-        return cls._instance
+    def __init__(self) -> None:
+        self._data: dict[str, Any] = {}
 
     def read(self, key: str) -> Any | None:
         """Read value by key."""
@@ -41,7 +41,7 @@ class MemoryStore:
 
     def search(self, pattern: str) -> list[str]:
         """Search keys matching glob pattern."""
-        return [k for k in self._data.keys() if fnmatch.fnmatch(k, pattern)]
+        return [k for k in self._data if fnmatch.fnmatch(k, pattern)]
 
     def list_keys(self) -> list[str]:
         """List all keys."""

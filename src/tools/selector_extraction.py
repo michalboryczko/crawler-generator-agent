@@ -10,11 +10,12 @@ from collections import Counter
 from typing import Any
 from urllib.parse import urljoin
 
-from .base import BaseTool
-from ..core.llm import LLMClient
 from ..core.browser import BrowserSession
 from ..core.html_cleaner import clean_html_for_llm
+from ..core.json_parser import parse_json_response
+from ..core.llm import LLMClient
 from ..observability.decorators import traced_tool
+from .base import BaseTool
 
 logger = logging.getLogger(__name__)
 
@@ -159,7 +160,7 @@ class ListingPageExtractorTool(BaseTool):
         content = response.get("content", "")
 
         # Parse JSON response
-        result = self._parse_json_response(content)
+        result = parse_json_response(content)
 
         if result:
             article_urls = result.get("article_urls", [])
@@ -193,33 +194,6 @@ class ListingPageExtractorTool(BaseTool):
                 "url": url,
                 "error": "Failed to parse LLM response"
             }
-
-    def _parse_json_response(self, content: str) -> dict | None:
-        """Parse JSON from LLM response, handling markdown code blocks."""
-        try:
-            return json.loads(content.strip())
-        except json.JSONDecodeError:
-            pass
-
-        try:
-            if "```json" in content:
-                json_str = content.split("```json")[1].split("```")[0]
-                return json.loads(json_str.strip())
-            elif "```" in content:
-                json_str = content.split("```")[1].split("```")[0]
-                return json.loads(json_str.strip())
-        except (json.JSONDecodeError, IndexError):
-            pass
-
-        try:
-            start = content.find("{")
-            end = content.rfind("}") + 1
-            if start >= 0 and end > start:
-                return json.loads(content[start:end])
-        except json.JSONDecodeError:
-            pass
-
-        return None
 
     def get_parameters_schema(self) -> dict[str, Any]:
         return {
@@ -289,7 +263,7 @@ class ArticlePageExtractorTool(BaseTool):
         content = response.get("content", "")
 
         # Parse JSON response
-        result = self._parse_json_response(content)
+        result = parse_json_response(content)
 
         if result:
             selectors = result.get("selectors", {})
@@ -313,33 +287,6 @@ class ArticlePageExtractorTool(BaseTool):
                 "url": url,
                 "error": "Failed to parse LLM response"
             }
-
-    def _parse_json_response(self, content: str) -> dict | None:
-        """Parse JSON from LLM response, handling markdown code blocks."""
-        try:
-            return json.loads(content.strip())
-        except json.JSONDecodeError:
-            pass
-
-        try:
-            if "```json" in content:
-                json_str = content.split("```json")[1].split("```")[0]
-                return json.loads(json_str.strip())
-            elif "```" in content:
-                json_str = content.split("```")[1].split("```")[0]
-                return json.loads(json_str.strip())
-        except (json.JSONDecodeError, IndexError):
-            pass
-
-        try:
-            start = content.find("{")
-            end = content.rfind("}") + 1
-            if start >= 0 and end > start:
-                return json.loads(content[start:end])
-        except json.JSONDecodeError:
-            pass
-
-        return None
 
     def get_parameters_schema(self) -> dict[str, Any]:
         return {
@@ -497,7 +444,7 @@ The crawler needs fallbacks for pages with different structures."""
         try:
             response = self.llm.chat(messages)
             content = response.get("content", "")
-            result = self._parse_json_response(content)
+            result = parse_json_response(content)
 
             if result and "selectors" in result:
                 # Merge LLM analysis with our frequency data
@@ -568,33 +515,6 @@ The crawler needs fallbacks for pages with different structures."""
             "selectors": selectors,
             "notes": f"Fallback chain aggregation from {total_pages} pages"
         }
-
-    def _parse_json_response(self, content: str) -> dict | None:
-        """Parse JSON from LLM response."""
-        try:
-            return json.loads(content.strip())
-        except json.JSONDecodeError:
-            pass
-
-        try:
-            if "```json" in content:
-                json_str = content.split("```json")[1].split("```")[0]
-                return json.loads(json_str.strip())
-            elif "```" in content:
-                json_str = content.split("```")[1].split("```")[0]
-                return json.loads(json_str.strip())
-        except (json.JSONDecodeError, IndexError):
-            pass
-
-        try:
-            start = content.find("{")
-            end = content.rfind("}") + 1
-            if start >= 0 and end > start:
-                return json.loads(content[start:end])
-        except json.JSONDecodeError:
-            pass
-
-        return None
 
     def get_parameters_schema(self) -> dict[str, Any]:
         return {

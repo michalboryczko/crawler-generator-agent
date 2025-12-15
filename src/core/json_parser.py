@@ -103,9 +103,7 @@ def _is_valid_type(result: Any, allow_array: bool) -> bool:
     """Check if result is a valid JSON type."""
     if isinstance(result, dict):
         return True
-    if isinstance(result, list) and allow_array:
-        return True
-    return False
+    return bool(isinstance(result, list) and allow_array)
 
 
 def _try_direct_parse(content: str) -> dict | list | None:

@@ -6,19 +6,22 @@ The observability decorators handle automatic instrumentation of all components.
 """
 import argparse
 import logging
+import os
 import shutil
 import sys
-import os
+from dataclasses import dataclass
+from pathlib import Path
+from typing import Any
 
 # Load .env file before any other imports that use os.environ
 from dotenv import load_dotenv
+
 load_dotenv()
 
+from src.agents.main_agent import MainAgent
+from src.core.browser import BrowserSession
 from src.core.config import AppConfig
 from src.core.llm import LLMClient, LLMClientFactory
-from src.core.browser import BrowserSession
-from src.tools.memory import MemoryStore
-from src.agents.main_agent import MainAgent
 
 # Observability imports
 from src.observability.config import (
@@ -26,24 +29,23 @@ from src.observability.config import (
     initialize_observability,
     shutdown,
 )
-from src.observability.handlers import OTelGrpcHandler, OTelConfig
-from src.observability.context import get_or_create_context, set_context
-from src.observability.emitters import emit_info, emit_warning, emit_error
+from src.observability.context import ObservabilityContext, get_or_create_context, set_context
+from src.observability.emitters import emit_error, emit_info, emit_warning
+from src.observability.handlers import OTelConfig, OTelGrpcHandler
+from src.tools.memory import MemoryStore
 
 
-def setup_logging(level: str) -> None:
-    """Configure legacy logging (for backward compatibility)."""
-    logging.basicConfig(
-        level=getattr(logging, level.upper()),
-        format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
-        handlers=[
-            logging.StreamHandler(sys.stdout),
-        ]
-    )
+@dataclass
+class CliArgs:
+    """Parsed command-line arguments."""
+    url: str | None
+    log_level: str
+    multi_model: bool
+    list_models: bool
 
 
-def main() -> int:
-    """Main entry point."""
+def parse_arguments() -> CliArgs:
+    """Parse command-line arguments."""
     parser = argparse.ArgumentParser(
         description="Create a web crawler plan for a given URL"
     )
@@ -70,58 +72,232 @@ def main() -> int:
     )
     args = parser.parse_args()
 
-    # Handle --list-models
-    if args.list_models:
-        from src.core.default_models import get_default_registry
-        from src.core.component_models import ComponentModelConfig
-        registry = get_default_registry()
-        component_config = ComponentModelConfig.from_env()
-        print("\nAvailable models:")
-        for model_id in sorted(registry.list_models()):
-            print(f"  - {model_id}")
-        print("\nComponent model assignments:")
-        for component in component_config.list_components():
-            model = component_config.get_model_for_component(component)
-            print(f"  {component}: {model}")
-        return 0
+    return CliArgs(
+        url=args.url,
+        log_level=args.log_level,
+        multi_model=args.multi_model,
+        list_models=args.list_models
+    )
 
-    # URL is required if not using --list-models
-    if not args.url:
-        parser.error("url is required")
 
-    # Setup legacy logging for backward compatibility
-    setup_logging(args.log_level)
-    legacy_logger = logging.getLogger(__name__)
+def list_available_models() -> int:
+    """Print available models and exit."""
+    from src.core.component_models import ComponentModelConfig
+    from src.core.default_models import get_default_registry
 
-    # Get config from environment
+    registry = get_default_registry()
+    component_config = ComponentModelConfig.from_env()
+
+    print("\nAvailable models:")
+    for model_id in sorted(registry.list_models()):
+        print(f"  - {model_id}")
+
+    print("\nComponent model assignments:")
+    for component in component_config.list_components():
+        model = component_config.get_model_for_component(component)
+        print(f"  {component}: {model}")
+
+    return 0
+
+
+def setup_logging(level: str) -> logging.Logger:
+    """Configure logging and return the logger."""
+    logging.basicConfig(
+        level=getattr(logging, level.upper()),
+        format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
+        handlers=[
+            logging.StreamHandler(sys.stdout),
+        ]
+    )
+    return logging.getLogger(__name__)
+
+
+def setup_observability() -> ObservabilityContext:
+    """Initialize the observability system and return the root context."""
     otel_endpoint = os.environ.get("OTEL_ENDPOINT", "localhost:4317")
     otel_insecure = os.environ.get("OTEL_INSECURE", "true").lower() == "true"
     service_name = os.environ.get("SERVICE_NAME", "crawler-agent")
 
-    # Initialize the observability system
-    # Create handler for logs (traces are handled by tracer in config)
     otel_handler = OTelGrpcHandler(OTelConfig(
         endpoint=otel_endpoint,
         insecure=otel_insecure,
         service_name=service_name,
     ))
 
-    # Create config with same settings
     obs_config = ObservabilityConfig(
         service_name=service_name,
         otel_endpoint=otel_endpoint,
         otel_insecure=otel_insecure,
     )
 
-    # Initialize observability (this also initializes tracer)
     initialize_observability(handler=otel_handler, config=obs_config)
 
-    # Create root context for the session (business metadata only)
-    # OTel spans will be created by decorators
     ctx = get_or_create_context("application")
     set_context(ctx)
 
-    # Log application start
+    return ctx
+
+
+def create_llm_client(
+    app_config: AppConfig,
+    multi_model: bool,
+    ctx: ObservabilityContext,
+    logger: logging.Logger
+) -> tuple[LLMClient, LLMClientFactory | None]:
+    """Create LLM client (single or factory-based)."""
+    if multi_model:
+        llm_factory = LLMClientFactory.from_env()
+        llm = llm_factory.get_client("main_agent")
+        logger.info(f"Multi-model mode: using factory with {len(llm_factory.registry)} models")
+        emit_info(
+            event="llm.factory.initialized",
+            ctx=ctx,
+            data={
+                "mode": "multi-model",
+                "model_count": len(llm_factory.registry),
+                "main_agent_model": llm_factory.get_component_model("main_agent")
+            }
+        )
+        return llm, llm_factory
+    else:
+        llm = LLMClient(app_config.openai)
+        emit_info(
+            event="llm.client.initialized",
+            ctx=ctx,
+            data={"mode": "legacy", "model": app_config.openai.model}
+        )
+        return llm, None
+
+
+def run_crawler_workflow(
+    url: str,
+    app_config: AppConfig,
+    llm: LLMClient,
+    ctx: ObservabilityContext,
+    logger: logging.Logger
+) -> int:
+    """Run the crawler workflow and return exit code."""
+    output_dir = app_config.output.get_output_dir(url)
+    output_dir.mkdir(parents=True, exist_ok=True)
+    logger.info(f"Output directory: {output_dir}")
+
+    browser_session = BrowserSession(app_config.browser)
+    memory_store = MemoryStore()
+
+    logger.info("Connecting to Chrome DevTools...")
+    emit_info(
+        event="browser.connect.start",
+        ctx=ctx,
+        data={"message": "Connecting to Chrome DevTools..."}
+    )
+    browser_session.connect()
+    emit_info(
+        event="browser.connect.complete",
+        ctx=ctx,
+        data={"message": "Connected to Chrome DevTools"}
+    )
+
+    try:
+        return _execute_agent(
+            url=url,
+            output_dir=output_dir,
+            app_config=app_config,
+            llm=llm,
+            browser_session=browser_session,
+            memory_store=memory_store,
+            ctx=ctx,
+            logger=logger
+        )
+    finally:
+        browser_session.disconnect()
+        emit_info(
+            event="browser.disconnect",
+            ctx=ctx,
+            data={"message": "Disconnected from Chrome DevTools"}
+        )
+
+
+def _execute_agent(
+    url: str,
+    output_dir: Path,
+    app_config: AppConfig,
+    llm: LLMClient,
+    browser_session: BrowserSession,
+    memory_store: MemoryStore,
+    ctx: ObservabilityContext,
+    logger: logging.Logger
+) -> int:
+    """Execute the main agent and handle results."""
+    agent = MainAgent(llm, browser_session, output_dir, memory_store)
+    logger.info(f"Creating crawl plan for: {url}")
+
+    result = agent.create_crawl_plan(url)
+
+    if result["success"]:
+        return _handle_success(result, output_dir, app_config, ctx, logger)
+    else:
+        return _handle_failure(result, ctx, logger)
+
+
+def _handle_success(
+    result: dict[str, Any],
+    output_dir: Path,
+    app_config: AppConfig,
+    ctx: ObservabilityContext,
+    logger: logging.Logger
+) -> int:
+    """Handle successful crawl plan creation."""
+    logger.info("Crawl plan created successfully")
+    logger.info(f"Result: {result['result']}")
+
+    if app_config.output.template_dir and app_config.output.template_dir.exists():
+        logger.info(f"Copying templates from: {app_config.output.template_dir}")
+        shutil.copytree(
+            app_config.output.template_dir,
+            output_dir,
+            dirs_exist_ok=True
+        )
+
+    logger.info(f"Output files written to: {output_dir}")
+    emit_info(
+        event="application.complete",
+        ctx=ctx,
+        data={"output_dir": str(output_dir), "success": True},
+        tags=["application", "success"]
+    )
+    return 0
+
+
+def _handle_failure(
+    result: dict[str, Any],
+    ctx: ObservabilityContext,
+    logger: logging.Logger
+) -> int:
+    """Handle failed crawl plan creation."""
+    logger.error(f"Failed to create plan: {result.get('error')}")
+    emit_error(
+        event="application.failed",
+        ctx=ctx,
+        data={"error": result.get("error"), "success": False},
+        tags=["application", "failure"]
+    )
+    return 1
+
+
+def main() -> int:
+    """Main entry point."""
+    args = parse_arguments()
+
+    if args.list_models:
+        return list_available_models()
+
+    if not args.url:
+        print("Error: url is required", file=sys.stderr)
+        return 1
+
+    logger = setup_logging(args.log_level)
+    ctx = setup_observability()
+
     emit_info(
         event="application.start",
         ctx=ctx,
@@ -130,110 +306,26 @@ def main() -> int:
     )
 
     try:
-        # Load configuration
         app_config = AppConfig.from_env()
-        legacy_logger.info(f"Using model: {app_config.openai.model}")
+        logger.info(f"Using model: {app_config.openai.model}")
         emit_info(
             event="config.loaded",
             ctx=ctx,
             data={"model": app_config.openai.model}
         )
 
-        # Create output directory from URL
-        output_dir = app_config.output.get_output_dir(args.url)
-        output_dir.mkdir(parents=True, exist_ok=True)
-        legacy_logger.info(f"Output directory: {output_dir}")
+        llm, _ = create_llm_client(app_config, args.multi_model, ctx, logger)
 
-        # Initialize LLM - either factory (multi-model) or single client (legacy)
-        if args.multi_model:
-            llm_factory = LLMClientFactory.from_env()
-            llm = llm_factory.get_client("main_agent")
-            legacy_logger.info(f"Multi-model mode: using factory with {len(llm_factory.registry)} models")
-            emit_info(
-                event="llm.factory.initialized",
-                ctx=ctx,
-                data={
-                    "mode": "multi-model",
-                    "model_count": len(llm_factory.registry),
-                    "main_agent_model": llm_factory.get_component_model("main_agent")
-                }
-            )
-        else:
-            llm = LLMClient(app_config.openai)
-            llm_factory = None
-            emit_info(
-                event="llm.client.initialized",
-                ctx=ctx,
-                data={"mode": "legacy", "model": app_config.openai.model}
-            )
-
-        browser_session = BrowserSession(app_config.browser)
-        memory_store = MemoryStore()
-
-        # Connect to browser
-        legacy_logger.info("Connecting to Chrome DevTools...")
-        emit_info(
-            event="browser.connect.start",
+        return run_crawler_workflow(
+            url=args.url,
+            app_config=app_config,
+            llm=llm,
             ctx=ctx,
-            data={"message": "Connecting to Chrome DevTools..."}
+            logger=logger
         )
-        browser_session.connect()
-        emit_info(
-            event="browser.connect.complete",
-            ctx=ctx,
-            data={"message": "Connected to Chrome DevTools"}
-        )
-
-        try:
-            # Create and run main agent
-            agent = MainAgent(llm, browser_session, output_dir, memory_store)
-            legacy_logger.info(f"Creating crawl plan for: {args.url}")
-
-            result = agent.create_crawl_plan(args.url)
-
-            if result["success"]:
-                legacy_logger.info("Crawl plan created successfully")
-                legacy_logger.info(f"Result: {result['result']}")
-
-                # Copy templates if configured
-                if app_config.output.template_dir and app_config.output.template_dir.exists():
-                    legacy_logger.info(f"Copying templates from: {app_config.output.template_dir}")
-                    shutil.copytree(
-                        app_config.output.template_dir,
-                        output_dir,
-                        dirs_exist_ok=True
-                    )
-
-                legacy_logger.info(f"Output files written to: {output_dir}")
-
-                # Log success
-                emit_info(
-                    event="application.complete",
-                    ctx=ctx,
-                    data={"output_dir": str(output_dir), "success": True},
-                    tags=["application", "success"]
-                )
-                return 0
-            else:
-                legacy_logger.error(f"Failed to create plan: {result.get('error')}")
-                emit_error(
-                    event="application.failed",
-                    ctx=ctx,
-                    data={"error": result.get("error"), "success": False},
-                    tags=["application", "failure"]
-                )
-                return 1
-
-        finally:
-            browser_session.disconnect()
-            emit_info(
-                event="browser.disconnect",
-                ctx=ctx,
-                data={"message": "Disconnected from Chrome DevTools"}
-            )
 
     except KeyboardInterrupt:
-        legacy_logger.info("Interrupted by user")
+        logger.info("Interrupted by user")
         emit_warning(
             event="application.interrupted",
             ctx=ctx,
@@ -242,7 +334,7 @@ def main() -> int:
         )
         return 130
     except Exception as e:
-        legacy_logger.error(f"Error: {e}", exc_info=True)
+        logger.error(f"Error: {e}", exc_info=True)
         emit_error(
             event="application.error",
             ctx=ctx,
@@ -254,7 +346,6 @@ def main() -> int:
         )
         return 1
     finally:
-        # Shutdown observability system (flushes and closes all outputs)
         shutdown()
 
 

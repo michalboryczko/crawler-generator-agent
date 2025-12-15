@@ -8,8 +8,8 @@ from typing import Any
 
 import aiohttp
 
-from .base import BaseTool
 from ..observability.decorators import traced_tool
+from .base import BaseTool
 
 
 class HTTPRequestTool(BaseTool):
@@ -43,20 +43,22 @@ class HTTPRequestTool(BaseTool):
 
             timeout_config = aiohttp.ClientTimeout(total=self.timeout)
 
-            async with aiohttp.ClientSession(timeout=timeout_config) as session:
-                async with session.request(
+            async with (
+                aiohttp.ClientSession(timeout=timeout_config) as session,
+                session.request(
                     method,
                     url,
                     headers=default_headers,
                     data=body
-                ) as response:
-                    content = await response.text()
-                    return {
-                        "status_code": response.status,
-                        "headers": dict(response.headers),
-                        "body": content,
-                        "truncated": False
-                    }
+                ) as response,
+            ):
+                content = await response.text()
+                return {
+                    "status_code": response.status,
+                    "headers": dict(response.headers),
+                    "body": content,
+                    "truncated": False
+                }
 
         loop = asyncio.new_event_loop()
         result = loop.run_until_complete(_request())

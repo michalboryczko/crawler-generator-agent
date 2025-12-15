@@ -1,17 +1,18 @@
 """Tests for decorator-based instrumentation with OTel spans."""
 
-import pytest
 import asyncio
 
+import pytest
+
 from src.observability import (
-    initialize_observability,
     ObservabilityConfig,
+    initialize_observability,
     shutdown,
 )
 from src.observability.decorators import (
-    traced_tool,
     traced_agent,
     traced_llm_client,
+    traced_tool,
 )
 from src.observability.handlers import NullHandler
 

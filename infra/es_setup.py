@@ -34,8 +34,8 @@ def delete_index_template(es_host: str, template_name: str) -> bool:
     Returns:
         True if successful or template didn't exist
     """
-    import urllib.request
     import urllib.error
+    import urllib.request
 
     url = f"http://{es_host}/_index_template/{template_name}"
 
@@ -67,9 +67,9 @@ def list_indices(es_host: str, pattern: str) -> list:
     Returns:
         List of index names
     """
-    import urllib.request
-    import urllib.error
     import fnmatch
+    import urllib.error
+    import urllib.request
 
     url = f"http://{es_host}/_cat/indices?format=json"
 
@@ -94,8 +94,8 @@ def delete_index(es_host: str, index_pattern: str) -> bool:
     Returns:
         True if successful or indices didn't exist
     """
-    import urllib.request
     import urllib.error
+    import urllib.request
 
     # List matching indices first
     indices = list_indices(es_host, index_pattern)
@@ -137,8 +137,8 @@ def create_index_template(es_host: str, template_name: str, template_body: dict)
     Returns:
         True if successful
     """
-    import urllib.request
     import urllib.error
+    import urllib.request
 
     url = f"http://{es_host}/_index_template/{template_name}"
     data = json.dumps(template_body).encode('utf-8')
@@ -202,7 +202,7 @@ def main():
     }
 
     if args.print_only:
-        for name, (pattern, body) in templates.items():
+        for name, (_pattern, body) in templates.items():
             print(f"# {name}")
             print(json.dumps(body, indent=2))
             print()
@@ -214,7 +214,7 @@ def main():
     if args.clean:
         print(f"Cleaning existing indices on {args.host}...")
         print()
-        for name, (pattern, body) in templates.items():
+        for _name, (pattern, _body) in templates.items():
             print(f"Deleting indices {pattern}...", end=" ")
             if delete_index(args.host, pattern):
                 print("OK")
@@ -226,7 +226,7 @@ def main():
     # Delete existing templates before creating new ones
     print(f"Deleting existing templates on {args.host}...")
     print()
-    for name in templates.keys():
+    for name in templates:
         print(f"Deleting {name}...", end=" ")
         if delete_index_template(args.host, name):
             print("OK")
@@ -236,10 +236,10 @@ def main():
     print()
 
     # Create templates in ES
-    print(f"Creating index templates...")
+    print("Creating index templates...")
     print()
 
-    for name, (pattern, body) in templates.items():
+    for name, (_pattern, body) in templates.items():
         print(f"Creating {name}...", end=" ")
         if create_index_template(args.host, name, body):
             print("OK")

@@ -7,9 +7,9 @@ import logging
 from typing import Any
 from urllib.parse import urljoin
 
-from .base import BaseTool
 from ..core.browser import BrowserSession
 from ..observability.decorators import traced_tool
+from .base import BaseTool
 
 logger = logging.getLogger(__name__)
 

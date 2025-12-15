@@ -13,7 +13,7 @@ Architecture:
 
 import os
 from dataclasses import dataclass
-from typing import Optional, TYPE_CHECKING
+from typing import TYPE_CHECKING, Optional
 
 if TYPE_CHECKING:
     from .handlers import LogHandler
@@ -89,7 +89,7 @@ class ObservabilityConfig:
 _handler: Optional['LogHandler'] = None
 _console_output: Optional['LogOutput'] = None
 _initialized: bool = False
-_config: Optional[ObservabilityConfig] = None
+_config: ObservabilityConfig | None = None
 
 
 def initialize_observability(
@@ -137,7 +137,7 @@ def get_console_output() -> Optional['LogOutput']:
     return _console_output
 
 
-def get_config() -> Optional[ObservabilityConfig]:
+def get_config() -> ObservabilityConfig | None:
     """Get current configuration."""
     return _config
 

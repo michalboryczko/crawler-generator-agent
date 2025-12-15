@@ -6,10 +6,10 @@ The @traced_tool decorator handles all tool instrumentation.
 import time
 from typing import Any
 
-from .base import BaseTool
 from ..core.browser import BrowserSession
 from ..core.html_cleaner import clean_html_for_llm, get_html_summary
 from ..observability.decorators import traced_tool
+from .base import BaseTool
 
 
 class NavigateTool(BaseTool):

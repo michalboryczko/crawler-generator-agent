@@ -9,15 +9,15 @@ The @traced_llm_client decorator handles all LLM call instrumentation.
 """
 import json
 import logging
-from typing import Any, Optional, Union
+from typing import Any
 
 from openai import OpenAI
 
+from ..observability.decorators import traced_llm_client
+from ..tools.base import BaseTool
+from .component_models import ComponentModelConfig
 from .config import OpenAIConfig
 from .model_registry import ModelConfig, ModelRegistry
-from .component_models import ComponentModelConfig
-from ..tools.base import BaseTool
-from ..observability.decorators import traced_llm_client
 
 logger = logging.getLogger(__name__)
 
@@ -124,8 +124,8 @@ class LLMClient:
 
     def __init__(
         self,
-        config: Union[OpenAIConfig, ModelConfig],
-        component_name: Optional[str] = None,
+        config: OpenAIConfig | ModelConfig,
+        component_name: str | None = None,
     ):
         self.component_name = component_name
 
@@ -347,7 +347,7 @@ class LLMClientFactory:
     def get_client_for_model(
         self,
         model_id: str,
-        component_name: Optional[str] = None
+        component_name: str | None = None
     ) -> LLMClient:
         """Get client for a specific model (bypassing component mapping).
 
