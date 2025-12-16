@@ -3,12 +3,13 @@
 This agent inherits from BaseAgent which uses the @traced_agent decorator
 for automatic observability instrumentation.
 """
+from typing import TYPE_CHECKING
+
 from ..core.browser import BrowserSession
 from ..core.llm import LLMClient
 from ..tools.memory import (
     MemoryReadTool,
     MemorySearchTool,
-    MemoryStore,
     MemoryWriteTool,
 )
 from ..tools.selector_extraction import (
@@ -20,24 +21,27 @@ from ..tools.selector_sampling import (
     ArticlePagesGeneratorTool,
     ListingPagesGeneratorTool,
 )
+from src.prompts import get_prompt_provider
+
 from .base import BaseAgent
-from .prompts import SELECTOR_AGENT_PROMPT
+
+if TYPE_CHECKING:
+    from ..services.memory_service import MemoryService
 
 
 class SelectorAgent(BaseAgent):
     """Agent for finding and verifying CSS selectors."""
 
     name = "selector_agent"
-    system_prompt = SELECTOR_AGENT_PROMPT
+    system_prompt = get_prompt_provider().get_agent_prompt("selector")
 
     def __init__(
         self,
         llm: LLMClient,
         browser_session: BrowserSession,
-        memory_store: MemoryStore | None = None
+        memory_service: "MemoryService",
     ):
         self.browser_session = browser_session
-        self.memory_store = memory_store or MemoryStore()
 
         tools = [
             # Sampling tools (URL generation with LLM for pattern detection)
@@ -49,9 +53,9 @@ class SelectorAgent(BaseAgent):
             # Aggregation tool (creates selector chains, not single selectors)
             SelectorAggregatorTool(llm),
             # Memory tools
-            MemoryReadTool(self.memory_store),
-            MemoryWriteTool(self.memory_store),
-            MemorySearchTool(self.memory_store),
+            MemoryReadTool(memory_service),
+            MemoryWriteTool(memory_service),
+            MemorySearchTool(memory_service),
         ]
 
-        super().__init__(llm, tools)
+        super().__init__(llm, tools, memory_service=memory_service)

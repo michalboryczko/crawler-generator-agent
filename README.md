@@ -35,6 +35,14 @@ Optional variables:
 - `PLANS_OUTPUT_DIR` - Output directory for plans (default: ./plans_output)
 - `PLANS_TEMPLATE_DIR` - Template files to copy to output (optional)
 
+Storage backend (optional):
+- `STORAGE_BACKEND` - Backend type: `memory` (default) or `mysql`
+- `MYSQL_HOST` - MySQL server host (default: localhost)
+- `MYSQL_PORT` - MySQL server port (default: 3306)
+- `MYSQL_DATABASE` - Database name (default: crawler)
+- `MYSQL_USER` - Database user (default: crawler)
+- `MYSQL_PASSWORD` - Database password
+
 ## Running Chrome with DevTools
 
 Start Chrome with remote debugging enabled:
@@ -76,6 +84,22 @@ plans_output/
         └── test_set.jsonl  # Test dataset for validation
 ```
 
+## Docker Setup (Optional)
+
+For persistent storage with MySQL:
+
+```bash
+# Start MySQL container
+docker-compose up -d mysql
+
+# Set environment variables
+export STORAGE_BACKEND=mysql
+export MYSQL_PASSWORD=crawler_password
+
+# Run the crawler
+python main.py https://example.com/blog
+```
+
 ## Architecture
 
 ```
@@ -85,14 +109,23 @@ src/
 │   ├── llm.py            # OpenAI client wrapper
 │   ├── browser.py        # Chrome DevTools Protocol client
 │   └── html_cleaner.py   # HTML cleaning for LLM
+├── prompts/              # Centralized prompt management
+│   ├── provider.py       # PromptProvider interface
+│   ├── registry.py       # Prompt storage and versioning
+│   ├── template.py       # Jinja2-based dynamic templates
+│   └── templates/        # Prompt definitions
+├── storage/              # Pluggable storage backends
+│   ├── backend.py        # Abstract backend interface
+│   ├── memory.py         # In-memory backend
+│   └── mysql.py          # MySQL backend (optional)
 ├── tools/
-│   ├── memory.py         # Shared memory + JSONL dump
+│   ├── memory.py         # Isolated memory stores
 │   ├── browser.py        # Navigate, click, query, wait
 │   ├── selector.py       # Find and verify CSS selectors
 │   ├── file.py           # File CRUD operations
 │   ├── random_choice.py  # Random sampling
 │   ├── http.py           # HTTP requests
-│   └── orchestration.py  # Agent runner tools
+│   └── orchestration.py  # Agent runner tools with context
 └── agents/
     ├── browser_agent.py      # Page navigation and extraction
     ├── selector_agent.py     # CSS selector discovery

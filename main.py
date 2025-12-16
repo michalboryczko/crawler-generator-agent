@@ -11,12 +11,9 @@ import shutil
 import sys
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
-# Load .env file before any other imports that use os.environ
 from dotenv import load_dotenv
-
-load_dotenv()
 
 from src.agents.main_agent import MainAgent
 from src.core.browser import BrowserSession
@@ -24,6 +21,8 @@ from src.core.config import AppConfig
 from src.core.llm import LLMClient, LLMClientFactory
 
 # Observability imports
+from src.infrastructure import Container, init_container
+from src.services import SessionService
 from src.observability.config import (
     ObservabilityConfig,
     initialize_observability,
@@ -32,7 +31,6 @@ from src.observability.config import (
 from src.observability.context import ObservabilityContext, get_or_create_context, set_context
 from src.observability.emitters import emit_error, emit_info, emit_warning
 from src.observability.handlers import OTelConfig, OTelGrpcHandler
-from src.tools.memory import MemoryStore
 
 
 @dataclass
@@ -42,6 +40,8 @@ class CliArgs:
     log_level: str
     multi_model: bool
     list_models: bool
+    env_file: str
+    devtools_url: str | None
 
 
 def parse_arguments() -> CliArgs:
@@ -70,13 +70,25 @@ def parse_arguments() -> CliArgs:
         action="store_true",
         help="List available models and exit"
     )
+    parser.add_argument(
+        "--env-file", "-e",
+        default=".env",
+        help="Path to .env file (default: .env)"
+    )
+    parser.add_argument(
+        "--devtools-url", "-d",
+        default=None,
+        help="Chrome DevTools WebSocket URL (e.g., ws://localhost:9222). Overrides CDP_URL env var"
+    )
     args = parser.parse_args()
 
     return CliArgs(
         url=args.url,
         log_level=args.log_level,
         multi_model=args.multi_model,
-        list_models=args.list_models
+        list_models=args.list_models,
+        env_file=args.env_file,
+        devtools_url=args.devtools_url
     )
 
 
@@ -181,8 +193,21 @@ def run_crawler_workflow(
     output_dir.mkdir(parents=True, exist_ok=True)
     logger.info(f"Output directory: {output_dir}")
 
+    # Initialize DI container
+    container = init_container(app_config.storage)
+    logger.info(f"Storage backend: {app_config.storage.backend_type}")
+
+    # Create session record to track this run
+    session_service = container.session_service
+    session_service.create(
+        session_id=container.session_id,
+        target_site=url,
+        output_dir=output_dir,
+        agent_version=app_config.agent_version,
+    )
+    logger.info(f"Session ID: {container.session_id}")
+
     browser_session = BrowserSession(app_config.browser)
-    memory_store = MemoryStore()
 
     logger.info("Connecting to Chrome DevTools...")
     emit_info(
@@ -204,7 +229,8 @@ def run_crawler_workflow(
             app_config=app_config,
             llm=llm,
             browser_session=browser_session,
-            memory_store=memory_store,
+            container=container,
+            session_service=session_service,
             ctx=ctx,
             logger=logger
         )
@@ -223,26 +249,30 @@ def _execute_agent(
     app_config: AppConfig,
     llm: LLMClient,
     browser_session: BrowserSession,
-    memory_store: MemoryStore,
+    container: Container,
+    session_service: "SessionService",
     ctx: ObservabilityContext,
     logger: logging.Logger
 ) -> int:
     """Execute the main agent and handle results."""
-    agent = MainAgent(llm, browser_session, output_dir, memory_store)
+    memory_service = container.memory_service("main_agent")
+    agent = MainAgent(llm, browser_session, output_dir, memory_service, container=container)
     logger.info(f"Creating crawl plan for: {url}")
 
     result = agent.create_crawl_plan(url)
 
     if result["success"]:
-        return _handle_success(result, output_dir, app_config, ctx, logger)
+        return _handle_success(result, output_dir, app_config, container, session_service, ctx, logger)
     else:
-        return _handle_failure(result, ctx, logger)
+        return _handle_failure(result, container, session_service, ctx, logger)
 
 
 def _handle_success(
     result: dict[str, Any],
     output_dir: Path,
     app_config: AppConfig,
+    container: Container,
+    session_service: "SessionService",
     ctx: ObservabilityContext,
     logger: logging.Logger
 ) -> int:
@@ -258,6 +288,9 @@ def _handle_success(
             dirs_exist_ok=True
         )
 
+    # Mark session as successful
+    session_service.mark_success(container.session_id)
+
     logger.info(f"Output files written to: {output_dir}")
     emit_info(
         event="application.complete",
@@ -270,15 +303,22 @@ def _handle_success(
 
 def _handle_failure(
     result: dict[str, Any],
+    container: Container,
+    session_service: "SessionService",
     ctx: ObservabilityContext,
     logger: logging.Logger
 ) -> int:
     """Handle failed crawl plan creation."""
-    logger.error(f"Failed to create plan: {result.get('error')}")
+    error_message = result.get("error", "Unknown error")
+    logger.error(f"Failed to create plan: {error_message}")
+
+    # Mark session as failed
+    session_service.mark_failed(container.session_id, str(error_message))
+
     emit_error(
         event="application.failed",
         ctx=ctx,
-        data={"error": result.get("error"), "success": False},
+        data={"error": error_message, "success": False},
         tags=["application", "failure"]
     )
     return 1
@@ -287,6 +327,18 @@ def _handle_failure(
 def main() -> int:
     """Main entry point."""
     args = parse_arguments()
+
+    # Load environment file (before any env var access)
+    env_path = Path(args.env_file)
+    if env_path.exists():
+        load_dotenv(env_path)
+    elif args.env_file != ".env":
+        print(f"Error: env file not found: {args.env_file}", file=sys.stderr)
+        return 1
+
+    # CLI --devtools-url overrides CDP_URL env var
+    if args.devtools_url:
+        os.environ["CDP_URL"] = args.devtools_url
 
     if args.list_models:
         return list_available_models()

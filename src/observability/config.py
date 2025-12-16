@@ -33,7 +33,6 @@ class ObservabilityConfig:
         otel_insecure: Whether to use insecure connection to collector
         console_enabled: Whether to output to console (dev only)
         console_color: Whether to use colored console output
-        redact_pii: Whether to redact PII from logs
     """
     service_name: str = "crawler-agent"
 
@@ -44,9 +43,6 @@ class ObservabilityConfig:
     # Console output (for development)
     console_enabled: bool = True
     console_color: bool = True
-
-    # PII redaction
-    redact_pii: bool = True
 
     def create_console_output(self) -> Optional['LogOutput']:
         """Create console output if enabled.
@@ -70,7 +66,6 @@ class ObservabilityConfig:
             OTEL_INSECURE: Use insecure connection (default: true)
             LOG_CONSOLE: Enable console output (default: true)
             LOG_COLOR: Enable colored console (default: true)
-            LOG_REDACT_PII: Enable PII redaction (default: true)
 
         Returns:
             ObservabilityConfig loaded from environment.
@@ -81,7 +76,6 @@ class ObservabilityConfig:
             otel_insecure=os.environ.get("OTEL_INSECURE", "true").lower() == "true",
             console_enabled=os.environ.get("LOG_CONSOLE", "true").lower() == "true",
             console_color=os.environ.get("LOG_COLOR", "true").lower() == "true",
-            redact_pii=os.environ.get("LOG_REDACT_PII", "true").lower() == "true",
         )
 
 

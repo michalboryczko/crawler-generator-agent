@@ -4,12 +4,14 @@ This module uses the new observability decorators for automatic logging.
 The @traced_tool decorator handles all tool instrumentation.
 """
 import logging
-from typing import Any
+from typing import TYPE_CHECKING, Any
 from urllib.parse import urlparse
 
 from ..observability.decorators import traced_tool
 from .base import BaseTool
-from .memory import MemoryStore
+
+if TYPE_CHECKING:
+    from ..services.memory_service import MemoryService
 
 logger = logging.getLogger(__name__)
 
@@ -21,24 +23,24 @@ class GeneratePlanTool(BaseTool):
     description = """Generate a comprehensive crawl plan from data stored in memory.
     Reads all collected data and produces detailed markdown documentation."""
 
-    def __init__(self, memory_store: MemoryStore):
-        self.memory_store = memory_store
+    def __init__(self, memory_service: "MemoryService"):
+        self._service = memory_service
 
     @traced_tool(name="generate_plan_md")
     def execute(self) -> dict[str, Any]:
         """Generate plan markdown. Instrumented by @traced_tool."""
         # Read all data from memory
-        target_url = self.memory_store.read("target_url") or "Unknown"
-        article_selector = self.memory_store.read("article_selector") or "Not found"
-        article_confidence = self.memory_store.read("article_selector_confidence") or 0
-        listing_container_selector = self.memory_store.read("listing_container_selector") or "Not found"
-        pagination_selector = self.memory_store.read("pagination_selector") or "None"
-        pagination_type = self.memory_store.read("pagination_type") or "none"
-        pagination_max_pages = self.memory_store.read("pagination_max_pages")
-        extracted_articles = self.memory_store.read("extracted_articles") or []
-        accessibility = self.memory_store.read("accessibility_result") or {}
-        detail_selectors = self.memory_store.read("detail_selectors") or {}
-        listing_selectors = self.memory_store.read("listing_selectors") or {}
+        target_url = self._service.read("target_url") or "Unknown"
+        article_selector = self._service.read("article_selector") or "Not found"
+        article_confidence = self._service.read("article_selector_confidence") or 0
+        listing_container_selector = self._service.read("listing_container_selector") or "Not found"
+        pagination_selector = self._service.read("pagination_selector") or "None"
+        pagination_type = self._service.read("pagination_type") or "none"
+        pagination_max_pages = self._service.read("pagination_max_pages")
+        extracted_articles = self._service.read("extracted_articles") or []
+        accessibility = self._service.read("accessibility_result") or {}
+        detail_selectors = self._service.read("detail_selectors") or {}
+        listing_selectors = self._service.read("listing_selectors") or {}
 
         # Parse URL for site info
         parsed = urlparse(target_url)
@@ -580,19 +582,19 @@ class GenerateTestPlanTool(BaseTool):
     description = """Generate test documentation from test data stored in memory.
     Documents both listing and article test entries."""
 
-    def __init__(self, memory_store: MemoryStore):
-        self.memory_store = memory_store
+    def __init__(self, memory_service: "MemoryService"):
+        self._service = memory_service
 
     @traced_tool(name="generate_test_md")
     def execute(self) -> dict[str, Any]:
         """Generate test plan markdown. Instrumented by @traced_tool."""
-        target_url = self.memory_store.read("target_url") or "Unknown"
-        test_description = self.memory_store.read("test-data-description") or ""
-        detail_selectors = self.memory_store.read("detail_selectors") or {}
+        target_url = self._service.read("target_url") or "Unknown"
+        test_description = self._service.read("test-data-description") or ""
+        detail_selectors = self._service.read("detail_selectors") or {}
 
         # Find all test data keys
-        listing_keys = self.memory_store.search("test-data-listing-*")
-        article_keys = self.memory_store.search("test-data-article-*")
+        listing_keys = self._service.search("test-data-listing-*")
+        article_keys = self._service.search("test-data-article-*")
 
         listing_count = len(listing_keys)
         article_count = len(article_keys)
@@ -695,7 +697,7 @@ for test in articles:
 """
         # Add listing URLs
         for i, key in enumerate(listing_keys[:10], 1):
-            data = self.memory_store.read(key)
+            data = self._service.read(key)
             if data and isinstance(data, dict):
                 url = data.get("url", "Unknown")
                 test_plan += f"{i}. {url}\n"
@@ -710,7 +712,7 @@ for test in articles:
 """
         # Add article URLs
         for i, key in enumerate(article_keys[:10], 1):
-            data = self.memory_store.read(key)
+            data = self._service.read(key)
             if data and isinstance(data, dict):
                 url = data.get("url", "Unknown")
                 test_plan += f"{i}. {url}\n"

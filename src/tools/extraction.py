@@ -2,17 +2,24 @@
 
 This module uses the new observability decorators for automatic logging.
 The @traced_tool decorator handles all tool instrumentation.
+
+Prompts are now managed through the centralized PromptProvider.
 """
 import json
 import re
 import time
 from typing import Any
 
+from typing import TYPE_CHECKING
+
 from ..core.browser import BrowserSession
 from ..core.html_cleaner import clean_html_for_llm
 from ..observability.decorators import traced_tool
+from ..prompts import get_prompt_provider
 from .base import BaseTool
-from .memory import MemoryStore
+
+if TYPE_CHECKING:
+    from ..services.memory_service import MemoryService
 
 
 class FetchAndStoreHTMLTool(BaseTool):
@@ -23,9 +30,9 @@ class FetchAndStoreHTMLTool(BaseTool):
     The HTML is NOT returned to you - only a confirmation.
     Use this for batch fetching where you don't need to see the content."""
 
-    def __init__(self, browser_session: BrowserSession, memory_store: MemoryStore):
+    def __init__(self, browser_session: BrowserSession, memory_service: "MemoryService"):
         self.browser_session = browser_session
-        self.memory_store = memory_store
+        self._service = memory_service
 
     @traced_tool(name="fetch_and_store_html")
     def execute(self, url: str, memory_key: str, wait_seconds: int = 3) -> dict[str, Any]:
@@ -36,7 +43,7 @@ class FetchAndStoreHTMLTool(BaseTool):
         html = self.browser_session.get_html()
         cleaned_html = clean_html_for_llm(html)
 
-        self.memory_store.write(memory_key, {
+        self._service.write(memory_key, {
             "url": url,
             "html": cleaned_html,
             "html_length": len(cleaned_html)
@@ -69,9 +76,9 @@ class BatchFetchURLsTool(BaseTool):
     Each URL is stored with key pattern: {key_prefix}-{index}.
     Returns only a summary, not the HTML content."""
 
-    def __init__(self, browser_session: BrowserSession, memory_store: MemoryStore):
+    def __init__(self, browser_session: BrowserSession, memory_service: "MemoryService"):
         self.browser_session = browser_session
-        self.memory_store = memory_store
+        self._service = memory_service
 
     @traced_tool(name="batch_fetch_urls")
     def execute(
@@ -91,7 +98,7 @@ class BatchFetchURLsTool(BaseTool):
                 cleaned_html = clean_html_for_llm(html)
 
                 memory_key = f"{key_prefix}-{i+1}"
-                self.memory_store.write(memory_key, {
+                self._service.write(memory_key, {
                     "url": url,
                     "html": cleaned_html,
                     "html_length": len(cleaned_html)
@@ -137,9 +144,9 @@ class RunExtractionAgentTool(BaseTool):
     The agent reads HTML from memory, extracts data, and stores result.
     Each call creates a completely separate LLM conversation."""
 
-    def __init__(self, llm_client, memory_store: MemoryStore):
+    def __init__(self, llm_client, memory_service: "MemoryService"):
         self.llm = llm_client
-        self.memory_store = memory_store
+        self._service = memory_service
 
     @traced_tool(name="run_extraction_agent")
     def execute(
@@ -148,7 +155,7 @@ class RunExtractionAgentTool(BaseTool):
         output_memory_key: str
     ) -> dict[str, Any]:
         """Run extraction agent on stored HTML. Instrumented by @traced_tool."""
-        stored = self.memory_store.read(html_memory_key)
+        stored = self._service.read(html_memory_key)
         if not stored:
             return {"success": False, "error": f"No HTML at: {html_memory_key}"}
 
@@ -160,7 +167,7 @@ class RunExtractionAgentTool(BaseTool):
             html = html[:40000] + "\n... [TRUNCATED]"
 
         # Get discovered selectors for dynamic field extraction
-        detail_selectors = self.memory_store.read("detail_selectors") or {}
+        detail_selectors = self._service.read("detail_selectors") or {}
 
         # Build dynamic extraction prompt based on discovered fields
         extraction_prompt = self._build_extraction_prompt(detail_selectors)
@@ -191,7 +198,7 @@ class RunExtractionAgentTool(BaseTool):
             "expected": extracted
         }
 
-        self.memory_store.write(output_memory_key, test_entry)
+        self._service.write(output_memory_key, test_entry)
 
         return {
             "success": True,
@@ -218,12 +225,6 @@ class RunExtractionAgentTool(BaseTool):
                 if not selector_chain:
                     continue
 
-                if isinstance(selector_chain, list) and len(selector_chain) > 0:
-                    primary = selector_chain[0]
-                    selector = primary.get("selector", "") if isinstance(primary, dict) else str(primary)
-                else:
-                    selector = str(selector_chain)
-
                 if field_name in ["authors", "tags"]:
                     fields[field_name] = ["value1", "value2"]
                 elif field_name in ["files", "attachments", "images", "related_articles"]:
@@ -242,6 +243,7 @@ class RunExtractionAgentTool(BaseTool):
 
         json_example = json.dumps(fields, indent=4)
 
+        # Build selector hints string
         selector_hints = ""
         if detail_selectors:
             hints = []
@@ -252,22 +254,15 @@ class RunExtractionAgentTool(BaseTool):
                     if selector:
                         hints.append(f"- {field_name}: use selector '{selector}'")
             if hints:
-                selector_hints = "\n\nCSS SELECTOR HINTS:\n" + "\n".join(hints)
+                selector_hints = "\n".join(hints)
 
-        return f"""You are an HTML extraction agent. Extract article data from this HTML.
-
-Return ONLY a JSON object with these fields:
-{json_example}
-{selector_hints}
-
-REQUIREMENTS:
-1. Extract actual values from the HTML, not placeholders
-2. For arrays (authors, tags, files), return empty array [] if not found
-3. For single values, return null if not found
-4. content should be first 500 characters of main article body
-5. files/attachments should include URL and title if present
-
-Do not include any explanation, just the JSON."""
+        # Use PromptProvider template
+        provider = get_prompt_provider()
+        return provider.render_prompt(
+            "article_extraction",
+            json_example=json_example,
+            selector_hints=selector_hints
+        )
 
     def get_parameters_schema(self) -> dict[str, Any]:
         return {
@@ -288,9 +283,9 @@ class BatchExtractArticlesTool(BaseTool):
     Each page is processed by a fresh extraction agent (separate LLM context).
     Results are stored as article test entries with type='article'."""
 
-    def __init__(self, llm_client, memory_store: MemoryStore):
+    def __init__(self, llm_client, memory_service: "MemoryService"):
         self.llm = llm_client
-        self.memory_store = memory_store
+        self._service = memory_service
 
     @traced_tool(name="batch_extract_articles")
     def execute(
@@ -299,12 +294,12 @@ class BatchExtractArticlesTool(BaseTool):
         output_key_prefix: str = "test-data-article"
     ) -> dict[str, Any]:
         """Extract from all article HTML with matching prefix. Instrumented by @traced_tool."""
-        html_keys = self.memory_store.search(f"{html_key_prefix}-*")
+        html_keys = self._service.search(f"{html_key_prefix}-*")
 
         if not html_keys:
             return {"success": False, "error": f"No HTML found with prefix: {html_key_prefix}"}
 
-        extractor = RunExtractionAgentTool(self.llm, self.memory_store)
+        extractor = RunExtractionAgentTool(self.llm, self._service)
         results = []
 
         for i, html_key in enumerate(html_keys):
@@ -343,9 +338,9 @@ class RunListingExtractionAgentTool(BaseTool):
     description = """Run extraction agent on listing page HTML to extract article URLs.
     Creates a test entry with type='listing' containing article URLs found."""
 
-    def __init__(self, llm_client, memory_store: MemoryStore):
+    def __init__(self, llm_client, memory_service: "MemoryService"):
         self.llm = llm_client
-        self.memory_store = memory_store
+        self._service = memory_service
 
     @traced_tool(name="run_listing_extraction_agent")
     def execute(
@@ -355,7 +350,7 @@ class RunListingExtractionAgentTool(BaseTool):
         article_selector: str | None = None
     ) -> dict[str, Any]:
         """Extract article URLs from listing page HTML. Instrumented by @traced_tool."""
-        stored = self.memory_store.read(html_memory_key)
+        stored = self._service.read(html_memory_key)
         if not stored:
             return {"success": False, "error": f"No HTML at: {html_memory_key}"}
 
@@ -364,7 +359,7 @@ class RunListingExtractionAgentTool(BaseTool):
 
         # Try to extract just the main content area using listing_container_selector
         main_content_html = html
-        listing_container_selector = self.memory_store.read("listing_container_selector")
+        listing_container_selector = self._service.read("listing_container_selector")
 
         if listing_container_selector:
             focused_html = self._extract_main_content(html, listing_container_selector)
@@ -389,7 +384,7 @@ class RunListingExtractionAgentTool(BaseTool):
             "expected": extracted
         }
 
-        self.memory_store.write(output_memory_key, test_entry)
+        self._service.write(output_memory_key, test_entry)
 
         return {
             "success": True,
@@ -415,39 +410,14 @@ class RunListingExtractionAgentTool(BaseTool):
         if len(html) > 150000:
             html = html[:150000] + "\n... [TRUNCATED]"
 
-        selector_hint = ""
-        if article_selector:
-            selector_hint = f"\n\nUSE THIS CSS SELECTOR to find article links: {article_selector}"
-
-        extraction_prompt = f"""You are extracting article URLs from a LISTING PAGE.
-
-## YOUR TASK
-Find ALL <a href="..."> links to individual articles in the HTML below.{selector_hint}
-
-## CRITICAL: Different pages have DIFFERENT articles!
-This page URL is: {url}
-- If the URL has ?start=100, articles start from position 100
-- If the URL has ?start=1000, articles start from position 1000
-- Each listing page has DIFFERENT article URLs - they should NOT be the same!
-
-## DO NOT EXTRACT from these (they're the same on EVERY page):
-- Header section with "latest" or "featured" items
-- Top navigation with recent articles
-- Sidebar recommendations
-- Footer links
-- Any section labeled "popular", "trending", "recent"
-
-## EXTRACT from the MAIN CONTENT AREA:
-- The large repeated list of articles (10-20+ items)
-- This is the section that CHANGES when you paginate
-
-## Return JSON:
-{{
-    "article_urls": ["https://example.com/article1", "https://example.com/article2", ...]
-}}
-
-Expected: 10-30 URLs per page. If you find less than 5, you're probably looking at the header/sidebar!
-Convert relative URLs to absolute using base: {url}"""
+        # Use PromptProvider template for listing URL extraction
+        provider = get_prompt_provider()
+        extraction_prompt = provider.render_prompt(
+            "listing_url_extraction",
+            page_url=url,
+            base_url=url,
+            selector_hint=article_selector or ""
+        )
 
         messages = [
             {"role": "system", "content": extraction_prompt},
@@ -488,9 +458,9 @@ class BatchExtractListingsTool(BaseTool):
     Results are stored as listing test entries with type='listing'.
     Also collects all article URLs found across all listings."""
 
-    def __init__(self, llm_client, memory_store: MemoryStore):
+    def __init__(self, llm_client, memory_service: "MemoryService"):
         self.llm = llm_client
-        self.memory_store = memory_store
+        self._service = memory_service
 
     @traced_tool(name="batch_extract_listings")
     def execute(
@@ -500,12 +470,12 @@ class BatchExtractListingsTool(BaseTool):
         article_selector: str | None = None
     ) -> dict[str, Any]:
         """Extract from all listing HTML with matching prefix. Instrumented by @traced_tool."""
-        html_keys = self.memory_store.search(f"{html_key_prefix}-*")
+        html_keys = self._service.search(f"{html_key_prefix}-*")
 
         if not html_keys:
             return {"success": False, "error": f"No HTML found with prefix: {html_key_prefix}"}
 
-        extractor = RunListingExtractionAgentTool(self.llm, self.memory_store)
+        extractor = RunListingExtractionAgentTool(self.llm, self._service)
         results = []
         all_article_urls = []
 
@@ -535,8 +505,8 @@ class BatchExtractListingsTool(BaseTool):
         total_articles = len(unique_article_urls)
 
         # Store collected article URLs for later use
-        self.memory_store.write("extracted_listing_article_urls", unique_article_urls)
-        self.memory_store.write("collected_article_urls", unique_article_urls)
+        self._service.write("extracted_listing_article_urls", unique_article_urls)
+        self._service.write("collected_article_urls", unique_article_urls)
 
         return {
             "success": successful > 0,
@@ -559,5 +529,3 @@ class BatchExtractListingsTool(BaseTool):
         }
 
 
-# Keep old name as alias for backward compatibility
-BatchExtractTool = BatchExtractArticlesTool

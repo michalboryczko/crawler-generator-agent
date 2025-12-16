@@ -2,6 +2,7 @@
 import os
 import re
 from dataclasses import dataclass
+from datetime import datetime
 from pathlib import Path
 from typing import TYPE_CHECKING
 from urllib.parse import urlparse
@@ -41,9 +42,14 @@ class OutputConfig:
         return cls(base_dir=base_dir, template_dir=template_dir)
 
     def get_output_dir(self, url: str) -> Path:
-        """Get output directory for a given URL."""
+        """Get output directory for a given URL.
+
+        Format: {base_dir}/{url_dirname}_{timestamp}
+        Example: ./plans_output/example_com_20250116_153045
+        """
         dirname = url_to_dirname(url)
-        return self.base_dir / dirname
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        return self.base_dir / f"{dirname}_{timestamp}"
 
 
 @dataclass
@@ -56,7 +62,7 @@ class OpenAIConfig:
     See docs/multi-model-configuration.md for migration guide.
     """
     api_key: str
-    model: str = "gpt-4o"
+    model: str = "gpt-5.1"
     temperature: float = 0.0
 
     @classmethod
@@ -80,18 +86,76 @@ class OpenAIConfig:
 
 @dataclass
 class BrowserConfig:
-    """Chrome DevTools configuration."""
+    """Chrome DevTools configuration.
+
+    Supports two modes:
+    1. URL mode: Set CDP_URL to full WebSocket URL (e.g., ws://localhost:9222)
+    2. Host/Port mode: Set CDP_HOST and CDP_PORT separately
+
+    CDP_URL takes precedence if both are set.
+    """
     host: str = "localhost"
     port: int = 9222
     timeout: int = 30
+    url: str | None = None  # Full WebSocket URL (overrides host/port)
 
     @classmethod
     def from_env(cls) -> "BrowserConfig":
+        cdp_url = os.environ.get("CDP_URL")
+
+        # If URL provided, parse host/port from it for compatibility
+        if cdp_url:
+            parsed = urlparse(cdp_url)
+            host = parsed.hostname or "localhost"
+            port = parsed.port or 9222
+            return cls(
+                host=host,
+                port=port,
+                timeout=int(os.environ.get("CDP_TIMEOUT", "30")),
+                url=cdp_url,
+            )
+
         return cls(
             host=os.environ.get("CDP_HOST", "localhost"),
             port=int(os.environ.get("CDP_PORT", "9222")),
-            timeout=int(os.environ.get("CDP_TIMEOUT", "30"))
+            timeout=int(os.environ.get("CDP_TIMEOUT", "30")),
         )
+
+    @property
+    def websocket_url(self) -> str:
+        """Get the WebSocket URL for DevTools connection."""
+        if self.url:
+            return self.url
+        return f"ws://{self.host}:{self.port}"
+
+
+@dataclass
+class StorageConfig:
+    """Configuration for storage backend.
+
+    Usage in .env:
+        STORAGE_BACKEND=memory                              # In-memory (default)
+        STORAGE_BACKEND=sqlalchemy                          # Use DATABASE_URL
+        DATABASE_URL=mysql+mysqlconnector://user:pass@host/db
+        DATABASE_URL=postgresql://user:pass@host/db
+        DATABASE_URL=sqlite:///./crawler.db
+    """
+
+    backend_type: str = "memory"  # 'memory' or 'sqlalchemy'
+    database_url: str | None = None
+
+    @classmethod
+    def from_env(cls) -> "StorageConfig":
+        """Load storage configuration from environment variables."""
+        return cls(
+            backend_type=os.environ.get("STORAGE_BACKEND", "memory"),
+            database_url=os.environ.get("DATABASE_URL"),
+        )
+
+
+def get_agent_version() -> str:
+    """Get agent version from environment or fallback to 'unknown'."""
+    return os.environ.get("AGENT_VERSION", "unknown")
 
 
 @dataclass
@@ -100,7 +164,9 @@ class AppConfig:
     openai: OpenAIConfig
     browser: BrowserConfig
     output: OutputConfig
+    storage: StorageConfig
     log_level: str = "INFO"
+    agent_version: str = "unknown"
 
     @classmethod
     def from_env(cls) -> "AppConfig":
@@ -108,5 +174,7 @@ class AppConfig:
             openai=OpenAIConfig.from_env(),
             browser=BrowserConfig.from_env(),
             output=OutputConfig.from_env(),
-            log_level=os.environ.get("LOG_LEVEL", "INFO")
+            storage=StorageConfig.from_env(),
+            log_level=os.environ.get("LOG_LEVEL", "INFO"),
+            agent_version=get_agent_version(),
         )

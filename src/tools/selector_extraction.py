@@ -2,6 +2,8 @@
 
 This module uses the new observability decorators for automatic logging.
 The @traced_tool decorator handles all tool instrumentation.
+
+Prompts are now managed through the centralized PromptProvider.
 """
 import json
 import logging
@@ -15,101 +17,22 @@ from ..core.html_cleaner import clean_html_for_llm
 from ..core.json_parser import parse_json_response
 from ..core.llm import LLMClient
 from ..observability.decorators import traced_tool
+from ..prompts import get_prompt_provider
 from .base import BaseTool
 
 logger = logging.getLogger(__name__)
 
-LISTING_EXTRACTION_PROMPT = """You are analyzing a listing page. Your PRIMARY task is to EXTRACT ALL ARTICLE URLs from the main listing.
 
-## YOUR MAIN TASK: Extract URLs
-Look at the HTML and find ALL links to articles/publications in the MAIN CONTENT area.
-- Find every <a href="..."> that links to an individual article/publication/report
-- Extract the FULL URL from each href attribute
-- You should find 10-30 URLs on a typical listing page
-- If you find fewer than 5 URLs, you are probably looking at the wrong section!
+def _get_listing_extraction_prompt() -> str:
+    """Get the listing extraction prompt from PromptProvider."""
+    provider = get_prompt_provider()
+    return provider.get_extraction_prompt("listing")
 
-## SKIP these sections (they contain misleading links):
-- <header>, <nav>, top navigation bars
-- Sidebars, "featured", "popular", "recent", "trending" sections
-- <footer>, bottom links
-- Social media links, share buttons
 
-## FOCUS on the MAIN LISTING:
-- The main content area (often <main>, <section class="...content...">, <div class="...results...">)
-- The repeating list of article cards/items (often <ul>, <div> with multiple similar child elements)
-- This is the section that changes when you paginate
-
-## Also identify these CSS selectors:
-1. listing_container: The main content area containing the article list
-2. article_list: The list element holding article items (ul, div, etc.)
-3. article_link: The <a> element for article links (the selector you use to find URLs)
-4. article_date: Date display (if visible), or null
-5. article_category: Category/type (if visible), or null
-6. pagination: Pagination controls
-
-Respond with JSON:
-{
-  "article_urls": [
-    "https://example.com/article1",
-    "https://example.com/article2",
-    "... (INCLUDE ALL URLs - this is the most important field!)"
-  ],
-  "selectors": {
-    "listing_container": "CSS selector for main content container",
-    "article_list": "CSS selector for the list element",
-    "article_link": "CSS selector for article links",
-    "article_date": "CSS selector or null",
-    "article_category": "CSS selector or null",
-    "pagination": "CSS selector for pagination"
-  },
-  "notes": "observations about page structure"
-}
-
-CRITICAL: The article_urls array MUST contain actual URLs extracted from the HTML, not placeholders!
-A typical listing page has 10-30 articles. If your array is empty or has only 3-5 URLs, re-check the HTML."""
-
-ARTICLE_EXTRACTION_PROMPT = """You are analyzing an article detail page to extract CSS selectors for content fields.
-
-Given the HTML of an article page, identify CSS selectors for:
-1. Article title (usually h1)
-2. Publication date
-3. Author(s)
-4. Lead/summary/excerpt
-5. Main content body
-6. Category/type
-7. Tags (if present)
-8. Breadcrumbs (if present)
-9. Downloadable files/attachments (PDF, DOC, etc.) - IMPORTANT: look for download links!
-10. Images (if article has main images)
-
-IMPORTANT - Look for downloadable files:
-- PDF downloads (often in sidebar or "Download" sections)
-- Document attachments (.pdf, .doc, .xlsx, .zip, etc.)
-- "Download", "Full Report", "Read PDF" links
-- Links with href containing .pdf, .doc, or file extensions
-
-Respond with JSON only:
-{
-  "selectors": {
-    "title": {"selector": "CSS selector", "found": true/false},
-    "date": {"selector": "CSS selector or null", "found": true/false},
-    "authors": {"selector": "CSS selector or null", "found": true/false},
-    "lead": {"selector": "CSS selector or null", "found": true/false},
-    "content": {"selector": "CSS selector", "found": true/false},
-    "category": {"selector": "CSS selector or null", "found": true/false},
-    "tags": {"selector": "CSS selector or null", "found": true/false},
-    "breadcrumbs": {"selector": "CSS selector or null", "found": true/false},
-    "files": {"selector": "CSS selector for download links/PDF links", "found": true/false},
-    "images": {"selector": "CSS selector or null", "found": true/false}
-  },
-  "extracted_values": {
-    "title": "actual title text found",
-    "date": "actual date found",
-    "authors": ["author names found"],
-    "files": [{"url": "file URL if found", "title": "file name"}]
-  },
-  "notes": "observations about page structure, especially any download/file sections found"
-}"""
+def _get_article_extraction_prompt() -> str:
+    """Get the article extraction prompt from PromptProvider."""
+    provider = get_prompt_provider()
+    return provider.get_extraction_prompt("article")
 
 
 class ListingPageExtractorTool(BaseTool):
@@ -152,7 +75,7 @@ class ListingPageExtractorTool(BaseTool):
 
         # Fresh LLM call with isolated context
         messages = [
-            {"role": "system", "content": LISTING_EXTRACTION_PROMPT},
+            {"role": "system", "content": _get_listing_extraction_prompt()},
             {"role": "user", "content": f"Analyze this listing page HTML:\n\n{cleaned_html}"}
         ]
 
@@ -255,7 +178,7 @@ class ArticlePageExtractorTool(BaseTool):
 
         # Fresh LLM call with isolated context
         messages = [
-            {"role": "system", "content": ARTICLE_EXTRACTION_PROMPT},
+            {"role": "system", "content": _get_article_extraction_prompt()},
             {"role": "user", "content": f"Analyze this article page HTML:\n\n{cleaned_html}"}
         ]
 
@@ -405,36 +328,17 @@ class SelectorAggregatorTool(BaseTool):
                     selector_variations[key].append(value)
 
         # Use LLM to analyze and order the selector chains
-        prompt = f"""Analyze these CSS selectors extracted from {total_pages} article pages.
-For each field, create an ORDERED CHAIN of all working selectors (not just one!).
-Order them by reliability - most reliable first, fallbacks after.
-
-The crawler will try each selector in order until one matches.
-
-Selector variations found (with counts):
-{json.dumps({k: dict(Counter(v)) for k, v in selector_variations.items()}, indent=2)}
-
-Respond with JSON only:
-{{
-  "selectors": {{
-    "title": [
-      {{"selector": "most reliable selector", "priority": 1, "notes": "why this is primary"}},
-      {{"selector": "fallback selector", "priority": 2, "notes": "when to use this"}}
-    ],
-    "date": [...],
-    "authors": [...],
-    "lead": [...],
-    "content": [...],
-    "category": [...],
-    "tags": [...],
-    "breadcrumbs": [...],
-    "files": [...]
-  }},
-  "notes": "overall analysis"
-}}
-
-IMPORTANT: Include ALL selectors that worked on any page, not just the most common one.
-The crawler needs fallbacks for pages with different structures."""
+        # Use PromptProvider template for selector aggregation
+        provider = get_prompt_provider()
+        selector_variations_json = json.dumps(
+            {k: dict(Counter(v)) for k, v in selector_variations.items()},
+            indent=2
+        )
+        prompt = provider.render_prompt(
+            "selector_aggregation",
+            total_pages=total_pages,
+            selector_variations_json=selector_variations_json
+        )
 
         messages = [
             {"role": "system", "content": "You are a CSS selector analyst. Create ordered selector chains with ALL working selectors. Respond with JSON only."},

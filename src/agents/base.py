@@ -5,15 +5,18 @@ The @traced_agent decorator handles all agent instrumentation.
 
 Supports both single LLMClient (legacy) and LLMClientFactory (multi-model) modes.
 """
+import json
 import logging
 from typing import TYPE_CHECKING, Any, Union
 
 from ..core.llm import LLMClient
 from ..observability.decorators import traced_agent
 from ..tools.base import BaseTool
+from .result import AgentResult
 
 if TYPE_CHECKING:
     from ..core.llm import LLMClientFactory
+    from ..services.memory_service import MemoryService
 
 logger = logging.getLogger(__name__)
 
@@ -36,6 +39,7 @@ class BaseAgent:
         llm: Union[LLMClient, "LLMClientFactory"],
         tools: list[BaseTool] | None = None,
         component_name: str | None = None,
+        memory_service: "MemoryService | None" = None,
     ):
         """Initialize the agent.
 
@@ -44,6 +48,7 @@ class BaseAgent:
             tools: Optional list of tools available to the agent
             component_name: Override the component name for factory lookup
                            (defaults to agent's name attribute)
+            memory_service: MemoryService for agent memory
         """
         # Handle both LLMClient and LLMClientFactory
         if hasattr(llm, 'get_client'):
@@ -59,21 +64,34 @@ class BaseAgent:
 
         self.tools = tools or []
         self._tool_map = {t.name: t for t in self.tools}
+        self._memory_service = memory_service
+
+    @property
+    def memory_service(self) -> "MemoryService | None":
+        """Return the agent's memory service."""
+        return self._memory_service
 
     @traced_agent()  # Uses self.name dynamically
-    def run(self, task: str) -> dict[str, Any]:
+    def run(self, task: str, context: dict[str, Any] | None = None) -> AgentResult:
         """Execute agent task with tool loop.
 
         Instrumented by @traced_agent - logs agent lifecycle, iterations, and results.
 
         Args:
             task: The task description to complete
+            context: Optional explicit data from parent agent/orchestrator
 
         Returns:
-            dict with 'success', 'result', and 'history'
+            AgentResult with success, data, errors, and optional memory snapshot
         """
+        # Build system message with optional context injection
+        system_content = self.system_prompt
+        if context:
+            context_str = json.dumps(context, indent=2)
+            system_content += f"\n\n## Context from orchestrator:\n```json\n{context_str}\n```"
+
         messages = [
-            {"role": "system", "content": self.system_prompt},
+            {"role": "system", "content": system_content},
             {"role": "user", "content": task}
         ]
 
@@ -121,20 +139,21 @@ class BaseAgent:
                     })
             else:
                 # No tool calls - agent is done
-                return {
-                    "success": True,
-                    "result": response["content"],
-                    "history": messages,
-                    "iterations": iteration + 1
-                }
+                result_data = self._extract_result_data(response["content"])
+                return AgentResult(
+                    success=True,
+                    data=result_data,
+                    memory_snapshot=self._get_memory_snapshot(),
+                    iterations=iteration + 1
+                )
 
         # Max iterations reached
-        return {
-            "success": False,
-            "error": f"Max iterations ({MAX_ITERATIONS}) reached",
-            "history": messages,
-            "iterations": MAX_ITERATIONS
-        }
+        return AgentResult(
+            success=False,
+            errors=[f"Max iterations ({MAX_ITERATIONS}) reached"],
+            memory_snapshot=self._get_memory_snapshot(),
+            iterations=MAX_ITERATIONS
+        )
 
     def _execute_tool(self, name: str, arguments: dict[str, Any]) -> dict[str, Any]:
         """Execute a tool by name with arguments.
@@ -158,3 +177,26 @@ class BaseAgent:
         except Exception as e:
             logger.error(f"[{self.name}] Tool {name} failed: {e}")
             return {"success": False, "error": str(e)}
+
+    def _extract_result_data(self, content: str) -> dict[str, Any]:
+        """Extract structured data from final response.
+
+        Override in subclasses to extract specific data from the agent's response.
+
+        Args:
+            content: The final response content from the LLM
+
+        Returns:
+            Dictionary with extracted data
+        """
+        return {"result": content}
+
+    def _get_memory_snapshot(self) -> dict[str, Any] | None:
+        """Return snapshot of agent's memory if available.
+
+        Returns:
+            Dictionary with all memory keys/values, or None if no memory service
+        """
+        if self._memory_service:
+            return self._memory_service.get_snapshot()
+        return None

@@ -3,6 +3,8 @@
 This agent inherits from BaseAgent which uses the @traced_agent decorator
 for automatic observability instrumentation.
 """
+from typing import TYPE_CHECKING
+
 from ..core.browser import BrowserSession
 from ..core.llm import LLMClient
 from ..tools.browser import (
@@ -17,27 +19,29 @@ from ..tools.memory import (
     MemoryListTool,
     MemoryReadTool,
     MemorySearchTool,
-    MemoryStore,
     MemoryWriteTool,
 )
+from src.prompts import get_prompt_provider
+
 from .base import BaseAgent
-from .prompts import BROWSER_AGENT_PROMPT
+
+if TYPE_CHECKING:
+    from ..services.memory_service import MemoryService
 
 
 class BrowserAgent(BaseAgent):
     """Agent for browser interaction and page analysis."""
 
     name = "browser_agent"
-    system_prompt = BROWSER_AGENT_PROMPT
+    system_prompt = get_prompt_provider().get_agent_prompt("browser")
 
     def __init__(
         self,
         llm: LLMClient,
         browser_session: BrowserSession,
-        memory_store: MemoryStore | None = None
+        memory_service: "MemoryService",
     ):
         self.browser_session = browser_session
-        self.memory_store = memory_store or MemoryStore()
 
         tools = [
             # Browser tools
@@ -48,10 +52,10 @@ class BrowserAgent(BaseAgent):
             WaitTool(browser_session),
             ExtractLinksTool(browser_session),
             # Memory tools
-            MemoryReadTool(self.memory_store),
-            MemoryWriteTool(self.memory_store),
-            MemorySearchTool(self.memory_store),
-            MemoryListTool(self.memory_store),
+            MemoryReadTool(memory_service),
+            MemoryWriteTool(memory_service),
+            MemorySearchTool(memory_service),
+            MemoryListTool(memory_service),
         ]
 
-        super().__init__(llm, tools)
+        super().__init__(llm, tools, memory_service=memory_service)

@@ -83,10 +83,14 @@ class TestOutputConfig:
             assert config.template_dir == Path("/custom/templates")
 
     def test_get_output_dir(self):
-        """Test get_output_dir generates correct path."""
+        """Test get_output_dir generates correct path with timestamp."""
+        import re
         config = OutputConfig(base_dir=Path("/tmp/output"))
         output_dir = config.get_output_dir("https://example.com/page")
-        assert output_dir == Path("/tmp/output/example_com")
+        # Format: {base_dir}/{dirname}_{timestamp}
+        # Example: /tmp/output/example_com_20250116_153045
+        assert output_dir.parent == Path("/tmp/output")
+        assert re.match(r"example_com_\d{8}_\d{6}", output_dir.name)
 
 
 class TestBrowserConfig:
@@ -126,6 +130,25 @@ class TestBrowserConfig:
             assert config.host == "remote-chrome"
             assert config.port == 9333
             assert config.timeout == 120
+
+    def test_from_env_with_cdp_url(self):
+        """Test from_env with CDP_URL extracts host and port."""
+        env = {"CDP_URL": "ws://docker-chrome:9333"}
+        with patch.dict(os.environ, env, clear=True):
+            config = BrowserConfig.from_env()
+            assert config.host == "docker-chrome"
+            assert config.port == 9333
+            assert config.url == "ws://docker-chrome:9333"
+
+    def test_websocket_url_property_with_url(self):
+        """Test websocket_url property returns URL when set."""
+        config = BrowserConfig(host="localhost", port=9222, url="ws://custom:8888")
+        assert config.websocket_url == "ws://custom:8888"
+
+    def test_websocket_url_property_without_url(self):
+        """Test websocket_url property builds from host/port."""
+        config = BrowserConfig(host="chrome", port=9333)
+        assert config.websocket_url == "ws://chrome:9333"
 
 
 class TestOpenAIConfig:

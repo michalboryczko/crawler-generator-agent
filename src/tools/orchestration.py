@@ -2,24 +2,62 @@
 
 This module uses the new observability decorators for automatic logging.
 The @traced_tool decorator handles all tool instrumentation.
+
+Tools now support:
+- Explicit context parameter for data passing between agents
+- Full AgentResult data in responses
+- Optional orchestrator memory for cross-tool data sharing
 """
-from typing import Any, Protocol
+from typing import TYPE_CHECKING, Any, Protocol
 
 from ..observability.decorators import traced_tool
 from .base import BaseTool
+
+if TYPE_CHECKING:
+    from ..agents.result import AgentResult
+    from ..services.memory_service import MemoryService
 
 
 class RunnableAgent(Protocol):
     """Protocol for agents that can be run with a task."""
 
-    def run(self, task: str) -> dict[str, Any]: ...
+    def run(self, task: str, context: dict[str, Any] | None = None) -> "AgentResult": ...
+
+
+def _extract_result_info(result: "AgentResult") -> dict[str, Any]:
+    """Extract standard info from AgentResult for tool response.
+
+    Args:
+        result: AgentResult from agent execution
+
+    Returns:
+        Dictionary with success, data, errors, and iterations
+    """
+    response: dict[str, Any] = {
+        "success": result.success,
+        "iterations": result.iterations,
+        "data": result.data,  # Full structured data from agent
+    }
+
+    if result.success:
+        # For backward compatibility, also set 'result' from data
+        response["result"] = result.get("result", "")
+    else:
+        # Include errors for failed results
+        response["errors"] = result.errors
+        response["error"] = result.errors[0] if result.errors else "Unknown error"
+        response["result"] = response["error"]
+
+    return response
 
 
 def create_agent_runner_tool(
     tool_name: str,
     agent: RunnableAgent,
     description: str,
-    task_description: str = "Task description for the agent"
+    task_description: str = "Task description for the agent",
+    orchestrator_memory: "MemoryService | None" = None,
+    store_keys: list[str] | None = None,
 ) -> BaseTool:
     """Factory function to create agent runner tools.
 
@@ -30,27 +68,50 @@ def create_agent_runner_tool(
         agent: The agent instance to run
         description: Tool description for LLM
         task_description: Description for the task parameter
+        orchestrator_memory: Optional shared memory store for cross-tool data
+        store_keys: Keys to automatically store in orchestrator_memory after execution
 
     Returns:
         A configured BaseTool instance
+
+    Example:
+        tool = create_agent_runner_tool(
+            tool_name="run_browser_agent",
+            agent=browser_agent,
+            description="Run browser agent",
+            orchestrator_memory=shared_store,
+            store_keys=["extracted_articles", "pagination_type"]
+        )
     """
+    # Alias parameters to avoid class attribute name conflicts
+    _tool_name = tool_name
+    _description = description
+    _task_description = task_description
+    _agent = agent
+    _orchestrator_memory = orchestrator_memory
+    _store_keys = store_keys or []
 
     class AgentRunnerTool(BaseTool):
-        name = tool_name
-        description = description
+        name = _tool_name
+        description = _description
 
         def __init__(self) -> None:
-            self.agent = agent
+            self.agent = _agent
+            self.orchestrator_memory = _orchestrator_memory
 
-        @traced_tool(name=tool_name)
-        def execute(self, task: str) -> dict[str, Any]:
+        @traced_tool(name=_tool_name)
+        def execute(self, task: str, context: dict[str, Any] | None = None) -> dict[str, Any]:
             """Run the agent with given task. Instrumented by @traced_tool."""
-            result = self.agent.run(task)
-            return {
-                "success": result["success"],
-                "result": result.get("result", result.get("error")),
-                "iterations": result.get("iterations", 0)
-            }
+            result = self.agent.run(task, context=context)
+            response = _extract_result_info(result)
+
+            # Store specified keys in orchestrator memory
+            if self.orchestrator_memory and result.success:
+                for key in _store_keys:
+                    if result.has(key):
+                        self.orchestrator_memory.write(key, result.get(key))
+
+            return response
 
         def get_parameters_schema(self) -> dict[str, Any]:
             return {
@@ -58,7 +119,11 @@ def create_agent_runner_tool(
                 "properties": {
                     "task": {
                         "type": "string",
-                        "description": task_description
+                        "description": _task_description
+                    },
+                    "context": {
+                        "type": "object",
+                        "description": "Optional context data to pass to the agent"
                     }
                 },
                 "required": ["task"]
@@ -74,7 +139,7 @@ def create_browser_agent_tool(browser_agent: RunnableAgent) -> BaseTool:
         tool_name="run_browser_agent",
         agent=browser_agent,
         description="""Run the Browser Agent to navigate to a URL and extract article links.
-    The agent will store results in shared memory.""",
+    The agent will return results in its AgentResult.""",
         task_description="Task description for the browser agent"
     )
 
@@ -85,7 +150,7 @@ def create_selector_agent_tool(selector_agent: RunnableAgent) -> BaseTool:
         tool_name="run_selector_agent",
         agent=selector_agent,
         description="""Run the Selector Agent to find and verify CSS selectors.
-    The agent reads extracted articles from memory and stores final selectors.""",
+    The agent receives context data and returns final selectors.""",
         task_description="Task description for the selector agent"
     )
 
@@ -96,7 +161,7 @@ def create_accessibility_agent_tool(accessibility_agent: RunnableAgent) -> BaseT
         tool_name="run_accessibility_agent",
         agent=accessibility_agent,
         description="""Run the Accessibility Agent to check if the site works without JavaScript.
-    The agent tests HTTP requests and stores results in memory.""",
+    The agent tests HTTP requests and returns accessibility results.""",
         task_description="Task description for the accessibility agent"
     )
 
@@ -107,34 +172,42 @@ def create_data_prep_agent_tool(data_prep_agent: RunnableAgent) -> BaseTool:
         tool_name="run_data_prep_agent",
         agent=data_prep_agent,
         description="""Run the Data Prep Agent to create test datasets.
-    The agent fetches sample pages using browser and stores test data in memory.""",
+    The agent fetches sample pages and returns test data.""",
         task_description="Task description for the data prep agent"
     )
 
 
 # Backward-compatible class aliases that use the factory
 class RunBrowserAgentTool(BaseTool):
-    """Run the Browser Agent to analyze a webpage.
-
-    Note: Consider using create_browser_agent_tool() instead for new code.
-    """
+    """Run the Browser Agent to analyze a webpage."""
 
     name = "run_browser_agent"
     description = """Run the Browser Agent to navigate to a URL and extract article links.
-    The agent will store results in shared memory."""
+    Returns structured data including extracted_articles, pagination_type, and selectors."""
 
-    def __init__(self, browser_agent: RunnableAgent) -> None:
+    def __init__(
+        self,
+        browser_agent: RunnableAgent,
+        orchestrator_memory: "MemoryService | None" = None,
+        store_keys: list[str] | None = None,
+    ) -> None:
         self.agent = browser_agent
+        self.orchestrator_memory = orchestrator_memory
+        self.store_keys = store_keys or []
 
     @traced_tool(name="run_browser_agent")
-    def execute(self, task: str) -> dict[str, Any]:
+    def execute(self, task: str, context: dict[str, Any] | None = None) -> dict[str, Any]:
         """Run browser agent. Instrumented by @traced_tool."""
-        result = self.agent.run(task)
-        return {
-            "success": result["success"],
-            "result": result.get("result", result.get("error")),
-            "iterations": result.get("iterations", 0)
-        }
+        result = self.agent.run(task, context=context)
+        response = _extract_result_info(result)
+
+        # Store specified keys in orchestrator memory
+        if self.orchestrator_memory and result.success:
+            for key in self.store_keys:
+                if result.has(key):
+                    self.orchestrator_memory.write(key, result.get(key))
+
+        return response
 
     def get_parameters_schema(self) -> dict[str, Any]:
         return {
@@ -143,6 +216,10 @@ class RunBrowserAgentTool(BaseTool):
                 "task": {
                     "type": "string",
                     "description": "Task description for the browser agent"
+                },
+                "context": {
+                    "type": "object",
+                    "description": "Optional context data to pass to the agent"
                 }
             },
             "required": ["task"]
@@ -150,27 +227,34 @@ class RunBrowserAgentTool(BaseTool):
 
 
 class RunSelectorAgentTool(BaseTool):
-    """Run the Selector Agent to find CSS selectors.
-
-    Note: Consider using create_selector_agent_tool() instead for new code.
-    """
+    """Run the Selector Agent to find CSS selectors."""
 
     name = "run_selector_agent"
     description = """Run the Selector Agent to find and verify CSS selectors.
-    The agent reads extracted articles from memory and stores final selectors."""
+    Returns structured data including final_selectors and selector_candidates."""
 
-    def __init__(self, selector_agent: RunnableAgent) -> None:
+    def __init__(
+        self,
+        selector_agent: RunnableAgent,
+        orchestrator_memory: "MemoryService | None" = None,
+        store_keys: list[str] | None = None,
+    ) -> None:
         self.agent = selector_agent
+        self.orchestrator_memory = orchestrator_memory
+        self.store_keys = store_keys or []
 
     @traced_tool(name="run_selector_agent")
-    def execute(self, task: str) -> dict[str, Any]:
+    def execute(self, task: str, context: dict[str, Any] | None = None) -> dict[str, Any]:
         """Run selector agent. Instrumented by @traced_tool."""
-        result = self.agent.run(task)
-        return {
-            "success": result["success"],
-            "result": result.get("result", result.get("error")),
-            "iterations": result.get("iterations", 0)
-        }
+        result = self.agent.run(task, context=context)
+        response = _extract_result_info(result)
+
+        if self.orchestrator_memory and result.success:
+            for key in self.store_keys:
+                if result.has(key):
+                    self.orchestrator_memory.write(key, result.get(key))
+
+        return response
 
     def get_parameters_schema(self) -> dict[str, Any]:
         return {
@@ -179,6 +263,10 @@ class RunSelectorAgentTool(BaseTool):
                 "task": {
                     "type": "string",
                     "description": "Task description for the selector agent"
+                },
+                "context": {
+                    "type": "object",
+                    "description": "Optional context data to pass to the agent"
                 }
             },
             "required": ["task"]
@@ -186,27 +274,34 @@ class RunSelectorAgentTool(BaseTool):
 
 
 class RunAccessibilityAgentTool(BaseTool):
-    """Run the Accessibility Agent to check HTTP accessibility.
-
-    Note: Consider using create_accessibility_agent_tool() instead for new code.
-    """
+    """Run the Accessibility Agent to check HTTP accessibility."""
 
     name = "run_accessibility_agent"
     description = """Run the Accessibility Agent to check if the site works without JavaScript.
-    The agent tests HTTP requests and stores results in memory."""
+    Returns structured data including http_accessible flag and test_results."""
 
-    def __init__(self, accessibility_agent: RunnableAgent) -> None:
+    def __init__(
+        self,
+        accessibility_agent: RunnableAgent,
+        orchestrator_memory: "MemoryService | None" = None,
+        store_keys: list[str] | None = None,
+    ) -> None:
         self.agent = accessibility_agent
+        self.orchestrator_memory = orchestrator_memory
+        self.store_keys = store_keys or []
 
     @traced_tool(name="run_accessibility_agent")
-    def execute(self, task: str) -> dict[str, Any]:
+    def execute(self, task: str, context: dict[str, Any] | None = None) -> dict[str, Any]:
         """Run accessibility agent. Instrumented by @traced_tool."""
-        result = self.agent.run(task)
-        return {
-            "success": result["success"],
-            "result": result.get("result", result.get("error")),
-            "iterations": result.get("iterations", 0)
-        }
+        result = self.agent.run(task, context=context)
+        response = _extract_result_info(result)
+
+        if self.orchestrator_memory and result.success:
+            for key in self.store_keys:
+                if result.has(key):
+                    self.orchestrator_memory.write(key, result.get(key))
+
+        return response
 
     def get_parameters_schema(self) -> dict[str, Any]:
         return {
@@ -215,6 +310,10 @@ class RunAccessibilityAgentTool(BaseTool):
                 "task": {
                     "type": "string",
                     "description": "Task description for the accessibility agent"
+                },
+                "context": {
+                    "type": "object",
+                    "description": "Optional context data to pass to the agent"
                 }
             },
             "required": ["task"]
@@ -222,27 +321,34 @@ class RunAccessibilityAgentTool(BaseTool):
 
 
 class RunDataPrepAgentTool(BaseTool):
-    """Run the Data Preparation Agent to create test datasets.
-
-    Note: Consider using create_data_prep_agent_tool() instead for new code.
-    """
+    """Run the Data Preparation Agent to create test datasets."""
 
     name = "run_data_prep_agent"
     description = """Run the Data Prep Agent to create test datasets.
-    The agent fetches sample pages using browser and stores test data in memory."""
+    Returns structured data including test_data and sample_pages."""
 
-    def __init__(self, data_prep_agent: RunnableAgent) -> None:
+    def __init__(
+        self,
+        data_prep_agent: RunnableAgent,
+        orchestrator_memory: "MemoryService | None" = None,
+        store_keys: list[str] | None = None,
+    ) -> None:
         self.agent = data_prep_agent
+        self.orchestrator_memory = orchestrator_memory
+        self.store_keys = store_keys or []
 
     @traced_tool(name="run_data_prep_agent")
-    def execute(self, task: str) -> dict[str, Any]:
+    def execute(self, task: str, context: dict[str, Any] | None = None) -> dict[str, Any]:
         """Run data prep agent. Instrumented by @traced_tool."""
-        result = self.agent.run(task)
-        return {
-            "success": result["success"],
-            "result": result.get("result", result.get("error")),
-            "iterations": result.get("iterations", 0)
-        }
+        result = self.agent.run(task, context=context)
+        response = _extract_result_info(result)
+
+        if self.orchestrator_memory and result.success:
+            for key in self.store_keys:
+                if result.has(key):
+                    self.orchestrator_memory.write(key, result.get(key))
+
+        return response
 
     def get_parameters_schema(self) -> dict[str, Any]:
         return {
@@ -251,6 +357,10 @@ class RunDataPrepAgentTool(BaseTool):
                 "task": {
                     "type": "string",
                     "description": "Task description for the data prep agent"
+                },
+                "context": {
+                    "type": "object",
+                    "description": "Optional context data to pass to the agent"
                 }
             },
             "required": ["task"]

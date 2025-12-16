@@ -2,6 +2,8 @@
 
 This module uses the new observability decorators for automatic logging.
 The @traced_tool decorator handles all tool instrumentation.
+
+Prompts are now managed through the centralized PromptProvider.
 """
 import json
 import logging
@@ -13,6 +15,7 @@ from urllib.parse import parse_qs, urlencode, urlparse, urlunparse
 from ..core.json_parser import parse_json_response
 from ..core.llm import LLMClient
 from ..observability.decorators import traced_tool
+from ..prompts import get_prompt_provider
 from .base import BaseTool
 
 logger = logging.getLogger(__name__)
@@ -88,29 +91,13 @@ class ListingPagesGeneratorTool(BaseTool):
 
     def _detect_pagination_pattern(self, target_url: str, pagination_links: list[str]) -> dict:
         """Use LLM to analyze pagination links and detect the URL pattern."""
-        prompt = f"""Analyze these pagination URLs and identify the pagination pattern.
-
-Base/Target URL: {target_url}
-
-Sample pagination links:
-{chr(10).join(pagination_links[:10])}
-
-Identify:
-1. What parameter controls pagination (page, offset, skip, start, p, etc.)
-2. Is it page-based (page=1,2,3) or offset-based (offset=0,20,40) or something else?
-3. What is the base URL without pagination params?
-4. How to construct a URL for page N?
-
-Respond with JSON only:
-{{
-    "pattern_type": "page_number" or "offset" or "path_segment" or "other",
-    "param_name": "the parameter name like 'page' or 'offset'",
-    "base_url": "URL without pagination params",
-    "url_template": "template with {{n}} placeholder, e.g. 'https://example.com?page={{n}}' or 'https://example.com?offset={{n*20}}'",
-    "offset_multiplier": null or number (e.g., 20 if offset=0,20,40 for pages 1,2,3),
-    "starts_at": 0 or 1 (whether first page is 0 or 1),
-    "notes": "any observations"
-}}"""
+        # Use PromptProvider template for pagination pattern detection
+        provider = get_prompt_provider()
+        prompt = provider.render_prompt(
+            "pagination_pattern",
+            target_url=target_url,
+            pagination_links=pagination_links
+        )
 
         messages = [
             {"role": "system", "content": "You are a URL pattern analyzer. Analyze pagination URLs to understand the pattern. Respond with valid JSON only."},
@@ -338,22 +325,12 @@ class ArticlePagesGeneratorTool(BaseTool):
         # For larger sets, use LLM to identify patterns
         sample_urls = urls[:50] if len(urls) > 50 else urls
 
-        prompt = f"""Analyze these article URLs and identify distinct URL patterns.
-Group them by their structural pattern (path structure, not content).
-
-URLs to analyze:
-{chr(10).join(sample_urls)}
-
-Respond with JSON only:
-{{
-  "patterns": [
-    {{
-      "pattern_name": "descriptive name like 'slug-based' or 'year/month/slug'",
-      "pattern_regex": "regex to match this pattern",
-      "example_urls": ["url1", "url2"]
-    }}
-  ]
-}}"""
+        # Use PromptProvider template for article URL pattern grouping
+        provider = get_prompt_provider()
+        prompt = provider.render_prompt(
+            "article_url_pattern",
+            sample_urls=sample_urls
+        )
 
         messages = [
             {"role": "system", "content": "You are a URL pattern analyzer. Respond with valid JSON only."},

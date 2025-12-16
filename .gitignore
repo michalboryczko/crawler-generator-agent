@@ -21,7 +21,14 @@ build/
 # OS
 .DS_Store
 
+# Coverage
+.coverage
+htmlcov/
+coverage.xml
+
 # Project
 .claude/
 .serena/
 .taskmaster/
+.env*
+!.env.example

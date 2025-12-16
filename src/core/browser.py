@@ -22,11 +22,13 @@ class CDPClient:
 
     async def connect(self) -> None:
         """Connect to Chrome DevTools."""
-        # Get websocket URL from Chrome
+        # Get websocket URL from Chrome's /json endpoint
         import aiohttp
+        http_url = f"http://{self.config.host}:{self.config.port}/json"
+        logger.debug(f"Fetching targets from {http_url}")
+
         async with aiohttp.ClientSession() as session:
-            url = f"http://{self.config.host}:{self.config.port}/json"
-            async with session.get(url) as resp:
+            async with session.get(http_url) as resp:
                 targets = await resp.json()
 
         # Find a page target

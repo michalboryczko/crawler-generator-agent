@@ -2,24 +2,35 @@
 
 import pytest
 
-from src.tools.memory import MemoryStore
+from src.repositories.inmemory import InMemoryRepository
+from src.services.memory_service import MemoryService
 
 
 @pytest.fixture
-def memory_store():
-    """Create a fresh MemoryStore for testing."""
-    return MemoryStore()
+def memory_repository():
+    """Create a fresh InMemoryRepository for testing."""
+    return InMemoryRepository()
 
 
 @pytest.fixture
-def populated_memory_store(memory_store):
-    """Create a MemoryStore with sample data."""
-    memory_store.write("user.name", "Test User")
-    memory_store.write("user.email", "test@example.com")
-    memory_store.write("articles.item1", {"title": "Article 1", "url": "http://example.com/1"})
-    memory_store.write("articles.item2", {"title": "Article 2", "url": "http://example.com/2"})
-    memory_store.write("config.timeout", 30)
-    return memory_store
+def memory_service(memory_repository):
+    """Create a fresh MemoryService for testing."""
+    return MemoryService(
+        repository=memory_repository,
+        session_id="test-session",
+        agent_name="test-agent",
+    )
+
+
+@pytest.fixture
+def populated_memory_service(memory_service):
+    """Create a MemoryService with sample data."""
+    memory_service.write("user.name", "Test User")
+    memory_service.write("user.email", "test@example.com")
+    memory_service.write("articles.item1", {"title": "Article 1", "url": "http://example.com/1"})
+    memory_service.write("articles.item2", {"title": "Article 2", "url": "http://example.com/2"})
+    memory_service.write("config.timeout", 30)
+    return memory_service
 
 
 @pytest.fixture
