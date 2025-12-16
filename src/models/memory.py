@@ -4,7 +4,7 @@ This model is used by both InMemoryRepository and SQLAlchemyRepository,
 providing a consistent domain object across storage backends.
 """
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from sqlalchemy import Column, DateTime, Index, Integer, String
 from sqlalchemy.types import JSON
@@ -37,13 +37,13 @@ class MemoryEntry(Base):
     value = Column(JSON, nullable=False)
     created_at = Column(
         DateTime(timezone=True),
-        default=lambda: datetime.now(timezone.utc),
+        default=lambda: datetime.now(UTC),
         nullable=False,
     )
     updated_at = Column(
         DateTime(timezone=True),
-        default=lambda: datetime.now(timezone.utc),
-        onupdate=lambda: datetime.now(timezone.utc),
+        default=lambda: datetime.now(UTC),
+        onupdate=lambda: datetime.now(UTC),
         nullable=False,
     )
 

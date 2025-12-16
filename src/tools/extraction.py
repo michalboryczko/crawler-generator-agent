@@ -8,9 +8,7 @@ Prompts are now managed through the centralized PromptProvider.
 import json
 import re
 import time
-from typing import Any
-
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from ..core.browser import BrowserSession
 from ..core.html_cleaner import clean_html_for_llm

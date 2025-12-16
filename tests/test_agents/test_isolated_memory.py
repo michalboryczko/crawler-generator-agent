@@ -1,17 +1,13 @@
 """Tests for isolated memory architecture."""
 
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock
 
-import pytest
-
-from src.agents.accessibility_agent import AccessibilityAgent
 from src.agents.browser_agent import BrowserAgent
-from src.agents.data_prep_agent import DataPrepAgent
 from src.agents.selector_agent import SelectorAgent
+from src.core.config import StorageConfig
+from src.infrastructure import init_container
 from src.repositories.inmemory import InMemoryRepository
 from src.services.memory_service import MemoryService
-from src.infrastructure import Container, init_container
-from src.core.config import StorageConfig
 
 
 def create_mock_llm() -> MagicMock:
@@ -40,8 +36,8 @@ class TestAgentIsolatedMemory:
         browser_service = container.memory_service("browser")
         selector_service = container.memory_service("selector")
 
-        browser_agent = BrowserAgent(mock_llm, mock_browser, memory_service=browser_service)
-        selector_agent = SelectorAgent(mock_llm, mock_browser, memory_service=selector_service)
+        _browser_agent = BrowserAgent(mock_llm, mock_browser, memory_service=browser_service)
+        _selector_agent = SelectorAgent(mock_llm, mock_browser, memory_service=selector_service)
 
         # Different agent names provide isolation
         browser_service.write("key", "browser_value")
@@ -71,8 +67,8 @@ class TestAgentIsolatedMemory:
         service1 = MemoryService(repo, "session1", "browser")
         service2 = MemoryService(repo, "session2", "browser")
 
-        agent1 = BrowserAgent(mock_llm, mock_browser, memory_service=service1)
-        agent2 = BrowserAgent(mock_llm, mock_browser, memory_service=service2)
+        _agent1 = BrowserAgent(mock_llm, mock_browser, memory_service=service1)
+        _agent2 = BrowserAgent(mock_llm, mock_browser, memory_service=service2)
 
         service1.write("key", "value1")
         service2.write("key", "value2")

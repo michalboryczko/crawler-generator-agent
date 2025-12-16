@@ -1,11 +1,9 @@
 """Tests for BaseAgent class."""
 
 from typing import Any
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock
 
-import pytest
-
-from src.agents.base import BaseAgent, MAX_ITERATIONS
+from src.agents.base import MAX_ITERATIONS, BaseAgent
 from src.agents.result import AgentResult
 from src.repositories.inmemory import InMemoryRepository
 from src.services.memory_service import MemoryService

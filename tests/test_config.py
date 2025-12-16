@@ -158,7 +158,7 @@ class TestOpenAIConfig:
         """Test default values."""
         config = OpenAIConfig(api_key="test-key")
         assert config.api_key == "test-key"
-        assert config.model == "gpt-4o"
+        assert config.model == "gpt-5.1"
         assert config.temperature == 0.0
 
     def test_init_custom(self):

@@ -5,6 +5,8 @@ for automatic observability instrumentation.
 """
 from typing import TYPE_CHECKING
 
+from src.prompts import get_prompt_provider
+
 from ..core.browser import BrowserSession
 from ..core.llm import LLMClient
 from ..tools.browser import (
@@ -21,8 +23,6 @@ from ..tools.memory import (
     MemorySearchTool,
     MemoryWriteTool,
 )
-from src.prompts import get_prompt_provider
-
 from .base import BaseAgent
 
 if TYPE_CHECKING:

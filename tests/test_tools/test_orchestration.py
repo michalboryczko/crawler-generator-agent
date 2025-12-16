@@ -2,8 +2,6 @@
 
 from typing import Any
 
-import pytest
-
 from src.agents.result import AgentResult
 from src.repositories.inmemory import InMemoryRepository
 from src.services.memory_service import MemoryService

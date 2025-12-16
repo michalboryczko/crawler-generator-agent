@@ -19,7 +19,7 @@ jobs:
         run: uv python install 3.11
 
       - name: Install dependencies
-        run: uv sync --dev
+        run: uv sync --extra dev
 
       - name: Run Ruff linter
         run: uv run ruff check .
@@ -40,7 +40,7 @@ jobs:
         run: uv python install 3.11
 
       - name: Install dependencies
-        run: uv sync --dev
+        run: uv sync --extra dev
 
       - name: Run tests
         run: uv run pytest -v --tb=short
@@ -69,7 +69,7 @@ jobs:
         run: uv python install 3.11
 
       - name: Install dependencies
-        run: uv sync --dev
+        run: uv sync --extra dev
 
       - name: Run mypy
         run: uv run mypy src/

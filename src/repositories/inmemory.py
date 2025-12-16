@@ -5,7 +5,7 @@ fast, transient storage during development and testing.
 """
 
 import fnmatch
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Any
 
 from ..models.memory import MemoryEntry
@@ -49,7 +49,7 @@ class InMemoryRepository(AbstractMemoryRepository):
         )
         existing = self._entries.get(composite_key)
 
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
 
         if existing:
             # Update existing entry

@@ -3,7 +3,7 @@
 Tracks the lifecycle of crawler runs including status, timing, and output location.
 """
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from enum import Enum
 
 from sqlalchemy import Column, DateTime, Index, String, Text
@@ -41,7 +41,7 @@ class Session(Base):
     target_site = Column(Text, nullable=False)
     init_at = Column(
         DateTime(timezone=True),
-        default=lambda: datetime.now(timezone.utc),
+        default=lambda: datetime.now(UTC),
         nullable=False,
     )
     status = Column(
@@ -69,10 +69,10 @@ class Session(Base):
     def mark_success(self) -> None:
         """Mark session as successfully completed."""
         self.status = SessionStatus.SUCCESS.value
-        self.completed_at = datetime.now(timezone.utc)
+        self.completed_at = datetime.now(UTC)
 
     def mark_failed(self, error: str) -> None:
         """Mark session as failed with error message."""
         self.status = SessionStatus.FAILED.value
         self.error_message = error
-        self.completed_at = datetime.now(timezone.utc)
+        self.completed_at = datetime.now(UTC)

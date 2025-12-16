@@ -27,9 +27,8 @@ class CDPClient:
         http_url = f"http://{self.config.host}:{self.config.port}/json"
         logger.debug(f"Fetching targets from {http_url}")
 
-        async with aiohttp.ClientSession() as session:
-            async with session.get(http_url) as resp:
-                targets = await resp.json()
+        async with aiohttp.ClientSession() as session, session.get(http_url) as resp:
+            targets = await resp.json()
 
         # Find a page target
         page_target = None

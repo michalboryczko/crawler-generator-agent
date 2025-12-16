@@ -7,6 +7,8 @@ import logging
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+from src.prompts import get_prompt_provider
+
 from ..core.browser import BrowserSession
 from ..core.llm import LLMClient
 from ..observability.decorators import traced_agent
@@ -34,8 +36,6 @@ from ..tools.plan_generator import (
 from .accessibility_agent import AccessibilityAgent
 from .base import BaseAgent
 from .browser_agent import BrowserAgent
-from src.prompts import get_prompt_provider
-
 from .data_prep_agent import DataPrepAgent
 from .result import AgentResult
 from .selector_agent import SelectorAgent

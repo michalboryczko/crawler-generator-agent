@@ -8,17 +8,14 @@ These tests verify the new memory architecture where:
 
 from unittest.mock import MagicMock
 
-import pytest
-
 from src.agents.result import AgentResult
-from src.infrastructure import Container, init_container
 from src.core.config import StorageConfig
+from src.infrastructure import init_container
 from src.repositories.inmemory import InMemoryRepository
 from src.services.memory_service import MemoryService
 from src.tools.orchestration import (
     RunAccessibilityAgentTool,
     RunBrowserAgentTool,
-    RunDataPrepAgentTool,
     RunSelectorAgentTool,
     create_agent_runner_tool,
 )

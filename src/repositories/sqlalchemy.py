@@ -5,13 +5,13 @@ This repository persists MemoryEntry objects to SQL databases
 """
 
 import fnmatch
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Any
 
 from sqlalchemy import create_engine, delete, select
 from sqlalchemy.orm import Session, sessionmaker
 
-from ..models.memory import Base, MemoryEntry
+from ..models.memory import MemoryEntry
 from .base import AbstractMemoryRepository
 
 
@@ -79,7 +79,7 @@ class SQLAlchemyRepository(AbstractMemoryRepository):
             )
             existing = session.execute(stmt).scalar_one_or_none()
 
-            now = datetime.now(timezone.utc)
+            now = datetime.now(UTC)
 
             if existing:
                 # Update existing
@@ -165,7 +165,7 @@ class SQLAlchemyRepository(AbstractMemoryRepository):
             return 0
 
         with self._get_session() as session:
-            now = datetime.now(timezone.utc)
+            now = datetime.now(UTC)
             count = 0
 
             for entry in entries:

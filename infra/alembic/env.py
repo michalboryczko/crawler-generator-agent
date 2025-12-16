@@ -3,17 +3,16 @@
 import os
 from logging.config import fileConfig
 
+from alembic import context
 from dotenv import load_dotenv
 from sqlalchemy import engine_from_config, pool
-
-from alembic import context
 
 # Load .env file
 load_dotenv()
 
 # Import models to register with metadata
 # All models must be imported for Alembic to detect them
-from src.models import Base, MemoryEntry, Session
+from src.models import Base  # noqa: E402
 
 config = context.config
 

@@ -3,7 +3,7 @@
 Handles session lifecycle: creation, status updates, and completion tracking.
 """
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -68,7 +68,7 @@ class SessionService:
         Returns:
             The created Session object
         """
-        init_at = init_at or datetime.now(timezone.utc)
+        init_at = init_at or datetime.now(UTC)
 
         session_obj = Session(
             id=session_id,

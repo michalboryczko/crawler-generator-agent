@@ -5,14 +5,14 @@ for automatic observability instrumentation.
 """
 from typing import TYPE_CHECKING
 
+from src.prompts import get_prompt_provider
+
 from ..core.llm import LLMClient
 from ..tools.http import HTTPRequestTool
 from ..tools.memory import (
     MemoryReadTool,
     MemoryWriteTool,
 )
-from src.prompts import get_prompt_provider
-
 from .base import BaseAgent
 
 if TYPE_CHECKING:

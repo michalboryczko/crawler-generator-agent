@@ -11,7 +11,7 @@ import shutil
 import sys
 from dataclasses import dataclass
 from pathlib import Path
-from typing import TYPE_CHECKING, Any
+from typing import Any
 
 from dotenv import load_dotenv
 
@@ -22,7 +22,6 @@ from src.core.llm import LLMClient, LLMClientFactory
 
 # Observability imports
 from src.infrastructure import Container, init_container
-from src.services import SessionService
 from src.observability.config import (
     ObservabilityConfig,
     initialize_observability,
@@ -31,6 +30,7 @@ from src.observability.config import (
 from src.observability.context import ObservabilityContext, get_or_create_context, set_context
 from src.observability.emitters import emit_error, emit_info, emit_warning
 from src.observability.handlers import OTelConfig, OTelGrpcHandler
+from src.services import SessionService
 
 
 @dataclass
