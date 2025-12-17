@@ -37,6 +37,7 @@ Your goal is to analyze a website and create a complete crawl plan with comprehe
    - Agent fetches listing pages from different pagination positions
    - Agent extracts article URLs from listings
    - Agent fetches article pages randomly selected across listings
+   - Agent exports test data to data/test_set.jsonl (handled by data prep agent)
    - Stores: test-data-listing-1..N and test-data-article-1..N
 
    Listing entry: {"type": "listing", "url": "...", "given": "<HTML>", "expected": {"article_urls": [...], ...}}
@@ -48,32 +49,25 @@ Your goal is to analyze a website and create a complete crawl plan with comprehe
 8. Call generate_test_md -> returns test documentation (includes both listing and article counts)
 9. Call file_create with path="test.md" and the test content
 
-### Phase 6: Export Test Data
-10. Call memory_search with pattern="test-data-listing-*" to get listing keys
-11. Call memory_search with pattern="test-data-article-*" to get article keys
-12. Combine both key lists
-13. Call memory_dump with ALL keys and filename="data/test_set.jsonl"
-
 ## Available Tools
 - Agents: run_browser_agent, run_selector_agent, run_accessibility_agent, run_data_prep_agent
 - Generators: generate_plan_md, generate_test_md
-- Memory: memory_read, memory_write, memory_list, memory_search, memory_dump
+- Memory: memory_read, memory_write, memory_list
 - Files: file_create, file_replace
 
 ## Rules
 1. Run agents sequentially - each depends on previous results
 2. ALWAYS check agent success before proceeding
-3. Data prep agent should create 25+ test entries (5 listings + 20 articles)
-4. Export BOTH listing and article test entries to JSONL
+3. Data prep agent creates 25+ test entries (5 listings + 20 articles) and exports them to JSONL
 
 ## CRITICAL - DO NOT SKIP ANY PHASE
 You MUST call ALL four agents in order:
 1. run_browser_agent - REQUIRED
 2. run_selector_agent - REQUIRED
 3. run_accessibility_agent - REQUIRED
-4. run_data_prep_agent - REQUIRED (this fetches additional pages for test data)
+4. run_data_prep_agent - REQUIRED (fetches pages, creates test data, exports to JSONL)
 
-Do NOT skip the data prep agent. It is essential for creating the test dataset.
+Do NOT skip the data prep agent. It creates the test dataset and exports it.
 The data prep agent will navigate the browser to multiple pages - you will see page changes."""
 
 
@@ -300,6 +294,11 @@ Pick random items from a list.
 ### memory_read/write/search
 Access shared memory.
 
+### memory_dump
+Dump memory keys to JSONL file.
+- keys: list of memory keys to dump
+- filename: output filename (e.g., "data/test_set.jsonl")
+
 ## Workflow - FOLLOW EXACTLY
 
 ### Phase 1: Generate Listing Page URLs
@@ -346,9 +345,15 @@ Access shared memory.
    - output_key_prefix: "test-data-article"
 2. This creates test-data-article-1 through test-data-article-20+
 
-### Phase 7: Summary
+### Phase 7: Export Test Data
+1. Use memory_search with pattern "test-data-listing-*" to find all listing keys
+2. Use memory_search with pattern "test-data-article-*" to find all article keys
+3. Combine both key lists
+4. Call memory_dump with all keys and filename="data/test_set.jsonl"
+
+### Phase 8: Summary
 1. Store description at 'test-data-description' using memory_write
-2. Report counts: X listing entries, Y article entries
+2. Report counts: X listing entries, Y article entries, exported to data/test_set.jsonl
 
 ## Important Rules
 - ALWAYS fetch 5+ listing pages first

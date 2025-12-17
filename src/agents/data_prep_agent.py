@@ -3,6 +3,7 @@
 This agent inherits from BaseAgent which uses the @traced_agent decorator
 for automatic observability instrumentation.
 """
+from pathlib import Path
 from typing import TYPE_CHECKING
 
 from src.prompts import get_prompt_provider
@@ -15,6 +16,7 @@ from ..tools.extraction import (
     BatchFetchURLsTool,
 )
 from ..tools.memory import (
+    MemoryDumpTool,
     MemoryReadTool,
     MemorySearchTool,
     MemoryWriteTool,
@@ -37,8 +39,10 @@ class DataPrepAgent(BaseAgent):
         llm: LLMClient,
         browser_session: BrowserSession,
         memory_service: "MemoryService",
+        output_dir: Path | None = None,
     ):
         self.browser_session = browser_session
+        self.output_dir = output_dir
 
         tools = [
             # Batch fetch (uses browser)
@@ -53,5 +57,9 @@ class DataPrepAgent(BaseAgent):
             MemoryWriteTool(memory_service),
             MemorySearchTool(memory_service),
         ]
+
+        # Add dump tool if output_dir provided
+        if output_dir:
+            tools.append(MemoryDumpTool(memory_service, output_dir))
 
         super().__init__(llm, tools, memory_service=memory_service)

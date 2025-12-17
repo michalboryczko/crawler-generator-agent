@@ -517,8 +517,8 @@ This site requires JavaScript rendering for full functionality.
 - Listing pages accessible via HTTP: {"Yes" if listing_ok else "No"}
 - Article pages accessible via HTTP: {"Yes" if articles_ok else "No"}
 
-**Recommendation:** Use Playwright or Puppeteer with headless browser.
-See `docs/headfull-chrome.md` for implementation details.
+**Recommendation:** We have own headfull browser accessible via api. While implementation you should check `docs/headfull-chrome.md`.
+That is our internal documentation for headfull browser usage you will find docs in repo.
 
 """
         else:

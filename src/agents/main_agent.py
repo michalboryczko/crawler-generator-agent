@@ -17,10 +17,8 @@ from ..tools.file import (
     FileReplaceTool,
 )
 from ..tools.memory import (
-    MemoryDumpTool,
     MemoryListTool,
     MemoryReadTool,
-    MemorySearchTool,
     MemoryWriteTool,
 )
 from ..tools.orchestration import (
@@ -100,7 +98,8 @@ class MainAgent(BaseAgent):
         )
         self.data_prep_agent = DataPrepAgent(
             llm, browser_session,
-            memory_service=self._container.memory_service("data_prep")
+            memory_service=self._container.memory_service("data_prep"),
+            output_dir=output_dir,
         )
 
         tools = [
@@ -108,8 +107,6 @@ class MainAgent(BaseAgent):
             MemoryReadTool(memory_service),
             MemoryWriteTool(memory_service),
             MemoryListTool(memory_service),
-            MemorySearchTool(memory_service),
-            MemoryDumpTool(memory_service, output_dir),
             # Plan generators (structured output from memory)
             GeneratePlanTool(memory_service),
             GenerateTestPlanTool(memory_service),
@@ -139,10 +136,9 @@ Execute the full workflow:
 3. Run selector agent to find CSS selectors for listings and detail pages
 4. Run accessibility agent to check HTTP accessibility
 5. Run data prep agent to create test dataset with 5+ listing pages and 20+ article pages
+   (The data prep agent will also dump test data to data/test_set.jsonl)
 6. Use generate_plan_md to create comprehensive plan, then file_create for plan.md
 7. Use generate_test_md to create test documentation, then file_create for test.md
-8. Search for BOTH 'test-data-listing-*' AND 'test-data-article-*' keys
-9. Dump ALL test entries to data/test_set.jsonl
 
 Return summary with counts when complete."""
 

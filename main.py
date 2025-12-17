@@ -11,7 +11,10 @@ import shutil
 import sys
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from src.agents.result import AgentResult
 
 from dotenv import load_dotenv
 
@@ -261,14 +264,14 @@ def _execute_agent(
 
     result = agent.create_crawl_plan(url)
 
-    if result["success"]:
+    if result.success:
         return _handle_success(result, output_dir, app_config, container, session_service, ctx, logger)
     else:
         return _handle_failure(result, container, session_service, ctx, logger)
 
 
 def _handle_success(
-    result: dict[str, Any],
+    result: "AgentResult",
     output_dir: Path,
     app_config: AppConfig,
     container: Container,
@@ -278,7 +281,7 @@ def _handle_success(
 ) -> int:
     """Handle successful crawl plan creation."""
     logger.info("Crawl plan created successfully")
-    logger.info(f"Result: {result['result']}")
+    logger.info(f"Result: {result.get('result', 'completed')}")
 
     if app_config.output.template_dir and app_config.output.template_dir.exists():
         logger.info(f"Copying templates from: {app_config.output.template_dir}")
@@ -302,14 +305,14 @@ def _handle_success(
 
 
 def _handle_failure(
-    result: dict[str, Any],
+    result: "AgentResult",
     container: Container,
     session_service: "SessionService",
     ctx: ObservabilityContext,
     logger: logging.Logger
 ) -> int:
     """Handle failed crawl plan creation."""
-    error_message = result.get("error", "Unknown error")
+    error_message = result.errors[0] if result.errors else "Unknown error"
     logger.error(f"Failed to create plan: {error_message}")
 
     # Mark session as failed
