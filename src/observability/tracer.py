@@ -15,22 +15,18 @@ Usage:
         ...
 """
 
-from typing import Optional
 from opentelemetry import trace
+from opentelemetry.sdk.resources import SERVICE_NAME, Resource
 from opentelemetry.sdk.trace import TracerProvider
 from opentelemetry.sdk.trace.export import BatchSpanProcessor
-from opentelemetry.sdk.resources import Resource, SERVICE_NAME
-
 
 # Global tracer instance
-_tracer: Optional[trace.Tracer] = None
-_provider: Optional[TracerProvider] = None
+_tracer: trace.Tracer | None = None
+_provider: TracerProvider | None = None
 
 
 def init_tracer(
-    endpoint: str = "localhost:4317",
-    service_name: str = "crawler-agent",
-    insecure: bool = True
+    endpoint: str = "localhost:4317", service_name: str = "crawler-agent", insecure: bool = True
 ) -> trace.Tracer:
     """Initialize the global OTel tracer.
 
@@ -52,10 +48,7 @@ def init_tracer(
         resource = Resource.create({SERVICE_NAME: service_name})
         _provider = TracerProvider(resource=resource)
 
-        exporter = OTLPSpanExporter(
-            endpoint=endpoint,
-            insecure=insecure
-        )
+        exporter = OTLPSpanExporter(endpoint=endpoint, insecure=insecure)
         _provider.add_span_processor(BatchSpanProcessor(exporter))
 
         trace.set_tracer_provider(_provider)
@@ -118,7 +111,7 @@ def format_trace_id(trace_id: int) -> str:
     Returns:
         32-character hex string
     """
-    return format(trace_id, '032x')
+    return format(trace_id, "032x")
 
 
 def format_span_id(span_id: int) -> str:
@@ -130,4 +123,4 @@ def format_span_id(span_id: int) -> str:
     Returns:
         16-character hex string
     """
-    return format(span_id, '016x')
+    return format(span_id, "016x")

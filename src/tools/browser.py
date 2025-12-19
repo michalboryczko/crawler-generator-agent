@@ -3,13 +3,14 @@
 This module uses the new observability decorators for automatic logging.
 The @traced_tool decorator handles all tool instrumentation.
 """
+
 import time
 from typing import Any
 
-from .base import BaseTool
 from ..core.browser import BrowserSession
 from ..core.html_cleaner import clean_html_for_llm, get_html_summary
 from ..observability.decorators import traced_tool
+from .base import BaseTool
 
 
 class NavigateTool(BaseTool):
@@ -25,22 +26,13 @@ class NavigateTool(BaseTool):
     def execute(self, url: str) -> dict[str, Any]:
         """Navigate to URL. Instrumented by @traced_tool."""
         result = self.session.navigate(url)
-        return {
-            "success": True,
-            "result": f"Navigated to {url}",
-            "details": result
-        }
+        return {"success": True, "result": f"Navigated to {url}", "details": result}
 
     def get_parameters_schema(self) -> dict[str, Any]:
         return {
             "type": "object",
-            "properties": {
-                "url": {
-                    "type": "string",
-                    "description": "The URL to navigate to"
-                }
-            },
-            "required": ["url"]
+            "properties": {"url": {"type": "string", "description": "The URL to navigate to"}},
+            "required": ["url"],
         }
 
 
@@ -77,7 +69,7 @@ class GetHTMLTool(BaseTool):
             "original_length": original_length,
             "cleaned_length": len(html),
             "raw": raw,
-            "truncated": truncated
+            "truncated": truncated,
         }
 
     def get_parameters_schema(self) -> dict[str, Any]:
@@ -86,9 +78,9 @@ class GetHTMLTool(BaseTool):
             "properties": {
                 "raw": {
                     "type": "boolean",
-                    "description": "If true, return raw HTML without cleaning. Default: false"
+                    "description": "If true, return raw HTML without cleaning. Default: false",
                 }
-            }
+            },
         }
 
 
@@ -107,26 +99,17 @@ class ClickTool(BaseTool):
         result = self.session.click(selector)
 
         if result.get("success"):
-            return {
-                "success": True,
-                "result": f"Clicked element: {selector}"
-            }
+            return {"success": True, "result": f"Clicked element: {selector}"}
 
-        return {
-            "success": False,
-            "error": result.get("error", "Click failed")
-        }
+        return {"success": False, "error": result.get("error", "Click failed")}
 
     def get_parameters_schema(self) -> dict[str, Any]:
         return {
             "type": "object",
             "properties": {
-                "selector": {
-                    "type": "string",
-                    "description": "CSS selector for element to click"
-                }
+                "selector": {"type": "string", "description": "CSS selector for element to click"}
             },
-            "required": ["selector"]
+            "required": ["selector"],
         }
 
 
@@ -143,22 +126,13 @@ class QuerySelectorTool(BaseTool):
     def execute(self, selector: str) -> dict[str, Any]:
         """Query DOM elements. Instrumented by @traced_tool."""
         elements = self.session.query_selector_all(selector)
-        return {
-            "success": True,
-            "result": elements,
-            "count": len(elements)
-        }
+        return {"success": True, "result": elements, "count": len(elements)}
 
     def get_parameters_schema(self) -> dict[str, Any]:
         return {
             "type": "object",
-            "properties": {
-                "selector": {
-                    "type": "string",
-                    "description": "CSS selector to query"
-                }
-            },
-            "required": ["selector"]
+            "properties": {"selector": {"type": "string", "description": "CSS selector to query"}},
+            "required": ["selector"],
         }
 
 
@@ -172,48 +146,26 @@ class WaitTool(BaseTool):
         self.session = session
 
     @traced_tool(name="browser_wait")
-    def execute(
-        self,
-        selector: str | None = None,
-        seconds: int | None = None
-    ) -> dict[str, Any]:
+    def execute(self, selector: str | None = None, seconds: int | None = None) -> dict[str, Any]:
         """Wait for selector or time. Instrumented by @traced_tool."""
         if seconds:
             time.sleep(seconds)
-            return {
-                "success": True,
-                "result": f"Waited {seconds} seconds"
-            }
+            return {"success": True, "result": f"Waited {seconds} seconds"}
         elif selector:
             found = self.session.wait_for_selector(selector)
             if found:
-                return {
-                    "success": True,
-                    "result": f"Found element: {selector}"
-                }
-            return {
-                "success": False,
-                "error": f"Timeout waiting for: {selector}"
-            }
+                return {"success": True, "result": f"Found element: {selector}"}
+            return {"success": False, "error": f"Timeout waiting for: {selector}"}
 
-        return {
-            "success": False,
-            "error": "Must provide selector or seconds"
-        }
+        return {"success": False, "error": "Must provide selector or seconds"}
 
     def get_parameters_schema(self) -> dict[str, Any]:
         return {
             "type": "object",
             "properties": {
-                "selector": {
-                    "type": "string",
-                    "description": "CSS selector to wait for"
-                },
-                "seconds": {
-                    "type": "integer",
-                    "description": "Number of seconds to wait"
-                }
-            }
+                "selector": {"type": "string", "description": "CSS selector to wait for"},
+                "seconds": {"type": "integer", "description": "Number of seconds to wait"},
+            },
         }
 
 
@@ -236,11 +188,7 @@ class ExtractLinksTool(BaseTool):
             if el.get("href") and not el["href"].startswith("javascript:")
         ]
 
-        return {
-            "success": True,
-            "result": links,
-            "count": len(links)
-        }
+        return {"success": True, "result": links, "count": len(links)}
 
     def get_parameters_schema(self) -> dict[str, Any]:
         return {"type": "object", "properties": {}}

@@ -13,38 +13,33 @@ Usage:
         return {"success": True}
 """
 
-from functools import wraps
-import time
-import traceback
 import asyncio
 import inspect
-from typing import Callable, Any, TypeVar, Optional
+import time
+from collections.abc import Callable
+from functools import wraps
+from typing import Any, TypeVar
 
-from opentelemetry import trace
 from opentelemetry.trace import SpanKind, Status, StatusCode
 
-from .tracer import get_tracer
 from .context import (
     ObservabilityContext,
     get_or_create_context,
-    set_context,
     reset_context,
+    set_context,
 )
 from .emitters import (
-    emit_component_start,
     emit_component_end,
     emit_component_error,
+    emit_component_start,
 )
 from .serializers import safe_serialize
+from .tracer import get_tracer
 
-F = TypeVar('F', bound=Callable[..., Any])
+F = TypeVar("F", bound=Callable[..., Any])
 
 
-def _get_effective_name(
-    provided_name: str | None,
-    args: tuple,
-    func: Callable
-) -> str:
+def _get_effective_name(provided_name: str | None, args: tuple, func: Callable) -> str:
     """Get effective component name, checking self.name for methods.
 
     Priority:
@@ -61,8 +56,8 @@ def _get_effective_name(
         Effective name to use for tracing
     """
     # Check if this is a method call with self.name
-    if args and hasattr(args[0], 'name'):
-        instance_name = getattr(args[0], 'name', None)
+    if args and hasattr(args[0], "name"):
+        instance_name = getattr(args[0], "name", None)
         if instance_name:
             return instance_name
 
@@ -98,19 +93,25 @@ def traced_tool(name: str | None = None) -> Callable[[F], F]:
         def execute(self, **kwargs) -> dict:
             ...  # Uses self.name
     """
+
     def decorator(func: F) -> F:
         if asyncio.iscoroutinefunction(func):
+
             @wraps(func)
             async def async_wrapper(*args, **kwargs):
                 effective_name = _get_effective_name(name, args, func)
                 return await _execute_with_tracing_async(func, effective_name, "tool", args, kwargs)
+
             return async_wrapper
         else:
+
             @wraps(func)
             def sync_wrapper(*args, **kwargs):
                 effective_name = _get_effective_name(name, args, func)
                 return _execute_with_tracing_sync(func, effective_name, "tool", args, kwargs)
+
             return sync_wrapper
+
     return decorator
 
 
@@ -131,19 +132,27 @@ def traced_agent(name: str | None = None) -> Callable[[F], F]:
         name: Agent name for identification. If None, uses self.name from the
               instance (for class methods) or the function name as fallback.
     """
+
     def decorator(func: F) -> F:
         if asyncio.iscoroutinefunction(func):
+
             @wraps(func)
             async def async_wrapper(*args, **kwargs):
                 effective_name = _get_effective_name(name, args, func)
-                return await _execute_with_tracing_async(func, effective_name, "agent", args, kwargs)
+                return await _execute_with_tracing_async(
+                    func, effective_name, "agent", args, kwargs
+                )
+
             return async_wrapper
         else:
+
             @wraps(func)
             def sync_wrapper(*args, **kwargs):
                 effective_name = _get_effective_name(name, args, func)
                 return _execute_with_tracing_sync(func, effective_name, "agent", args, kwargs)
+
             return sync_wrapper
+
     return decorator
 
 
@@ -165,19 +174,25 @@ def traced_llm_client(provider: str) -> Callable[[F], F]:
     Args:
         provider: LLM provider name (e.g., "openai", "anthropic")
     """
+
     def decorator(func: F) -> F:
         if asyncio.iscoroutinefunction(func):
+
             @wraps(func)
             async def async_wrapper(*args, **kwargs):
                 effective_name = _get_llm_effective_name(provider, args)
                 return await _execute_with_tracing_async(func, effective_name, "llm", args, kwargs)
+
             return async_wrapper
         else:
+
             @wraps(func)
             def sync_wrapper(*args, **kwargs):
                 effective_name = _get_llm_effective_name(provider, args)
                 return _execute_with_tracing_sync(func, effective_name, "llm", args, kwargs)
+
             return sync_wrapper
+
     return decorator
 
 
@@ -191,8 +206,8 @@ def _get_llm_effective_name(provider: str, args: tuple) -> str:
     Returns:
         Name like "openai:main_agent" or just "openai"
     """
-    if args and hasattr(args[0], 'component_name'):
-        component_name = getattr(args[0], 'component_name', None)
+    if args and hasattr(args[0], "component_name"):
+        component_name = getattr(args[0], "component_name", None)
         if component_name:
             return f"{provider}:{component_name}"
     return provider
@@ -217,7 +232,7 @@ def _prepare_input_data(args: tuple, kwargs: dict, func: Callable) -> dict:
 
         # Skip 'self' or 'cls' for methods
         args_to_log = args
-        if params and params[0] in ('self', 'cls') and len(args) > 0:
+        if params and params[0] in ("self", "cls") and len(args) > 0:
             args_to_log = args[1:]
             params = params[1:]
 
@@ -229,16 +244,10 @@ def _prepare_input_data(args: tuple, kwargs: dict, func: Callable) -> dict:
             else:
                 named_args[f"arg_{i}"] = arg
 
-        return {
-            "args": safe_serialize(named_args),
-            "kwargs": safe_serialize(kwargs)
-        }
+        return {"args": safe_serialize(named_args), "kwargs": safe_serialize(kwargs)}
     except Exception:
         # Fallback to simple serialization
-        return {
-            "args": safe_serialize(args[1:] if args else []),
-            "kwargs": safe_serialize(kwargs)
-        }
+        return {"args": safe_serialize(args[1:] if args else []), "kwargs": safe_serialize(kwargs)}
 
 
 def _prepare_llm_input_data(args: tuple, kwargs: dict) -> dict:
@@ -267,9 +276,7 @@ def _prepare_llm_input_data(args: tuple, kwargs: dict) -> dict:
     if len(args) > 2 and args[2]:
         tools = args[2]
         if isinstance(tools, (list, tuple)):
-            result["tools"] = [
-                getattr(t, 'name', str(t)) for t in tools
-            ]
+            result["tools"] = [getattr(t, "name", str(t)) for t in tools]
 
     # Include tool_choice if provided
     if len(args) > 3:
@@ -302,7 +309,7 @@ def _prepare_llm_output_data(result: Any) -> dict:
             output["content"] = result["content"]
 
         # Tool calls with full details
-        if "tool_calls" in result and result["tool_calls"]:
+        if result.get("tool_calls"):
             output["tool_calls"] = result["tool_calls"]
 
         # Finish reason
@@ -322,11 +329,7 @@ def _get_span_name(component_type: str, name: str) -> str:
 
 
 def _prepare_tracing(
-    component_type: str,
-    name: str,
-    args: tuple,
-    kwargs: dict,
-    func: Callable
+    component_type: str, name: str, args: tuple, kwargs: dict, func: Callable
 ) -> tuple:
     """Prepare tracing context before span creation.
 
@@ -347,11 +350,7 @@ def _prepare_tracing(
 
 
 def _setup_span(
-    span,
-    parent_ctx: ObservabilityContext,
-    component_type: str,
-    name: str,
-    input_data: dict
+    span, parent_ctx: ObservabilityContext, component_type: str, name: str, input_data: dict
 ) -> tuple:
     """Setup span attributes and context.
 
@@ -378,7 +377,7 @@ def _handle_success(
     ctx: ObservabilityContext,
     result: Any,
     start_time: float,
-    kwargs: dict
+    kwargs: dict,
 ) -> None:
     """Handle successful execution - set span status and emit logs."""
     duration_ms = (time.perf_counter() - start_time) * 1000
@@ -410,7 +409,7 @@ def _handle_error(
     ctx: ObservabilityContext,
     exception: Exception,
     input_data: dict,
-    start_time: float
+    start_time: float,
 ) -> None:
     """Handle execution error - set span status and emit error logs."""
     duration_ms = (time.perf_counter() - start_time) * 1000
@@ -423,11 +422,7 @@ def _handle_error(
 
 
 def _execute_with_tracing_sync(
-    func: Callable,
-    name: str,
-    component_type: str,
-    args: tuple,
-    kwargs: dict
+    func: Callable, name: str, component_type: str, args: tuple, kwargs: dict
 ) -> Any:
     """Core tracing execution logic for synchronous functions."""
     tracer, span_name, parent_ctx, input_data = _prepare_tracing(
@@ -450,11 +445,7 @@ def _execute_with_tracing_sync(
 
 
 async def _execute_with_tracing_async(
-    func: Callable,
-    name: str,
-    component_type: str,
-    args: tuple,
-    kwargs: dict
+    func: Callable, name: str, component_type: str, args: tuple, kwargs: dict
 ) -> Any:
     """Core tracing execution logic for async functions."""
     tracer, span_name, parent_ctx, input_data = _prepare_tracing(
@@ -491,11 +482,11 @@ def _extract_llm_metrics(result: Any, kwargs: dict) -> dict:
     metrics = {}
 
     # Extract from response object (OpenAI-style)
-    if hasattr(result, 'usage'):
+    if hasattr(result, "usage"):
         usage = result.usage
-        metrics["llm.tokens.input"] = getattr(usage, 'prompt_tokens', 0)
-        metrics["llm.tokens.output"] = getattr(usage, 'completion_tokens', 0)
-        metrics["llm.tokens.total"] = getattr(usage, 'total_tokens', 0)
+        metrics["llm.tokens.input"] = getattr(usage, "prompt_tokens", 0)
+        metrics["llm.tokens.output"] = getattr(usage, "completion_tokens", 0)
+        metrics["llm.tokens.total"] = getattr(usage, "total_tokens", 0)
 
     # Extract from dict result (our wrapper format)
     elif isinstance(result, dict):
@@ -518,7 +509,7 @@ def _extract_llm_metrics(result: Any, kwargs: dict) -> dict:
         if "tool_called" in result:
             metrics["llm.response.tool_called"] = result["tool_called"]
         # Extract tool_calls with full details (id, name, arguments)
-        if "tool_calls" in result and result["tool_calls"]:
+        if result.get("tool_calls"):
             metrics["llm.response.tool_calls"] = result["tool_calls"]
 
     # Model info - check result first (from LLMClient.chat), then kwargs, then fallback
@@ -537,6 +528,7 @@ def _extract_llm_metrics(result: Any, kwargs: dict) -> dict:
 
 
 # Convenience decorators for specific use cases
+
 
 def traced_http_call(name: str = "http_request") -> Callable[[F], F]:
     """Decorator for HTTP request functions.

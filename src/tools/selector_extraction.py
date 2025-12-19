@@ -2,7 +2,10 @@
 
 This module uses the new observability decorators for automatic logging.
 The @traced_tool decorator handles all tool instrumentation.
+
+Prompts are now managed through the centralized PromptProvider.
 """
+
 import json
 import logging
 import time
@@ -10,105 +13,27 @@ from collections import Counter
 from typing import Any
 from urllib.parse import urljoin
 
-from .base import BaseTool
-from ..core.llm import LLMClient
 from ..core.browser import BrowserSession
 from ..core.html_cleaner import clean_html_for_llm
+from ..core.json_parser import parse_json_response
+from ..core.llm import LLMClient
 from ..observability.decorators import traced_tool
+from ..prompts import get_prompt_provider
+from .base import BaseTool
 
 logger = logging.getLogger(__name__)
 
-LISTING_EXTRACTION_PROMPT = """You are analyzing a listing page. Your PRIMARY task is to EXTRACT ALL ARTICLE URLs from the main listing.
 
-## YOUR MAIN TASK: Extract URLs
-Look at the HTML and find ALL links to articles/publications in the MAIN CONTENT area.
-- Find every <a href="..."> that links to an individual article/publication/report
-- Extract the FULL URL from each href attribute
-- You should find 10-30 URLs on a typical listing page
-- If you find fewer than 5 URLs, you are probably looking at the wrong section!
+def _get_listing_extraction_prompt() -> str:
+    """Get the listing extraction prompt from PromptProvider."""
+    provider = get_prompt_provider()
+    return provider.get_extraction_prompt("listing")
 
-## SKIP these sections (they contain misleading links):
-- <header>, <nav>, top navigation bars
-- Sidebars, "featured", "popular", "recent", "trending" sections
-- <footer>, bottom links
-- Social media links, share buttons
 
-## FOCUS on the MAIN LISTING:
-- The main content area (often <main>, <section class="...content...">, <div class="...results...">)
-- The repeating list of article cards/items (often <ul>, <div> with multiple similar child elements)
-- This is the section that changes when you paginate
-
-## Also identify these CSS selectors:
-1. listing_container: The main content area containing the article list
-2. article_list: The list element holding article items (ul, div, etc.)
-3. article_link: The <a> element for article links (the selector you use to find URLs)
-4. article_date: Date display (if visible), or null
-5. article_category: Category/type (if visible), or null
-6. pagination: Pagination controls
-
-Respond with JSON:
-{
-  "article_urls": [
-    "https://example.com/article1",
-    "https://example.com/article2",
-    "... (INCLUDE ALL URLs - this is the most important field!)"
-  ],
-  "selectors": {
-    "listing_container": "CSS selector for main content container",
-    "article_list": "CSS selector for the list element",
-    "article_link": "CSS selector for article links",
-    "article_date": "CSS selector or null",
-    "article_category": "CSS selector or null",
-    "pagination": "CSS selector for pagination"
-  },
-  "notes": "observations about page structure"
-}
-
-CRITICAL: The article_urls array MUST contain actual URLs extracted from the HTML, not placeholders!
-A typical listing page has 10-30 articles. If your array is empty or has only 3-5 URLs, re-check the HTML."""
-
-ARTICLE_EXTRACTION_PROMPT = """You are analyzing an article detail page to extract CSS selectors for content fields.
-
-Given the HTML of an article page, identify CSS selectors for:
-1. Article title (usually h1)
-2. Publication date
-3. Author(s)
-4. Lead/summary/excerpt
-5. Main content body
-6. Category/type
-7. Tags (if present)
-8. Breadcrumbs (if present)
-9. Downloadable files/attachments (PDF, DOC, etc.) - IMPORTANT: look for download links!
-10. Images (if article has main images)
-
-IMPORTANT - Look for downloadable files:
-- PDF downloads (often in sidebar or "Download" sections)
-- Document attachments (.pdf, .doc, .xlsx, .zip, etc.)
-- "Download", "Full Report", "Read PDF" links
-- Links with href containing .pdf, .doc, or file extensions
-
-Respond with JSON only:
-{
-  "selectors": {
-    "title": {"selector": "CSS selector", "found": true/false},
-    "date": {"selector": "CSS selector or null", "found": true/false},
-    "authors": {"selector": "CSS selector or null", "found": true/false},
-    "lead": {"selector": "CSS selector or null", "found": true/false},
-    "content": {"selector": "CSS selector", "found": true/false},
-    "category": {"selector": "CSS selector or null", "found": true/false},
-    "tags": {"selector": "CSS selector or null", "found": true/false},
-    "breadcrumbs": {"selector": "CSS selector or null", "found": true/false},
-    "files": {"selector": "CSS selector for download links/PDF links", "found": true/false},
-    "images": {"selector": "CSS selector or null", "found": true/false}
-  },
-  "extracted_values": {
-    "title": "actual title text found",
-    "date": "actual date found",
-    "authors": ["author names found"],
-    "files": [{"url": "file URL if found", "title": "file name"}]
-  },
-  "notes": "observations about page structure, especially any download/file sections found"
-}"""
+def _get_article_extraction_prompt() -> str:
+    """Get the article extraction prompt from PromptProvider."""
+    provider = get_prompt_provider()
+    return provider.get_extraction_prompt("article")
 
 
 class ListingPageExtractorTool(BaseTool):
@@ -127,10 +52,7 @@ class ListingPageExtractorTool(BaseTool):
 
     @traced_tool(name="extract_listing_page")
     def execute(
-        self,
-        url: str,
-        wait_seconds: int = 5,
-        listing_container_selector: str | None = None
+        self, url: str, wait_seconds: int = 5, listing_container_selector: str | None = None
     ) -> dict[str, Any]:
         """Extract selectors and URLs from a listing page. Instrumented by @traced_tool."""
         logger.info(f"Extracting listing page: {url}")
@@ -151,15 +73,15 @@ class ListingPageExtractorTool(BaseTool):
 
         # Fresh LLM call with isolated context
         messages = [
-            {"role": "system", "content": LISTING_EXTRACTION_PROMPT},
-            {"role": "user", "content": f"Analyze this listing page HTML:\n\n{cleaned_html}"}
+            {"role": "system", "content": _get_listing_extraction_prompt()},
+            {"role": "user", "content": f"Analyze this listing page HTML:\n\n{cleaned_html}"},
         ]
 
         response = self.llm.chat(messages)
         content = response.get("content", "")
 
         # Parse JSON response
-        result = self._parse_json_response(content)
+        result = parse_json_response(content)
 
         if result:
             article_urls = result.get("article_urls", [])
@@ -185,60 +107,26 @@ class ListingPageExtractorTool(BaseTool):
                 "url": url,
                 "selectors": result.get("selectors", {}),
                 "article_urls": article_urls,
-                "notes": result.get("notes", "")
+                "notes": result.get("notes", ""),
             }
         else:
-            return {
-                "success": False,
-                "url": url,
-                "error": "Failed to parse LLM response"
-            }
-
-    def _parse_json_response(self, content: str) -> dict | None:
-        """Parse JSON from LLM response, handling markdown code blocks."""
-        try:
-            return json.loads(content.strip())
-        except json.JSONDecodeError:
-            pass
-
-        try:
-            if "```json" in content:
-                json_str = content.split("```json")[1].split("```")[0]
-                return json.loads(json_str.strip())
-            elif "```" in content:
-                json_str = content.split("```")[1].split("```")[0]
-                return json.loads(json_str.strip())
-        except (json.JSONDecodeError, IndexError):
-            pass
-
-        try:
-            start = content.find("{")
-            end = content.rfind("}") + 1
-            if start >= 0 and end > start:
-                return json.loads(content[start:end])
-        except json.JSONDecodeError:
-            pass
-
-        return None
+            return {"success": False, "url": url, "error": "Failed to parse LLM response"}
 
     def get_parameters_schema(self) -> dict[str, Any]:
         return {
             "type": "object",
             "properties": {
-                "url": {
-                    "type": "string",
-                    "description": "URL of the listing page to analyze"
-                },
+                "url": {"type": "string", "description": "URL of the listing page to analyze"},
                 "wait_seconds": {
                     "type": "integer",
-                    "description": "Time to wait for page load (default: 5)"
+                    "description": "Time to wait for page load (default: 5)",
                 },
                 "listing_container_selector": {
                     "type": "string",
-                    "description": "Optional CSS selector to focus on main content container"
-                }
+                    "description": "Optional CSS selector to focus on main content container",
+                },
             },
-            "required": ["url"]
+            "required": ["url"],
         }
 
 
@@ -257,11 +145,7 @@ class ArticlePageExtractorTool(BaseTool):
         self.browser = browser
 
     @traced_tool(name="extract_article_page")
-    def execute(
-        self,
-        url: str,
-        wait_seconds: int = 5
-    ) -> dict[str, Any]:
+    def execute(self, url: str, wait_seconds: int = 5) -> dict[str, Any]:
         """Extract detail selectors from an article page. Instrumented by @traced_tool."""
         logger.info(f"Extracting article page: {url}")
 
@@ -281,80 +165,43 @@ class ArticlePageExtractorTool(BaseTool):
 
         # Fresh LLM call with isolated context
         messages = [
-            {"role": "system", "content": ARTICLE_EXTRACTION_PROMPT},
-            {"role": "user", "content": f"Analyze this article page HTML:\n\n{cleaned_html}"}
+            {"role": "system", "content": _get_article_extraction_prompt()},
+            {"role": "user", "content": f"Analyze this article page HTML:\n\n{cleaned_html}"},
         ]
 
         response = self.llm.chat(messages)
         content = response.get("content", "")
 
         # Parse JSON response
-        result = self._parse_json_response(content)
+        result = parse_json_response(content)
 
         if result:
             selectors = result.get("selectors", {})
             found_count = sum(1 for s in selectors.values() if s.get("found", False))
 
-            logger.info(
-                f"Extracted from {url}: "
-                f"{found_count}/{len(selectors)} selectors found"
-            )
+            logger.info(f"Extracted from {url}: {found_count}/{len(selectors)} selectors found")
 
             return {
                 "success": True,
                 "url": url,
                 "selectors": selectors,
                 "extracted_values": result.get("extracted_values", {}),
-                "notes": result.get("notes", "")
+                "notes": result.get("notes", ""),
             }
         else:
-            return {
-                "success": False,
-                "url": url,
-                "error": "Failed to parse LLM response"
-            }
-
-    def _parse_json_response(self, content: str) -> dict | None:
-        """Parse JSON from LLM response, handling markdown code blocks."""
-        try:
-            return json.loads(content.strip())
-        except json.JSONDecodeError:
-            pass
-
-        try:
-            if "```json" in content:
-                json_str = content.split("```json")[1].split("```")[0]
-                return json.loads(json_str.strip())
-            elif "```" in content:
-                json_str = content.split("```")[1].split("```")[0]
-                return json.loads(json_str.strip())
-        except (json.JSONDecodeError, IndexError):
-            pass
-
-        try:
-            start = content.find("{")
-            end = content.rfind("}") + 1
-            if start >= 0 and end > start:
-                return json.loads(content[start:end])
-        except json.JSONDecodeError:
-            pass
-
-        return None
+            return {"success": False, "url": url, "error": "Failed to parse LLM response"}
 
     def get_parameters_schema(self) -> dict[str, Any]:
         return {
             "type": "object",
             "properties": {
-                "url": {
-                    "type": "string",
-                    "description": "URL of the article page to analyze"
-                },
+                "url": {"type": "string", "description": "URL of the article page to analyze"},
                 "wait_seconds": {
                     "type": "integer",
-                    "description": "Time to wait for page load (default: 5)"
-                }
+                    "description": "Time to wait for page load (default: 5)",
+                },
             },
-            "required": ["url"]
+            "required": ["url"],
         }
 
 
@@ -376,9 +223,7 @@ class SelectorAggregatorTool(BaseTool):
 
     @traced_tool(name="aggregate_selectors")
     def execute(
-        self,
-        listing_extractions: list[dict],
-        article_extractions: list[dict]
+        self, listing_extractions: list[dict], article_extractions: list[dict]
     ) -> dict[str, Any]:
         """Aggregate selectors into ordered chains. Instrumented by @traced_tool."""
         # Aggregate listing selectors into chains
@@ -395,14 +240,14 @@ class SelectorAggregatorTool(BaseTool):
                 "listing_pages_analyzed": len(listing_extractions),
                 "article_pages_analyzed": len(article_extractions),
                 "listing_notes": listing_result.get("notes", ""),
-                "article_notes": article_result.get("notes", "")
-            }
+                "article_notes": article_result.get("notes", ""),
+            },
         }
 
     def _aggregate_listing_selectors(self, extractions: list[dict]) -> dict:
         """Aggregate listing selectors into chains ordered by success rate."""
         # Collect all selector variations with counts
-        selector_variations = {}
+        selector_variations: dict[str, list[str]] = {}
         total_pages = len([e for e in extractions if e.get("success")])
 
         for extraction in extractions:
@@ -424,24 +269,26 @@ class SelectorAggregatorTool(BaseTool):
                 chain = []
                 for selector, count in counter.most_common():
                     success_rate = count / total_pages if total_pages > 0 else 0
-                    chain.append({
-                        "selector": selector,
-                        "success_rate": round(success_rate, 2),
-                        "found_on_pages": count
-                    })
+                    chain.append(
+                        {
+                            "selector": selector,
+                            "success_rate": round(success_rate, 2),
+                            "found_on_pages": count,
+                        }
+                    )
                 selectors[key] = chain
             else:
                 selectors[key] = []
 
         return {
             "selectors": selectors,
-            "notes": f"Created selector chains from {total_pages} listing pages"
+            "notes": f"Created selector chains from {total_pages} listing pages",
         }
 
     def _aggregate_article_selectors(self, extractions: list[dict]) -> dict:
         """Aggregate article selectors into chains ordered by success rate."""
         # Collect all selector variations with counts
-        selector_variations = {}
+        selector_variations: dict[str, list[str]] = {}
         total_pages = len([e for e in extractions if e.get("success")])
 
         for extraction in extractions:
@@ -458,46 +305,29 @@ class SelectorAggregatorTool(BaseTool):
                     selector_variations[key].append(value)
 
         # Use LLM to analyze and order the selector chains
-        prompt = f"""Analyze these CSS selectors extracted from {total_pages} article pages.
-For each field, create an ORDERED CHAIN of all working selectors (not just one!).
-Order them by reliability - most reliable first, fallbacks after.
-
-The crawler will try each selector in order until one matches.
-
-Selector variations found (with counts):
-{json.dumps({k: dict(Counter(v)) for k, v in selector_variations.items()}, indent=2)}
-
-Respond with JSON only:
-{{
-  "selectors": {{
-    "title": [
-      {{"selector": "most reliable selector", "priority": 1, "notes": "why this is primary"}},
-      {{"selector": "fallback selector", "priority": 2, "notes": "when to use this"}}
-    ],
-    "date": [...],
-    "authors": [...],
-    "lead": [...],
-    "content": [...],
-    "category": [...],
-    "tags": [...],
-    "breadcrumbs": [...],
-    "files": [...]
-  }},
-  "notes": "overall analysis"
-}}
-
-IMPORTANT: Include ALL selectors that worked on any page, not just the most common one.
-The crawler needs fallbacks for pages with different structures."""
+        # Use PromptProvider template for selector aggregation
+        provider = get_prompt_provider()
+        selector_variations_json = json.dumps(
+            {k: dict(Counter(v)) for k, v in selector_variations.items()}, indent=2
+        )
+        prompt = provider.render_prompt(
+            "selector_aggregation",
+            total_pages=total_pages,
+            selector_variations_json=selector_variations_json,
+        )
 
         messages = [
-            {"role": "system", "content": "You are a CSS selector analyst. Create ordered selector chains with ALL working selectors. Respond with JSON only."},
-            {"role": "user", "content": prompt}
+            {
+                "role": "system",
+                "content": "You are a CSS selector analyst. Create ordered selector chains with ALL working selectors. Respond with JSON only.",
+            },
+            {"role": "user", "content": prompt},
         ]
 
         try:
             response = self.llm.chat(messages)
             content = response.get("content", "")
-            result = self._parse_json_response(content)
+            result = parse_json_response(content)
 
             if result and "selectors" in result:
                 # Merge LLM analysis with our frequency data
@@ -509,7 +339,9 @@ The crawler needs fallbacks for pages with different structures."""
         # Fallback: build chains from frequency data
         return self._fallback_chain_aggregation(selector_variations, total_pages)
 
-    def _merge_with_frequency_data(self, llm_result: dict, variations: dict, total_pages: int) -> dict:
+    def _merge_with_frequency_data(
+        self, llm_result: dict, variations: dict, total_pages: int
+    ) -> dict:
         """Merge LLM ordering with frequency/success rate data."""
         selectors = llm_result.get("selectors", {})
 
@@ -530,17 +362,19 @@ The crawler needs fallbacks for pages with different structures."""
             existing_selectors = {item.get("selector") for item in chain if isinstance(item, dict)}
             for selector, count in freq_data.items():
                 if selector and selector not in existing_selectors:
-                    chain.append({
-                        "selector": selector,
-                        "priority": len(chain) + 1,
-                        "success_rate": round(count / total_pages, 2) if total_pages > 0 else 0,
-                        "found_on_pages": count,
-                        "notes": "additional selector found"
-                    })
+                    chain.append(
+                        {
+                            "selector": selector,
+                            "priority": len(chain) + 1,
+                            "success_rate": round(count / total_pages, 2) if total_pages > 0 else 0,
+                            "found_on_pages": count,
+                            "notes": "additional selector found",
+                        }
+                    )
 
         return {
             "selectors": selectors,
-            "notes": llm_result.get("notes", f"Selector chains from {total_pages} article pages")
+            "notes": llm_result.get("notes", f"Selector chains from {total_pages} article pages"),
         }
 
     def _fallback_chain_aggregation(self, variations: dict, total_pages: int) -> dict:
@@ -552,13 +386,15 @@ The crawler needs fallbacks for pages with different structures."""
                 chain = []
                 priority = 1
                 for selector, count in counter.most_common():
-                    chain.append({
-                        "selector": selector,
-                        "priority": priority,
-                        "success_rate": round(count / total_pages, 2) if total_pages > 0 else 0,
-                        "found_on_pages": count,
-                        "notes": "primary" if priority == 1 else "fallback"
-                    })
+                    chain.append(
+                        {
+                            "selector": selector,
+                            "priority": priority,
+                            "success_rate": round(count / total_pages, 2) if total_pages > 0 else 0,
+                            "found_on_pages": count,
+                            "notes": "primary" if priority == 1 else "fallback",
+                        }
+                    )
                     priority += 1
                 selectors[key] = chain
             else:
@@ -566,35 +402,8 @@ The crawler needs fallbacks for pages with different structures."""
 
         return {
             "selectors": selectors,
-            "notes": f"Fallback chain aggregation from {total_pages} pages"
+            "notes": f"Fallback chain aggregation from {total_pages} pages",
         }
-
-    def _parse_json_response(self, content: str) -> dict | None:
-        """Parse JSON from LLM response."""
-        try:
-            return json.loads(content.strip())
-        except json.JSONDecodeError:
-            pass
-
-        try:
-            if "```json" in content:
-                json_str = content.split("```json")[1].split("```")[0]
-                return json.loads(json_str.strip())
-            elif "```" in content:
-                json_str = content.split("```")[1].split("```")[0]
-                return json.loads(json_str.strip())
-        except (json.JSONDecodeError, IndexError):
-            pass
-
-        try:
-            start = content.find("{")
-            end = content.rfind("}") + 1
-            if start >= 0 and end > start:
-                return json.loads(content[start:end])
-        except json.JSONDecodeError:
-            pass
-
-        return None
 
     def get_parameters_schema(self) -> dict[str, Any]:
         return {
@@ -603,13 +412,13 @@ The crawler needs fallbacks for pages with different structures."""
                 "listing_extractions": {
                     "type": "array",
                     "items": {"type": "object"},
-                    "description": "Results from ListingPageExtractorTool for each page"
+                    "description": "Results from ListingPageExtractorTool for each page",
                 },
                 "article_extractions": {
                     "type": "array",
                     "items": {"type": "object"},
-                    "description": "Results from ArticlePageExtractorTool for each page"
-                }
+                    "description": "Results from ArticlePageExtractorTool for each page",
+                },
             },
-            "required": ["listing_extractions", "article_extractions"]
+            "required": ["listing_extractions", "article_extractions"],
         }

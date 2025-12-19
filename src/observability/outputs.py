@@ -4,11 +4,12 @@ This module provides local output targets (console).
 For backend integration, see handlers.py.
 """
 
+import contextlib
 import sys
 import threading
 from abc import ABC, abstractmethod
 from datetime import datetime
-from typing import TextIO, Any, Dict
+from typing import Any, ClassVar, TextIO
 
 from .schema import LogRecord
 
@@ -21,16 +22,16 @@ class LogOutput(ABC):
         """Write a log record."""
         pass
 
-    def write_trace_event(self, event: Dict[str, Any]) -> None:
-        """Write a trace event (optional)."""
+    def write_trace_event(self, event: dict[str, Any]) -> None:  # noqa: B027
+        """Write a trace event (optional default implementation)."""
         pass
 
-    def flush(self) -> None:
-        """Flush buffered data."""
+    def flush(self) -> None:  # noqa: B027
+        """Flush buffered data (optional default implementation)."""
         pass
 
-    def close(self) -> None:
-        """Close the output."""
+    def close(self) -> None:  # noqa: B027
+        """Close the output (optional default implementation)."""
         pass
 
 
@@ -41,18 +42,18 @@ class ConsoleOutput(LogOutput):
     Thread-safe for concurrent writes.
     """
 
-    LEVEL_COLORS = {
-        "DEBUG": "\033[36m",    # Cyan
-        "INFO": "\033[32m",     # Green
+    LEVEL_COLORS: ClassVar[dict[str, str]] = {
+        "DEBUG": "\033[36m",  # Cyan
+        "INFO": "\033[32m",  # Green
         "WARNING": "\033[33m",  # Yellow
-        "ERROR": "\033[31m",    # Red
-        "CRITICAL": "\033[35m", # Magenta
+        "ERROR": "\033[31m",  # Red
+        "CRITICAL": "\033[35m",  # Magenta
     }
-    RESET = "\033[0m"
-    DIM = "\033[2m"
-    BOLD = "\033[1m"
+    RESET: ClassVar[str] = "\033[0m"
+    DIM: ClassVar[str] = "\033[2m"
+    BOLD: ClassVar[str] = "\033[1m"
 
-    def __init__(self, stream: TextIO = None, color: bool = True):
+    def __init__(self, stream: TextIO | None = None, color: bool = True):
         """Initialize console output.
 
         Args:
@@ -60,7 +61,7 @@ class ConsoleOutput(LogOutput):
             color: Whether to use ANSI colors.
         """
         self.stream = stream or sys.stdout
-        self.color = color and hasattr(self.stream, 'isatty') and self.stream.isatty()
+        self.color = color and hasattr(self.stream, "isatty") and self.stream.isatty()
         self._lock = threading.Lock()
 
     def write_log(self, record: LogRecord) -> None:
@@ -94,7 +95,7 @@ class ConsoleOutput(LogOutput):
 
         # Add key metrics inline
         if record.metrics.get("duration_ms"):
-            duration = record.metrics['duration_ms']
+            duration = record.metrics["duration_ms"]
             line += f" {dim}({duration:.0f}ms){reset}"
 
         # Add error indicator
@@ -104,13 +105,10 @@ class ConsoleOutput(LogOutput):
                 error_msg = error_msg[:77] + "..."
             line += f"\n  {color}└─ {error_msg}{reset}"
 
-        with self._lock:
-            try:
-                self.stream.write(line + "\n")
-            except Exception:
-                pass
+        with self._lock, contextlib.suppress(Exception):
+            self.stream.write(line + "\n")
 
-    def write_trace_event(self, event: Dict[str, Any]) -> None:
+    def write_trace_event(self, event: dict[str, Any]) -> None:
         """Write trace event to console (simplified format)."""
         if not self.color:
             dim = ""
@@ -124,19 +122,13 @@ class ConsoleOutput(LogOutput):
 
         line = f"{dim}    TRACE [{span_id}] {name}{reset}"
 
-        with self._lock:
-            try:
-                self.stream.write(line + "\n")
-            except Exception:
-                pass
+        with self._lock, contextlib.suppress(Exception):
+            self.stream.write(line + "\n")
 
     def flush(self) -> None:
         """Flush the output stream."""
-        with self._lock:
-            try:
-                self.stream.flush()
-            except Exception:
-                pass
+        with self._lock, contextlib.suppress(Exception):
+            self.stream.flush()
 
     def close(self) -> None:
         """Close console output (no-op for stdout)."""
@@ -149,5 +141,5 @@ class NullOutput(LogOutput):
     def write_log(self, record: LogRecord) -> None:
         pass
 
-    def write_trace_event(self, event: Dict[str, Any]) -> None:
+    def write_trace_event(self, event: dict[str, Any]) -> None:
         pass

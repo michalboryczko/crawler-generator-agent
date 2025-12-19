@@ -1,0 +1,56 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "test_data_agent_input",
+  "title": "TestDataAgent Input Contract",
+  "description": "Input requirements for the TestData Agent (formerly DataPrepAgent)",
+  "type": "object",
+  "required": ["target_url"],
+  "properties": {
+    "target_url": {
+      "type": "string",
+      "format": "uri",
+      "description": "Base URL of the site to analyze (listing page URL)"
+    },
+    "pagination_type": {
+      "type": "string",
+      "enum": ["numbered", "url_parameter", "next_button", "infinite_scroll", "none"],
+      "description": "Type of pagination discovered by Discovery Agent"
+    },
+    "pagination_max_pages": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "Maximum number of pagination pages (from Discovery Agent)"
+    },
+    "article_selector": {
+      "type": "string",
+      "description": "Primary CSS selector for article links (from Selector Agent)"
+    },
+    "listing_container_selector": {
+      "type": "string",
+      "description": "CSS selector for main content area on listing pages (from Selector Agent)"
+    },
+    "detail_selectors": {
+      "type": "object",
+      "description": "Selector chains for article detail fields (from Selector Agent)",
+      "additionalProperties": {
+        "type": "array",
+        "items": {
+          "type": "object",
+          "properties": {
+            "selector": { "type": "string" },
+            "success_rate": { "type": "number", "minimum": 0, "maximum": 1 }
+          }
+        }
+      }
+    },
+    "collected_article_urls": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "format": "uri"
+      },
+      "description": "Pre-discovered article URLs from Selector Agent (optional, agent can discover its own)"
+    }
+  },
+  "additionalProperties": false
+}

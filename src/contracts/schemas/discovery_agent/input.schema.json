@@ -1,0 +1,16 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "discovery_agent_input",
+  "title": "DiscoveryAgent Input Contract",
+  "description": "Input requirements for the Discovery Agent",
+  "type": "object",
+  "required": ["target_url"],
+  "properties": {
+    "target_url": {
+      "type": "string",
+      "format": "uri",
+      "description": "The base URL of the site to analyze (listing page URL)"
+    }
+  },
+  "additionalProperties": false
+}

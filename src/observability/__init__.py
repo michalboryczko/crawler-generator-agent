@@ -39,112 +39,112 @@ Key Concepts:
 
 from .config import (
     ObservabilityConfig,
+    get_config,
+    get_console_output,
+    get_handler,
     initialize_observability,
     is_initialized,
-    get_handler,
-    get_console_output,
-    get_config,
     shutdown,
 )
 from .context import (
     ObservabilityContext,
-    get_or_create_context,
-    set_context,
-    reset_context,
     ObservabilitySpan,
-)
-from .tracer import (
-    init_tracer,
-    get_tracer,
-    get_current_span,
-    shutdown_tracer,
-    format_trace_id,
-    format_span_id,
-)
-from .emitters import (
-    emit_log,
-    emit_debug,
-    emit_info,
-    emit_warning,
-    emit_error,
-    emit_component_start,
-    emit_component_end,
-    emit_component_error,
-)
-from .schema import LogRecord, TraceEvent, ComponentType
-from .serializers import safe_serialize, extract_error_info
-from .outputs import LogOutput, ConsoleOutput, NullOutput
-from .handlers import (
-    LogHandler,
-    OTelGrpcHandler,
-    OTelConfig,
-    NullHandler,
-    CompositeHandler,
+    get_or_create_context,
+    reset_context,
+    set_context,
 )
 from .decorators import (
-    traced_tool,
     traced_agent,
-    traced_llm_client,
-    traced_http_call,
     traced_browser_action,
+    traced_http_call,
+    traced_llm_client,
     traced_memory_operation,
+    traced_tool,
+)
+from .emitters import (
+    emit_component_end,
+    emit_component_error,
+    emit_component_start,
+    emit_debug,
+    emit_error,
+    emit_info,
+    emit_log,
+    emit_warning,
+)
+from .handlers import (
+    CompositeHandler,
+    LogHandler,
+    NullHandler,
+    OTelConfig,
+    OTelGrpcHandler,
+)
+from .outputs import ConsoleOutput, LogOutput, NullOutput
+from .schema import ComponentType, LogRecord, TraceEvent
+from .serializers import extract_error_info, safe_serialize
+from .tracer import (
+    format_span_id,
+    format_trace_id,
+    get_current_span,
+    get_tracer,
+    init_tracer,
+    shutdown_tracer,
 )
 
 __all__ = [
-    # Configuration
-    "ObservabilityConfig",
-    "initialize_observability",
-    "is_initialized",
-    "get_handler",
-    "get_console_output",
-    "get_config",
-    "shutdown",
-    # Context
-    "ObservabilityContext",
-    "get_or_create_context",
-    "set_context",
-    "reset_context",
-    "ObservabilitySpan",
-    # Tracer
-    "init_tracer",
-    "get_tracer",
-    "get_current_span",
-    "shutdown_tracer",
-    "format_trace_id",
-    "format_span_id",
-    # Emitters
-    "emit_log",
-    "emit_debug",
-    "emit_info",
-    "emit_warning",
-    "emit_error",
-    "emit_component_start",
-    "emit_component_end",
-    "emit_component_error",
-    # Schema
-    "LogRecord",
-    "TraceEvent",
     "ComponentType",
-    # Serializers
-    "safe_serialize",
-    "extract_error_info",
-    # Outputs (local)
-    "LogOutput",
+    "CompositeHandler",
     "ConsoleOutput",
-    "NullOutput",
     # Handlers (backends)
     "LogHandler",
-    "OTelGrpcHandler",
-    "OTelConfig",
+    # Outputs (local)
+    "LogOutput",
+    # Schema
+    "LogRecord",
     "NullHandler",
-    "CompositeHandler",
+    "NullOutput",
+    "OTelConfig",
+    "OTelGrpcHandler",
+    # Configuration
+    "ObservabilityConfig",
+    # Context
+    "ObservabilityContext",
+    "ObservabilitySpan",
+    "TraceEvent",
+    "emit_component_end",
+    "emit_component_error",
+    "emit_component_start",
+    "emit_debug",
+    "emit_error",
+    "emit_info",
+    # Emitters
+    "emit_log",
+    "emit_warning",
+    "extract_error_info",
+    "format_span_id",
+    "format_trace_id",
+    "get_config",
+    "get_console_output",
+    "get_current_span",
+    "get_handler",
+    "get_or_create_context",
+    "get_tracer",
+    # Tracer
+    "init_tracer",
+    "initialize_observability",
+    "is_initialized",
+    "reset_context",
+    # Serializers
+    "safe_serialize",
+    "set_context",
+    "shutdown",
+    "shutdown_tracer",
+    "traced_agent",
+    "traced_browser_action",
+    "traced_http_call",
+    "traced_llm_client",
+    "traced_memory_operation",
     # Decorators
     "traced_tool",
-    "traced_agent",
-    "traced_llm_client",
-    "traced_http_call",
-    "traced_browser_action",
-    "traced_memory_operation",
 ]
 
 # Version - bumped to 3.0.0 for OTel native spans

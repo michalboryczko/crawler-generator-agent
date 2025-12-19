@@ -1,0 +1,13 @@
+## {{ agent_name }} Output Contract
+
+**Schema:** `{{ schema_path }}`
+**Description:** {{ schema.description | default("No description", true) }}
+
+### Fields
+{% if schema.properties %}
+{% for field_name, field_def in schema.properties.items() %}
+- **{{ field_name }}**{% if field_name in schema.get('required', []) %} (required){% endif %}: {{ field_def.get('description', 'No description') }}
+{% endfor %}
+{% else %}
+No fields defined.
+{% endif %}

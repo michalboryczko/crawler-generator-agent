@@ -3,14 +3,16 @@
 This module uses the new observability decorators for automatic logging.
 The @traced_tool decorator handles all tool instrumentation.
 """
+
 import logging
-from datetime import datetime
-from typing import Any
+from typing import TYPE_CHECKING, Any
 from urllib.parse import urlparse
 
-from .base import BaseTool
-from .memory import MemoryStore
 from ..observability.decorators import traced_tool
+from .base import BaseTool
+
+if TYPE_CHECKING:
+    from ..services.memory_service import MemoryService
 
 logger = logging.getLogger(__name__)
 
@@ -22,29 +24,28 @@ class GeneratePlanTool(BaseTool):
     description = """Generate a comprehensive crawl plan from data stored in memory.
     Reads all collected data and produces detailed markdown documentation."""
 
-    def __init__(self, memory_store: MemoryStore):
-        self.memory_store = memory_store
+    def __init__(self, memory_service: "MemoryService"):
+        self._service = memory_service
 
     @traced_tool(name="generate_plan_md")
     def execute(self) -> dict[str, Any]:
         """Generate plan markdown. Instrumented by @traced_tool."""
         # Read all data from memory
-        target_url = self.memory_store.read("target_url") or "Unknown"
-        article_selector = self.memory_store.read("article_selector") or "Not found"
-        article_confidence = self.memory_store.read("article_selector_confidence") or 0
-        listing_container_selector = self.memory_store.read("listing_container_selector") or "Not found"
-        pagination_selector = self.memory_store.read("pagination_selector") or "None"
-        pagination_type = self.memory_store.read("pagination_type") or "none"
-        pagination_max_pages = self.memory_store.read("pagination_max_pages")
-        extracted_articles = self.memory_store.read("extracted_articles") or []
-        accessibility = self.memory_store.read("accessibility_result") or {}
-        detail_selectors = self.memory_store.read("detail_selectors") or {}
-        listing_selectors = self.memory_store.read("listing_selectors") or {}
+        target_url = self._service.read("target_url") or "Unknown"
+        article_selector = self._service.read("article_selector") or "Not found"
+        article_confidence = self._service.read("article_selector_confidence") or 0
+        listing_container_selector = self._service.read("listing_container_selector") or "Not found"
+        pagination_selector = self._service.read("pagination_selector") or "None"
+        pagination_type = self._service.read("pagination_type") or "none"
+        pagination_max_pages = self._service.read("pagination_max_pages")
+        extracted_articles = self._service.read("extracted_articles") or []
+        accessibility = self._service.read("accessibility_result") or {}
+        detail_selectors = self._service.read("detail_selectors") or {}
+        listing_selectors = self._service.read("listing_selectors") or {}
 
         # Parse URL for site info
         parsed = urlparse(target_url)
         site_name = parsed.netloc.replace("www.", "")
-        base_url = f"{parsed.scheme}://{parsed.netloc}"
 
         # Determine browser requirement
         requires_browser = accessibility.get("requires_browser", True)
@@ -55,15 +56,27 @@ class GeneratePlanTool(BaseTool):
         plan = self._build_header(site_name, target_url)
         plan += self._build_scope_section(target_url, pagination_max_pages, detail_selectors)
         plan += self._build_start_urls_section(target_url, pagination_type, pagination_max_pages)
-        plan += self._build_listing_section(article_selector, listing_container_selector, listing_selectors, article_confidence)
-        plan += self._build_pagination_section(pagination_type, pagination_selector, pagination_max_pages)
+        plan += self._build_listing_section(
+            article_selector, listing_container_selector, listing_selectors, article_confidence
+        )
+        plan += self._build_pagination_section(
+            pagination_type, pagination_selector, pagination_max_pages
+        )
         plan += self._build_detail_section(detail_selectors)
         plan += self._build_data_model_section(target_url, detail_selectors)
         plan += self._build_config_section(
-            target_url, article_selector, listing_container_selector, pagination_selector,
-            pagination_type, pagination_max_pages, requires_browser, detail_selectors
+            target_url,
+            article_selector,
+            listing_container_selector,
+            pagination_selector,
+            pagination_type,
+            pagination_max_pages,
+            requires_browser,
+            detail_selectors,
         )
-        plan += self._build_accessibility_section(requires_browser, listing_accessible, articles_accessible)
+        plan += self._build_accessibility_section(
+            requires_browser, listing_accessible, articles_accessible
+        )
         plan += self._build_sample_articles_section(extracted_articles)
         plan += self._build_notes_section(requires_browser)
 
@@ -86,9 +99,11 @@ This plan is based on:
 
 """
 
-    def _build_scope_section(self, target_url: str, max_pages: int | None, detail_selectors: dict) -> str:
+    def _build_scope_section(
+        self, target_url: str, max_pages: int | None, detail_selectors: dict
+    ) -> str:
         parsed = urlparse(target_url)
-        path = parsed.path.rstrip('/')
+        path = parsed.path.rstrip("/")
 
         section = """## 1. Scope & Objectives
 
@@ -108,7 +123,9 @@ This plan is based on:
         else:
             section += f"- Listing pages: `{target_url}` (pagination to be determined)\n"
 
-        section += f"- Article detail pages: `{parsed.scheme}://{parsed.netloc}{path}/<slug>`\n\n---\n\n"
+        section += (
+            f"- Article detail pages: `{parsed.scheme}://{parsed.netloc}{path}/<slug>`\n\n---\n\n"
+        )
         return section
 
     def _get_discovered_fields(self, detail_selectors: dict) -> list[str]:
@@ -133,7 +150,9 @@ This plan is based on:
 
         return fields if fields else ["title", "publication_date", "authors", "category", "content"]
 
-    def _build_start_urls_section(self, target_url: str, pagination_type: str, max_pages: int | None) -> str:
+    def _build_start_urls_section(
+        self, target_url: str, pagination_type: str, max_pages: int | None
+    ) -> str:
         section = f"""## 2. Start URLs
 
 - Primary start URL:
@@ -150,7 +169,13 @@ This plan is based on:
         section += "---\n\n"
         return section
 
-    def _build_listing_section(self, article_selector: str, listing_container_selector: str, listing_selectors: dict, confidence: float) -> str:
+    def _build_listing_section(
+        self,
+        article_selector: str,
+        listing_container_selector: str,
+        listing_selectors: dict,
+        confidence: float,
+    ) -> str:
         section = f"""## 3. Listing Pages
 
 ### 3.1. Main content container
@@ -189,7 +214,11 @@ picking up "featured" or "recent" articles from headers/sidebars.
                     # Handle selector chains (list) or simple strings
                     if isinstance(selector_chain, list) and len(selector_chain) > 0:
                         primary = selector_chain[0]
-                        selector = primary.get("selector", str(primary)) if isinstance(primary, dict) else str(primary)
+                        selector = (
+                            primary.get("selector", str(primary))
+                            if isinstance(primary, dict)
+                            else str(primary)
+                        )
                         section += f"- **{field}:**\n  ```css\n  {selector}\n  ```\n"
                         if len(selector_chain) > 1:
                             section += f"  (+ {len(selector_chain) - 1} fallback selectors)\n"
@@ -200,7 +229,9 @@ picking up "featured" or "recent" articles from headers/sidebars.
         section += "---\n\n"
         return section
 
-    def _build_pagination_section(self, pagination_type: str, pagination_selector: str, max_pages: int | None) -> str:
+    def _build_pagination_section(
+        self, pagination_type: str, pagination_selector: str, max_pages: int | None
+    ) -> str:
         section = f"""## 4. Pagination
 
 ### 4.1. Pagination type
@@ -245,7 +276,7 @@ Recommended approach:
    - Extract article links using the article selector.
    - Extract pagination links.
 3. Either:
-   - **Deterministic loop:** Iterate `page=1..{max_pages if max_pages else 'N'}`, or
+   - **Deterministic loop:** Iterate `page=1..{max_pages if max_pages else "N"}`, or
    - **Link-following:** Follow the "next" link until it disappears or repeats.
 4. De-duplicate article URLs globally.
 
@@ -281,15 +312,49 @@ Recommended approach:
 Selectors below are discovered from analyzing multiple article pages.
 Each field has a **selector chain** - an ordered list of selectors to try until one matches.
 
+> **Implementation Guidelines:**
+> 1. **Try all selectors:** Always attempt extraction with every selector in the chain, even if test data doesn't contain values for some selectors. Different pages may have different HTML structures.
+> 2. **Multi-value fields:** For fields that can have multiple values (files, attachments, images, authors, tags, related_articles), try ALL selectors in the chain and combine/deduplicate results - don't stop at the first successful match.
+
 """
 
         # Default selectors if none provided
         default_selectors = {
-            "title": [{"selector": "h1.article-title, .article-view h1", "priority": 1, "success_rate": 1.0}],
-            "date": [{"selector": ".article-date, .publication-date, time[datetime]", "priority": 1, "success_rate": 1.0}],
-            "authors": [{"selector": ".article-author a, .author-name, [rel='author']", "priority": 1, "success_rate": 1.0}],
-            "category": [{"selector": ".article-category, .article-type a, .category", "priority": 1, "success_rate": 1.0}],
-            "content": [{"selector": ".article-content, .article-body, .entry-content", "priority": 1, "success_rate": 1.0}],
+            "title": [
+                {
+                    "selector": "h1.article-title, .article-view h1",
+                    "priority": 1,
+                    "success_rate": 1.0,
+                }
+            ],
+            "date": [
+                {
+                    "selector": ".article-date, .publication-date, time[datetime]",
+                    "priority": 1,
+                    "success_rate": 1.0,
+                }
+            ],
+            "authors": [
+                {
+                    "selector": ".article-author a, .author-name, [rel='author']",
+                    "priority": 1,
+                    "success_rate": 1.0,
+                }
+            ],
+            "category": [
+                {
+                    "selector": ".article-category, .article-type a, .category",
+                    "priority": 1,
+                    "success_rate": 1.0,
+                }
+            ],
+            "content": [
+                {
+                    "selector": ".article-content, .article-body, .entry-content",
+                    "priority": 1,
+                    "success_rate": 1.0,
+                }
+            ],
         }
 
         selectors_to_use = detail_selectors if detail_selectors else default_selectors
@@ -390,11 +455,15 @@ Each field has a **selector chain** - an ordered list of selectors to try until 
         # Build notes based on discovered fields
         notes = []
         if "date" in discovered_fields or "publication_date" in discovered_fields:
-            notes.append("- `date`/`publication_date` should come from the detail page, not the listing.")
+            notes.append(
+                "- `date`/`publication_date` should come from the detail page, not the listing."
+            )
         if "language" in discovered_fields:
             notes.append("- `language` extracted from `html[lang]` attribute.")
         if "files" in discovered_fields or "attachments" in discovered_fields:
-            notes.append("- `files`/`attachments` contain downloadable documents found on the page.")
+            notes.append(
+                "- `files`/`attachments` contain downloadable documents found on the page."
+            )
         if "breadcrumbs" in discovered_fields:
             notes.append("- `breadcrumbs` provide navigation path context.")
         notes.append("- `source_listing_page` is optional but useful for debugging.")
@@ -419,9 +488,15 @@ Notes:
 """
 
     def _build_config_section(
-        self, target_url: str, article_selector: str, listing_container_selector: str,
-        pagination_selector: str, pagination_type: str, max_pages: int | None,
-        requires_browser: bool, detail_selectors: dict
+        self,
+        target_url: str,
+        article_selector: str,
+        listing_container_selector: str,
+        pagination_selector: str,
+        pagination_type: str,
+        max_pages: int | None,
+        requires_browser: bool,
+        detail_selectors: dict,
     ) -> str:
         # Build detail selectors with chain support
         detail_config = self._build_detail_config(detail_selectors)
@@ -468,11 +543,11 @@ config = {{
     def _build_detail_config(self, detail_selectors: dict) -> str:
         """Build detail config section with selector chains."""
         if not detail_selectors:
-            return '''        "title": ["h1.article-title", ".article-view h1"],
+            return """        "title": ["h1.article-title", ".article-view h1"],
         "date": [".article-date", ".publication-date", "time[datetime]"],
         "authors": [".article-author a", ".author-name"],
         "category": [".article-category", ".article-type a"],
-        "content": [".article-content", ".article-body"]'''
+        "content": [".article-content", ".article-body"]"""
 
         lines = []
         for field, info in detail_selectors.items():
@@ -503,9 +578,11 @@ config = {{
             elif isinstance(info, str) and info:
                 lines.append(f'        "{field}": ["{info}"]')
 
-        return ",\n".join(lines) if lines else '        # No selectors discovered'
+        return ",\n".join(lines) if lines else "        # No selectors discovered"
 
-    def _build_accessibility_section(self, requires_browser: bool, listing_ok: bool, articles_ok: bool) -> str:
+    def _build_accessibility_section(
+        self, requires_browser: bool, listing_ok: bool, articles_ok: bool
+    ) -> str:
         section = """## 8. Accessibility & Requirements
 
 """
@@ -517,8 +594,8 @@ This site requires JavaScript rendering for full functionality.
 - Listing pages accessible via HTTP: {"Yes" if listing_ok else "No"}
 - Article pages accessible via HTTP: {"Yes" if articles_ok else "No"}
 
-**Recommendation:** Use Playwright or Puppeteer with headless browser.
-See `docs/headfull-chrome.md` for implementation details.
+**Recommendation:** We have own headfull browser accessible via api. While implementation you should check `headfull-chrome.md`.
+That is our internal documentation for headfull browser usage you will find docs in repo.
 
 """
         else:
@@ -566,6 +643,8 @@ This site can be crawled with simple HTTP requests (no JavaScript needed).
 
         section += """- **Selector Validation:** Detail page selectors are inferred; validate on sample pages before production crawl.
 - **Pagination Bounds:** Verify max pages dynamically if content is frequently updated.
+- **Selector Chain Usage:** Try all selectors in each chain, not just until first match. Test data may not cover all page variations.
+- **Multi-value Fields:** For array fields (files, attachments, images, authors, tags), combine results from all successful selectors, then deduplicate.
 
 This plan provides the foundation for implementing a complete site crawler.
 """
@@ -582,19 +661,19 @@ class GenerateTestPlanTool(BaseTool):
     description = """Generate test documentation from test data stored in memory.
     Documents both listing and article test entries."""
 
-    def __init__(self, memory_store: MemoryStore):
-        self.memory_store = memory_store
+    def __init__(self, memory_service: "MemoryService"):
+        self._service = memory_service
 
     @traced_tool(name="generate_test_md")
     def execute(self) -> dict[str, Any]:
         """Generate test plan markdown. Instrumented by @traced_tool."""
-        target_url = self.memory_store.read("target_url") or "Unknown"
-        test_description = self.memory_store.read("test-data-description") or ""
-        detail_selectors = self.memory_store.read("detail_selectors") or {}
+        target_url = self._service.read("target_url") or "Unknown"
+        test_description = self._service.read("test-data-description") or ""
+        detail_selectors = self._service.read("detail_selectors") or {}
 
         # Find all test data keys
-        listing_keys = self.memory_store.search("test-data-listing-*")
-        article_keys = self.memory_store.search("test-data-article-*")
+        listing_keys = self._service.search("test-data-listing-*")
+        article_keys = self._service.search("test-data-article-*")
 
         listing_count = len(listing_keys)
         article_count = len(article_keys)
@@ -697,7 +776,7 @@ for test in articles:
 """
         # Add listing URLs
         for i, key in enumerate(listing_keys[:10], 1):
-            data = self.memory_store.read(key)
+            data = self._service.read(key)
             if data and isinstance(data, dict):
                 url = data.get("url", "Unknown")
                 test_plan += f"{i}. {url}\n"
@@ -712,7 +791,7 @@ for test in articles:
 """
         # Add article URLs
         for i, key in enumerate(article_keys[:10], 1):
-            data = self.memory_store.read(key)
+            data = self._service.read(key)
             if data and isinstance(data, dict):
                 url = data.get("url", "Unknown")
                 test_plan += f"{i}. {url}\n"
@@ -774,7 +853,9 @@ for test in articles:
             # Check if selector chain has any valid selectors
             has_selectors = False
             if isinstance(value, list):
-                has_selectors = any(item.get("selector") for item in value if isinstance(item, dict))
+                has_selectors = any(
+                    item.get("selector") for item in value if isinstance(item, dict)
+                )
             elif isinstance(value, dict):
                 has_selectors = bool(value.get("primary") or value.get("selector"))
             elif isinstance(value, str):
@@ -784,8 +865,12 @@ for test in articles:
                 example = field_examples.get(field.lower(), f'"{field} value"')
                 lines.append(f'        "{field}": {example}')
 
-        return ",\n".join(lines) if lines else '''        "title": "extracted title",
+        return (
+            ",\n".join(lines)
+            if lines
+            else '''        "title": "extracted title",
         "content": "article content"'''
+        )
 
     def get_parameters_schema(self) -> dict[str, Any]:
         return {"type": "object", "properties": {}}

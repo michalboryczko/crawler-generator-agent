@@ -90,9 +90,7 @@ def parse_json_response(
     # All attempts failed
     if strict:
         raise JSONParseError(
-            f"Failed to parse JSON after {len(attempts)} attempts",
-            content,
-            attempts
+            f"Failed to parse JSON after {len(attempts)} attempts", content, attempts
         )
 
     logger.debug(f"JSON parse failed after attempts: {attempts}")
@@ -103,9 +101,7 @@ def _is_valid_type(result: Any, allow_array: bool) -> bool:
     """Check if result is a valid JSON type."""
     if isinstance(result, dict):
         return True
-    if isinstance(result, list) and allow_array:
-        return True
-    return False
+    return bool(isinstance(result, list) and allow_array)
 
 
 def _try_direct_parse(content: str) -> dict | list | None:
@@ -210,7 +206,7 @@ def _extract_by_delimiters(content: str, open_char: str, close_char: str) -> dic
         return None
 
     try:
-        json_str = content[start:end + 1]
+        json_str = content[start : end + 1]
         return json.loads(json_str)
     except json.JSONDecodeError:
         pass
@@ -243,7 +239,7 @@ def _extract_by_delimiters(content: str, open_char: str, close_char: str) -> dic
             depth -= 1
             if depth == 0:
                 try:
-                    return json.loads(content[start:i + 1])
+                    return json.loads(content[start : i + 1])
                 except json.JSONDecodeError:
                     pass
                 break
@@ -262,7 +258,7 @@ def _try_fix_and_parse(content: str) -> dict | list | None:
         if start < 0 or end <= start:
             return None
 
-    json_str = content[start:end + 1]
+    json_str = content[start : end + 1]
 
     # Common fixes
     fixes = [
@@ -270,7 +266,7 @@ def _try_fix_and_parse(content: str) -> dict | list | None:
         (r",\s*([}\]])", r"\1"),
         # Fix single quotes to double quotes (careful with apostrophes)
         (r"'([^']*)'(?=\s*:)", r'"\1"'),  # Keys
-        (r":\s*'([^']*)'", r': "\1"'),     # String values
+        (r":\s*'([^']*)'", r': "\1"'),  # String values
         # Fix unquoted keys
         (r"([{,]\s*)([a-zA-Z_][a-zA-Z0-9_]*)(\s*:)", r'\1"\2"\3'),
         # Fix Python True/False/None to JSON true/false/null

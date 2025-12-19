@@ -3,6 +3,7 @@
 This module defines the default model registry with configurations for
 various LLM providers. All providers use OpenAI-compatible API endpoints.
 """
+
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
@@ -57,77 +58,14 @@ DEFAULT_MODELS: list[dict] = [
         "temperature": 0.0,
     },
     # ==========================================================================
-    # OpenAI GPT-4.1 Series
-    # ==========================================================================
-    {
-        "model_id": "gpt-4.1",
-        "api_key_env": "OPENAI_KEY",
-        "api_base_url": None,
-        "temperature": 0.0,
-    },
-    {
-        "model_id": "gpt-4.1-mini",
-        "api_key_env": "OPENAI_KEY",
-        "api_base_url": None,
-        "temperature": 0.0,
-    },
-    {
-        "model_id": "gpt-4.1-nano",
-        "api_key_env": "OPENAI_KEY",
-        "api_base_url": None,
-        "temperature": 0.0,
-    },
-
-    # ==========================================================================
     # Anthropic Models (via OpenAI-compatible endpoint or proxy)
     # ==========================================================================
     {
-        "model_id": "claude-3-5-sonnet-20241022",
+        "model_id": "claude-4-5-sonnet",
         "api_key_env": "ANTHROPIC_KEY",
         "api_base_url": "https://api.anthropic.com/v1",
         "temperature": 0.0,
     },
-    {
-        "model_id": "claude-3-opus-20240229",
-        "api_key_env": "ANTHROPIC_KEY",
-        "api_base_url": "https://api.anthropic.com/v1",
-        "temperature": 0.0,
-    },
-    {
-        "model_id": "claude-3-sonnet-20240229",
-        "api_key_env": "ANTHROPIC_KEY",
-        "api_base_url": "https://api.anthropic.com/v1",
-        "temperature": 0.0,
-    },
-    {
-        "model_id": "claude-3-haiku-20240307",
-        "api_key_env": "ANTHROPIC_KEY",
-        "api_base_url": "https://api.anthropic.com/v1",
-        "temperature": 0.0,
-    },
-
-    # ==========================================================================
-    # OpenRouter (access multiple providers via single API)
-    # ==========================================================================
-    {
-        "model_id": "openrouter/anthropic/claude-3.5-sonnet",
-        "api_key_env": "OPENROUTER_KEY",
-        "api_base_url": "https://openrouter.ai/api/v1",
-        "temperature": 0.0,
-    },
-    {
-        "model_id": "openrouter/openai/gpt-4o",
-        "api_key_env": "OPENROUTER_KEY",
-        "api_base_url": "https://openrouter.ai/api/v1",
-        "temperature": 0.0,
-    },
-    {
-        "model_id": "openrouter/google/gemini-pro-1.5",
-        "api_key_env": "OPENROUTER_KEY",
-        "api_base_url": "https://openrouter.ai/api/v1",
-        "temperature": 0.0,
-    },
-
     # ==========================================================================
     # Kimi (Moonshot AI) - OpenAI-compatible
     # https://platform.moonshot.ai/docs/guide/start-using-kimi-api
@@ -167,23 +105,6 @@ DEFAULT_MODELS: list[dict] = [
         "temperature": 0.0,
         "max_tokens": 262144,
     },
-
-    # ==========================================================================
-    # DeepSeek - OpenAI-compatible
-    # ==========================================================================
-    {
-        "model_id": "deepseek-chat",
-        "api_key_env": "DEEPSEEK_KEY",
-        "api_base_url": "https://api.deepseek.com/v1",
-        "temperature": 0.0,
-    },
-    {
-        "model_id": "deepseek-coder",
-        "api_key_env": "DEEPSEEK_KEY",
-        "api_base_url": "https://api.deepseek.com/v1",
-        "temperature": 0.0,
-    },
-
     # ==========================================================================
     # Local/Self-hosted Models (vLLM, Ollama, etc.)
     # ==========================================================================
@@ -193,41 +114,11 @@ DEFAULT_MODELS: list[dict] = [
         "api_base_url": "http://localhost:8000/v1",
         "temperature": 0.0,
     },
-    {
-        "model_id": "local-mixtral-8x7b",
-        "api_key_env": "LOCAL_LLM_KEY",
-        "api_base_url": "http://localhost:8000/v1",
-        "temperature": 0.0,
-    },
-    {
-        "model_id": "ollama-llama3",
-        "api_key_env": "OLLAMA_KEY",
-        "api_base_url": "http://localhost:11434/v1",
-        "temperature": 0.0,
-    },
-
-    # ==========================================================================
-    # Azure OpenAI
-    # ==========================================================================
-    {
-        "model_id": "azure-gpt-4o",
-        "api_key_env": "AZURE_OPENAI_KEY",
-        "api_base_url": None,  # Set via AZURE_GPT_4O_API_BASE env var
-        "temperature": 0.0,
-        "extra_params": {"api_version": "2024-02-15-preview"},
-    },
-
     # ==========================================================================
     # Google (via OpenAI-compatible proxy or Vertex AI)
     # ==========================================================================
     {
-        "model_id": "gemini-1.5-pro",
-        "api_key_env": "GOOGLE_API_KEY",
-        "api_base_url": "https://generativelanguage.googleapis.com/v1beta/openai",
-        "temperature": 0.0,
-    },
-    {
-        "model_id": "gemini-1.5-flash",
+        "model_id": "gemini-2.5-pro",
         "api_key_env": "GOOGLE_API_KEY",
         "api_base_url": "https://generativelanguage.googleapis.com/v1beta/openai",
         "temperature": 0.0,
@@ -246,6 +137,7 @@ def get_default_registry() -> "ModelRegistry":
         config = registry.get("gpt-4o")
     """
     from .model_registry import ModelRegistry
+
     return ModelRegistry.from_config(DEFAULT_MODELS)
 
 

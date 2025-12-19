@@ -4,10 +4,11 @@ This module provides a central registry for defining available models and their
 connection details. Each model configuration includes API key environment variable,
 base URL, and provider-specific parameters.
 """
+
 import logging
 import os
 from dataclasses import dataclass, field
-from typing import Any, Optional
+from typing import Any
 
 logger = logging.getLogger(__name__)
 
@@ -27,9 +28,9 @@ class ModelConfig:
 
     model_id: str
     api_key_env: str
-    api_base_url: Optional[str] = None
+    api_base_url: str | None = None
     temperature: float = 0.0
-    max_tokens: Optional[int] = None
+    max_tokens: int | None = None
     extra_params: dict[str, Any] = field(default_factory=dict)
 
     def get_api_key(self) -> str:
@@ -58,7 +59,7 @@ class ModelConfig:
             )
         return key
 
-    def get_api_base(self) -> Optional[str]:
+    def get_api_base(self) -> str | None:
         """Get API base URL, checking for override env var.
 
         Allows runtime override via {MODEL_ID}_API_BASE environment variable.
@@ -104,9 +105,7 @@ class ModelRegistry:
             config: The ModelConfig to register
         """
         if config.model_id in self.models:
-            logger.warning(
-                f"Overwriting existing model configuration: {config.model_id}"
-            )
+            logger.warning(f"Overwriting existing model configuration: {config.model_id}")
         self.models[config.model_id] = config
         logger.debug(f"Registered model: {config.model_id}")
 
@@ -124,10 +123,7 @@ class ModelRegistry:
         """
         if model_id not in self.models:
             available = ", ".join(sorted(self.models.keys()))
-            raise ValueError(
-                f"Unknown model: {model_id}. "
-                f"Available models: [{available}]"
-            )
+            raise ValueError(f"Unknown model: {model_id}. Available models: [{available}]")
         return self.models[model_id]
 
     def list_models(self) -> list[str]:

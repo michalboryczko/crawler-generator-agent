@@ -2,17 +2,22 @@
 
 This module uses the new observability decorators for automatic logging.
 The @traced_tool decorator handles all tool instrumentation.
+
+Prompts are now managed through the centralized PromptProvider.
 """
+
 import json
 import logging
 import random
 import re
 from typing import Any
-from urllib.parse import urlparse, parse_qs, urlencode, urlunparse
+from urllib.parse import parse_qs, urlencode, urlparse, urlunparse
 
-from .base import BaseTool
+from ..core.json_parser import parse_json_response
 from ..core.llm import LLMClient
 from ..observability.decorators import traced_tool
+from ..prompts import get_prompt_provider
+from .base import BaseTool
 
 logger = logging.getLogger(__name__)
 
@@ -39,10 +44,7 @@ class ListingPagesGeneratorTool(BaseTool):
 
     @traced_tool(name="generate_listing_pages")
     def execute(
-        self,
-        target_url: str,
-        max_pages: int,
-        pagination_links: list[str] | None = None
+        self, target_url: str, max_pages: int, pagination_links: list[str] | None = None
     ) -> dict[str, Any]:
         """Generate listing page URLs to analyze. Instrumented by @traced_tool."""
         # Detect pagination pattern from links
@@ -54,7 +56,7 @@ class ListingPagesGeneratorTool(BaseTool):
                 "pattern_type": "page_number",
                 "param_name": "page",
                 "base_url": target_url,
-                "url_template": f"{target_url}?page={{n}}"
+                "url_template": f"{target_url}?page={{n}}",
             }
 
         # Calculate sample size: 2% of total, min 5, max 20
@@ -82,44 +84,29 @@ class ListingPagesGeneratorTool(BaseTool):
             "sample_size": sample_size,
             "total_pages": max_pages,
             "sample_percentage": round(sample_size / max_pages * 100, 1),
-            "pagination_pattern": pattern_info
+            "pagination_pattern": pattern_info,
         }
 
     def _detect_pagination_pattern(self, target_url: str, pagination_links: list[str]) -> dict:
         """Use LLM to analyze pagination links and detect the URL pattern."""
-        prompt = f"""Analyze these pagination URLs and identify the pagination pattern.
-
-Base/Target URL: {target_url}
-
-Sample pagination links:
-{chr(10).join(pagination_links[:10])}
-
-Identify:
-1. What parameter controls pagination (page, offset, skip, start, p, etc.)
-2. Is it page-based (page=1,2,3) or offset-based (offset=0,20,40) or something else?
-3. What is the base URL without pagination params?
-4. How to construct a URL for page N?
-
-Respond with JSON only:
-{{
-    "pattern_type": "page_number" or "offset" or "path_segment" or "other",
-    "param_name": "the parameter name like 'page' or 'offset'",
-    "base_url": "URL without pagination params",
-    "url_template": "template with {{n}} placeholder, e.g. 'https://example.com?page={{n}}' or 'https://example.com?offset={{n*20}}'",
-    "offset_multiplier": null or number (e.g., 20 if offset=0,20,40 for pages 1,2,3),
-    "starts_at": 0 or 1 (whether first page is 0 or 1),
-    "notes": "any observations"
-}}"""
+        # Use PromptProvider template for pagination pattern detection
+        provider = get_prompt_provider()
+        prompt = provider.render_prompt(
+            "pagination_pattern", target_url=target_url, pagination_links=pagination_links
+        )
 
         messages = [
-            {"role": "system", "content": "You are a URL pattern analyzer. Analyze pagination URLs to understand the pattern. Respond with valid JSON only."},
-            {"role": "user", "content": prompt}
+            {
+                "role": "system",
+                "content": "You are a URL pattern analyzer. Analyze pagination URLs to understand the pattern. Respond with valid JSON only.",
+            },
+            {"role": "user", "content": prompt},
         ]
 
         try:
             response = self.llm.chat(messages)
             content = response.get("content", "")
-            result = self._parse_json_response(content)
+            result = parse_json_response(content)
 
             if result:
                 return result
@@ -152,12 +139,14 @@ Respond with JSON only:
                         base_url = urlunparse(base_parsed._replace(query=base_query))
 
                         return {
-                            "pattern_type": "offset" if param in ["offset", "start", "skip", "from"] else "page_number",
+                            "pattern_type": "offset"
+                            if param in ["offset", "start", "skip", "from"]
+                            else "page_number",
                             "param_name": param,
                             "base_url": base_url if base_url else target_url,
                             "url_template": f"{target_url}{'&' if '?' in target_url else '?'}{param}={{n}}",
                             "offset_multiplier": None,
-                            "starts_at": 1
+                            "starts_at": 1,
                         }
                     except ValueError:
                         continue
@@ -169,10 +158,12 @@ Respond with JSON only:
             "base_url": target_url,
             "url_template": f"{target_url}{'&' if '?' in target_url else '?'}page={{n}}",
             "offset_multiplier": None,
-            "starts_at": 1
+            "starts_at": 1,
         }
 
-    def _generate_urls(self, target_url: str, page_numbers: list[int], pattern_info: dict) -> list[str]:
+    def _generate_urls(
+        self, target_url: str, page_numbers: list[int], pattern_info: dict
+    ) -> list[str]:
         """Generate URLs using the detected pattern."""
         urls = []
         url_template = pattern_info.get("url_template", f"{target_url}?page={{n}}")
@@ -195,11 +186,11 @@ Respond with JSON only:
                 # Handle template that might have expressions like {n*20}
                 if "{n*" in url_template:
                     # Extract multiplier from template
-                    match = re.search(r'\{n\*(\d+)\}', url_template)
+                    match = re.search(r"\{n\*(\d+)\}", url_template)
                     if match:
                         mult = int(match.group(1))
                         value = (page_num - 1) * mult
-                        url = re.sub(r'\{n\*\d+\}', str(value), url_template)
+                        url = re.sub(r"\{n\*\d+\}", str(value), url_template)
                     else:
                         url = url_template.replace("{n}", str(value))
                 else:
@@ -208,33 +199,6 @@ Respond with JSON only:
                 urls.append(url)
 
         return urls
-
-    def _parse_json_response(self, content: str) -> dict | None:
-        """Parse JSON from LLM response."""
-        try:
-            return json.loads(content.strip())
-        except json.JSONDecodeError:
-            pass
-
-        try:
-            if "```json" in content:
-                json_str = content.split("```json")[1].split("```")[0]
-                return json.loads(json_str.strip())
-            elif "```" in content:
-                json_str = content.split("```")[1].split("```")[0]
-                return json.loads(json_str.strip())
-        except (json.JSONDecodeError, IndexError):
-            pass
-
-        try:
-            start = content.find("{")
-            end = content.rfind("}") + 1
-            if start >= 0 and end > start:
-                return json.loads(content[start:end])
-        except json.JSONDecodeError:
-            pass
-
-        return None
 
     def _generate_spread_pages(self, max_pages: int, sample_size: int) -> list[int]:
         """Generate page numbers spread evenly across the range.
@@ -272,21 +236,15 @@ Respond with JSON only:
         return {
             "type": "object",
             "properties": {
-                "target_url": {
-                    "type": "string",
-                    "description": "Base URL of the listing page"
-                },
-                "max_pages": {
-                    "type": "integer",
-                    "description": "Total number of pages available"
-                },
+                "target_url": {"type": "string", "description": "Base URL of the listing page"},
+                "max_pages": {"type": "integer", "description": "Total number of pages available"},
                 "pagination_links": {
                     "type": "array",
                     "items": {"type": "string"},
-                    "description": "Sample pagination URLs to analyze for pattern detection (optional)"
-                }
+                    "description": "Sample pagination URLs to analyze for pattern detection (optional)",
+                },
             },
-            "required": ["target_url", "max_pages"]
+            "required": ["target_url", "max_pages"],
         }
 
 
@@ -307,17 +265,11 @@ class ArticlePagesGeneratorTool(BaseTool):
 
     @traced_tool(name="generate_article_pages")
     def execute(
-        self,
-        article_urls: list[str],
-        min_per_group: int = 3,
-        sample_percentage: float = 0.20
+        self, article_urls: list[str], min_per_group: int = 3, sample_percentage: float = 0.20
     ) -> dict[str, Any]:
         """Generate article URLs to analyze. Instrumented by @traced_tool."""
         if not article_urls:
-            return {
-                "success": False,
-                "error": "No article URLs provided"
-            }
+            return {"success": False, "error": "No article URLs provided"}
 
         # Group URLs by pattern using LLM
         groups = self._group_urls_by_pattern(article_urls)
@@ -338,7 +290,7 @@ class ArticlePagesGeneratorTool(BaseTool):
             group_samples[pattern] = {
                 "total_in_group": len(urls),
                 "sampled_count": sample_count,
-                "sampled_urls": sampled
+                "sampled_urls": sampled,
             }
 
         logger.info(
@@ -352,7 +304,7 @@ class ArticlePagesGeneratorTool(BaseTool):
             "total_urls": len(article_urls),
             "selected_count": len(selected_urls),
             "pattern_groups": group_samples,
-            "num_patterns": len(groups)
+            "num_patterns": len(groups),
         }
 
     def _group_urls_by_pattern(self, urls: list[str]) -> dict[str, list[str]]:
@@ -364,26 +316,16 @@ class ArticlePagesGeneratorTool(BaseTool):
         # For larger sets, use LLM to identify patterns
         sample_urls = urls[:50] if len(urls) > 50 else urls
 
-        prompt = f"""Analyze these article URLs and identify distinct URL patterns.
-Group them by their structural pattern (path structure, not content).
-
-URLs to analyze:
-{chr(10).join(sample_urls)}
-
-Respond with JSON only:
-{{
-  "patterns": [
-    {{
-      "pattern_name": "descriptive name like 'slug-based' or 'year/month/slug'",
-      "pattern_regex": "regex to match this pattern",
-      "example_urls": ["url1", "url2"]
-    }}
-  ]
-}}"""
+        # Use PromptProvider template for article URL pattern grouping
+        provider = get_prompt_provider()
+        prompt = provider.render_prompt("article_url_pattern", sample_urls=sample_urls)
 
         messages = [
-            {"role": "system", "content": "You are a URL pattern analyzer. Respond with valid JSON only."},
-            {"role": "user", "content": prompt}
+            {
+                "role": "system",
+                "content": "You are a URL pattern analyzer. Respond with valid JSON only.",
+            },
+            {"role": "user", "content": prompt},
         ]
 
         try:
@@ -439,7 +381,7 @@ Respond with JSON only:
 
     def _simple_path_grouping(self, urls: list[str]) -> dict[str, list[str]]:
         """Simple grouping based on path depth and structure."""
-        groups = {}
+        groups: dict[str, list[str]] = {}
 
         for url in urls:
             parsed = urlparse(url)
@@ -467,16 +409,16 @@ Respond with JSON only:
                 "article_urls": {
                     "type": "array",
                     "items": {"type": "string"},
-                    "description": "All collected article URLs"
+                    "description": "All collected article URLs",
                 },
                 "min_per_group": {
                     "type": "integer",
-                    "description": "Minimum samples per pattern group (default: 3)"
+                    "description": "Minimum samples per pattern group (default: 3)",
                 },
                 "sample_percentage": {
                     "type": "number",
-                    "description": "Percentage to sample per group (default: 0.20)"
-                }
+                    "description": "Percentage to sample per group (default: 0.20)",
+                },
             },
-            "required": ["article_urls"]
+            "required": ["article_urls"],
         }

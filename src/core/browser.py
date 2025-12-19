@@ -1,4 +1,5 @@
 """Chrome DevTools Protocol client for browser automation."""
+
 import asyncio
 import json
 import logging
@@ -16,18 +17,20 @@ class CDPClient:
 
     def __init__(self, config: BrowserConfig):
         self.config = config
-        self.ws = None
+        self.ws: Any = None  # Type: websockets connection when connected
         self._message_id = 0
         self._responses: dict[int, Any] = {}
 
     async def connect(self) -> None:
         """Connect to Chrome DevTools."""
-        # Get websocket URL from Chrome
+        # Get websocket URL from Chrome's /json endpoint
         import aiohttp
-        async with aiohttp.ClientSession() as session:
-            url = f"http://{self.config.host}:{self.config.port}/json"
-            async with session.get(url) as resp:
-                targets = await resp.json()
+
+        http_url = f"http://{self.config.host}:{self.config.port}/json"
+        logger.debug(f"Fetching targets from {http_url}")
+
+        async with aiohttp.ClientSession() as session, session.get(http_url) as resp:
+            targets = await resp.json()
 
         # Find a page target
         page_target = None
@@ -57,21 +60,14 @@ class CDPClient:
         self._message_id += 1
         msg_id = self._message_id
 
-        message = {
-            "id": msg_id,
-            "method": method,
-            "params": params or {}
-        }
+        message = {"id": msg_id, "method": method, "params": params or {}}
 
         await self.ws.send(json.dumps(message))
         logger.debug(f"CDP send: {method}")
 
         # Wait for response with matching id
         while True:
-            response = await asyncio.wait_for(
-                self.ws.recv(),
-                timeout=self.config.timeout
-            )
+            response = await asyncio.wait_for(self.ws.recv(), timeout=self.config.timeout)
             data = json.loads(response)
 
             if data.get("id") == msg_id:
@@ -89,15 +85,17 @@ class CDPClient:
 
     async def get_html(self) -> str:
         """Get current page HTML."""
-        result = await self.send("Runtime.evaluate", {
-            "expression": "document.documentElement.outerHTML"
-        })
+        result = await self.send(
+            "Runtime.evaluate", {"expression": "document.documentElement.outerHTML"}
+        )
         return result.get("result", {}).get("value", "")
 
     async def click(self, selector: str) -> dict[str, Any]:
         """Click element by CSS selector."""
-        result = await self.send("Runtime.evaluate", {
-            "expression": f"""
+        result = await self.send(
+            "Runtime.evaluate",
+            {
+                "expression": f"""
                 (function() {{
                     const el = document.querySelector('{selector}');
                     if (!el) return {{success: false, error: 'Element not found'}};
@@ -105,14 +103,17 @@ class CDPClient:
                     return {{success: true}};
                 }})()
             """,
-            "returnByValue": True
-        })
+                "returnByValue": True,
+            },
+        )
         return result.get("result", {}).get("value", {})
 
     async def query_selector_all(self, selector: str) -> list[dict[str, Any]]:
         """Get all elements matching selector with their text and href."""
-        result = await self.send("Runtime.evaluate", {
-            "expression": f"""
+        result = await self.send(
+            "Runtime.evaluate",
+            {
+                "expression": f"""
                 (function() {{
                     const els = document.querySelectorAll('{selector}');
                     return Array.from(els).map(el => ({{
@@ -122,17 +123,21 @@ class CDPClient:
                     }}));
                 }})()
             """,
-            "returnByValue": True
-        })
+                "returnByValue": True,
+            },
+        )
         return result.get("result", {}).get("value", [])
 
     async def wait_for_selector(self, selector: str, timeout: int = 10) -> bool:
         """Wait for selector to appear."""
         for _ in range(timeout * 2):
-            result = await self.send("Runtime.evaluate", {
-                "expression": f"document.querySelector('{selector}') !== null",
-                "returnByValue": True
-            })
+            result = await self.send(
+                "Runtime.evaluate",
+                {
+                    "expression": f"document.querySelector('{selector}') !== null",
+                    "returnByValue": True,
+                },
+            )
             if result.get("result", {}).get("value"):
                 return True
             await asyncio.sleep(0.5)
@@ -163,6 +168,7 @@ class BrowserSession:
         if loop.is_running():
             # If we're in an async context, create a new loop in a thread
             import concurrent.futures
+
             with concurrent.futures.ThreadPoolExecutor() as pool:
                 future = pool.submit(asyncio.run, coro)
                 return future.result()

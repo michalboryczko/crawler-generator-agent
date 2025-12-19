@@ -1,0 +1,24 @@
+# Agent Contract Schema Paths Configuration
+# This file centralizes all agent schema paths for the contract validation system.
+# Schemas are stored in src/contracts/schemas/ directory.
+
+agents:
+  discovery:
+    output_contract_schema_path: "src/contracts/schemas/discovery_agent/output.schema.json"
+    input_contract_schema_path: "src/contracts/schemas/discovery_agent/input.schema.json"
+
+  selector:
+    output_contract_schema_path: "src/contracts/schemas/selector_agent/output.schema.json"
+    input_contract_schema_path: "src/contracts/schemas/selector_agent/input.schema.json"
+
+  accessibility:
+    output_contract_schema_path: "src/contracts/schemas/accessibility_agent/output.schema.json"
+    input_contract_schema_path: "src/contracts/schemas/accessibility_agent/input.schema.json"
+
+  data_prep:
+    output_contract_schema_path: "src/contracts/schemas/data_prep_agent/output.schema.json"
+    input_contract_schema_path: "src/contracts/schemas/data_prep_agent/input.schema.json"
+
+  main:
+    output_contract_schema_path: "src/contracts/schemas/main_agent/output.schema.json"
+    input_contract_schema_path: "src/contracts/schemas/main_agent/input.schema.json"

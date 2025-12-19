@@ -1,16 +1,15 @@
 """Tests for serialization utilities."""
 
-import pytest
+import uuid
 from dataclasses import dataclass
-from datetime import datetime, date, timezone
+from datetime import UTC, date, datetime
 from enum import Enum
 from pathlib import Path
-import uuid
 
 from src.observability.serializers import (
+    extract_error_info,
     safe_serialize,
     truncate_for_display,
-    extract_error_info,
 )
 
 
@@ -28,7 +27,7 @@ class TestSafeSerialize:
 
     def test_datetime(self):
         """Test datetime serialization."""
-        dt = datetime(2025, 1, 15, 10, 30, 45, tzinfo=timezone.utc)
+        dt = datetime(2025, 1, 15, 10, 30, 45, tzinfo=UTC)
         result = safe_serialize(dt)
         assert result == "2025-01-15T10:30:45+00:00"
 
@@ -52,43 +51,45 @@ class TestSafeSerialize:
 
     def test_enum(self):
         """Test enum serialization."""
+
         class Color(Enum):
             RED = "red"
             BLUE = "blue"
-        
+
         assert safe_serialize(Color.RED) == "red"
 
     def test_dataclass(self):
         """Test dataclass serialization."""
+
         @dataclass
         class Person:
             name: str
             age: int
-        
+
         person = Person(name="Alice", age=30)
         result = safe_serialize(person)
-        
+
         assert result == {"name": "Alice", "age": 30}
 
     def test_dict(self):
         """Test dictionary serialization."""
         data = {"key": "value", "nested": {"a": 1}}
         result = safe_serialize(data)
-        
+
         assert result == {"key": "value", "nested": {"a": 1}}
 
     def test_list(self):
         """Test list serialization."""
         data = [1, "two", 3.0]
         result = safe_serialize(data)
-        
+
         assert result == [1, "two", 3.0]
 
     def test_set(self):
         """Test set serialization (converted to list)."""
         data = {1, 2, 3}
         result = safe_serialize(data)
-        
+
         # Sets are converted to sorted lists
         assert sorted(result) == [1, 2, 3]
 
@@ -97,7 +98,7 @@ class TestSafeSerialize:
         data = b"hello"
         result = safe_serialize(data)
         assert result == "hello"
-        
+
         # Non-UTF8 bytes
         binary = bytes([0xFF, 0xFE])
         result = safe_serialize(binary)
@@ -111,29 +112,32 @@ class TestSafeSerialize:
         for i in range(15):
             current["nested"] = {"level": i + 1}
             current = current["nested"]
-        
+
         result = safe_serialize(deep, max_depth=5)
-        
+
         # Should not raise, should truncate at depth
         assert isinstance(result, dict)
 
     def test_object_with_dict(self):
         """Test objects with __dict__ are serialized."""
+
         class CustomObject:
             def __init__(self):
                 self.x = 1
                 self.y = "two"
-        
+
         obj = CustomObject()
         result = safe_serialize(obj)
-        
+
         assert result == {"x": 1, "y": "two"}
 
     def test_unserializable_fallback(self):
         """Test that unserializable objects become strings."""
+
         # Use a class with no __dict__ (via __slots__) and failing __str__
         class NoStr:
             __slots__ = ()  # No __dict__
+
             def __str__(self):
                 raise Exception("Can't stringify")
 
@@ -153,7 +157,7 @@ class TestTruncateForDisplay:
         """Test that long strings are truncated."""
         long_str = "a" * 100
         result = truncate_for_display(long_str, max_length=10)
-        
+
         assert len(result) < len(long_str)
         assert "..." in result
         assert "100 chars total" in result
@@ -162,7 +166,7 @@ class TestTruncateForDisplay:
         """Test truncation in nested dictionaries."""
         data = {"key": "a" * 100}
         result = truncate_for_display(data, max_length=10)
-        
+
         assert "..." in result["key"]
 
 
@@ -175,7 +179,7 @@ class TestExtractErrorInfo:
             raise ValueError("test error")
         except ValueError as e:
             info = extract_error_info(e)
-        
+
         assert info["error_type"] == "ValueError"
 
     def test_extracts_message(self):
@@ -184,7 +188,7 @@ class TestExtractErrorInfo:
             raise RuntimeError("something went wrong")
         except RuntimeError as e:
             info = extract_error_info(e)
-        
+
         assert info["error_message"] == "something went wrong"
 
     def test_includes_stack_trace(self):
@@ -193,6 +197,6 @@ class TestExtractErrorInfo:
             raise Exception("test")
         except Exception as e:
             info = extract_error_info(e)
-        
+
         assert "stack_trace" in info
         assert "Exception: test" in info["stack_trace"]

@@ -13,7 +13,7 @@ Architecture:
 
 import os
 from dataclasses import dataclass
-from typing import Optional, TYPE_CHECKING
+from typing import TYPE_CHECKING, Optional
 
 if TYPE_CHECKING:
     from .handlers import LogHandler
@@ -33,8 +33,8 @@ class ObservabilityConfig:
         otel_insecure: Whether to use insecure connection to collector
         console_enabled: Whether to output to console (dev only)
         console_color: Whether to use colored console output
-        redact_pii: Whether to redact PII from logs
     """
+
     service_name: str = "crawler-agent"
 
     # OTel Collector settings
@@ -45,10 +45,7 @@ class ObservabilityConfig:
     console_enabled: bool = True
     console_color: bool = True
 
-    # PII redaction
-    redact_pii: bool = True
-
-    def create_console_output(self) -> Optional['LogOutput']:
+    def create_console_output(self) -> Optional["LogOutput"]:
         """Create console output if enabled.
 
         Returns:
@@ -58,6 +55,7 @@ class ObservabilityConfig:
             return None
 
         from .outputs import ConsoleOutput
+
         return ConsoleOutput(color=self.console_color)
 
     @classmethod
@@ -70,7 +68,6 @@ class ObservabilityConfig:
             OTEL_INSECURE: Use insecure connection (default: true)
             LOG_CONSOLE: Enable console output (default: true)
             LOG_COLOR: Enable colored console (default: true)
-            LOG_REDACT_PII: Enable PII redaction (default: true)
 
         Returns:
             ObservabilityConfig loaded from environment.
@@ -81,20 +78,18 @@ class ObservabilityConfig:
             otel_insecure=os.environ.get("OTEL_INSECURE", "true").lower() == "true",
             console_enabled=os.environ.get("LOG_CONSOLE", "true").lower() == "true",
             console_color=os.environ.get("LOG_COLOR", "true").lower() == "true",
-            redact_pii=os.environ.get("LOG_REDACT_PII", "true").lower() == "true",
         )
 
 
 # Global state
-_handler: Optional['LogHandler'] = None
-_console_output: Optional['LogOutput'] = None
+_handler: Optional["LogHandler"] = None
+_console_output: Optional["LogOutput"] = None
 _initialized: bool = False
-_config: Optional[ObservabilityConfig] = None
+_config: ObservabilityConfig | None = None
 
 
 def initialize_observability(
-    handler: 'LogHandler',
-    config: ObservabilityConfig = None
+    handler: "LogHandler", config: ObservabilityConfig | None = None
 ) -> None:
     """Initialize the observability system.
 
@@ -116,10 +111,11 @@ def initialize_observability(
 
     # Initialize OTel tracer for span creation
     from .tracer import init_tracer
+
     init_tracer(
         endpoint=config.otel_endpoint,
         service_name=config.service_name,
-        insecure=config.otel_insecure
+        insecure=config.otel_insecure,
     )
 
     _handler = handler
@@ -127,17 +123,17 @@ def initialize_observability(
     _initialized = True
 
 
-def get_handler() -> Optional['LogHandler']:
+def get_handler() -> Optional["LogHandler"]:
     """Get the configured handler."""
     return _handler
 
 
-def get_console_output() -> Optional['LogOutput']:
+def get_console_output() -> Optional["LogOutput"]:
     """Get the console output if enabled."""
     return _console_output
 
 
-def get_config() -> Optional[ObservabilityConfig]:
+def get_config() -> ObservabilityConfig | None:
     """Get current configuration."""
     return _config
 
@@ -153,6 +149,7 @@ def shutdown() -> None:
 
     # Shutdown tracer
     from .tracer import shutdown_tracer
+
     shutdown_tracer()
 
     if _handler:

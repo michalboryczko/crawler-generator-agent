@@ -21,6 +21,14 @@ build/
 # OS
 .DS_Store
 
+# Coverage
+.coverage
+htmlcov/
+coverage.xml
+
 # Project
-.claude/checkpoints/
-.claude/logs/
+.claude/
+.serena/
+.taskmaster/
+.env*
+!.env.example

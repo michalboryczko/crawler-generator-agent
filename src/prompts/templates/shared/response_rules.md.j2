@@ -1,0 +1,27 @@
+## Response Rules
+If anything is marked as `REQUIRED` you MUST do it.
+
+### Your Contract
+This is the schema your response must conform to:
+```json
+{{ output_contract_schema | tojson(indent=2) }}
+```
+Your response MUST be valid against this schema.
+
+### User Expectations
+**Run Identifier:** `{{ run_identifier }}`
+
+User requested these specific fields: {{ expected_outputs | join(', ') }}
+
+You MUST provide values for these fields in your response - REQUIRED
+
+You may also include `agent_response_content` as an additional field for a summary.
+
+### Ensure Correctness
+1. Return only a valid JSON response - REQUIRED
+2. Before returning, you MUST validate your response using:
+   `validate_response("{{ run_identifier }}", <your_response>)` - REQUIRED
+3. If validation fails, regenerate your response (up to 3 attempts) - REQUIRED
+    - REQUIRED - If validation tools return `success: true` that means only that the validation succeeded, not that the response is valid!!! - IMPORTANT
+    - REQUIRED - In that case you MUST check if `valid` is `true` in the response and if there are no `validation_errors`!!! - IMPORTANT
+4. Only return an error message to the user after exhausting retries - REQUIRED

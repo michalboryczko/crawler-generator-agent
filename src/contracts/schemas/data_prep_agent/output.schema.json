@@ -1,0 +1,228 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "test_data_agent_output",
+  "title": "TestDataAgent Output Contract",
+  "description": "Output from the TestData Agent - test dataset with listing and article entries for crawler validation",
+  "type": "object",
+  "required": [
+    "test_data_description",
+    "listing_entries",
+    "article_entries",
+    "export_path"
+  ],
+  "properties": {
+    "test_data_description": {
+      "type": "string",
+      "description": "Human-readable summary of test data created"
+    },
+    "listing_entries": {
+      "type": "array",
+      "description": "Test entries for listing pages",
+      "minItems": 5,
+      "items": {
+        "$ref": "#/$defs/listingEntry"
+      }
+    },
+    "article_entries": {
+      "type": "array",
+      "description": "Test entries for article pages",
+      "minItems": 20,
+      "items": {
+        "$ref": "#/$defs/articleEntry"
+      }
+    },
+    "export_path": {
+      "type": "string",
+      "description": "Path where JSONL file was exported (e.g., 'data/test_set.jsonl')"
+    },
+    "listing_count": {
+      "type": "integer",
+      "minimum": 5,
+      "description": "Number of listing entries created"
+    },
+    "article_count": {
+      "type": "integer",
+      "minimum": 20,
+      "description": "Number of article entries created"
+    },
+    "pages_fetched": {
+      "type": "object",
+      "description": "Statistics about pages fetched",
+      "properties": {
+        "listing_pages": {
+          "type": "integer",
+          "description": "Number of listing pages fetched"
+        },
+        "article_pages": {
+          "type": "integer",
+          "description": "Number of article pages fetched"
+        }
+      }
+    },
+    "agent_response_content": {
+      "type": "string",
+      "description": "Natural language summary of the agent's response, explaining key findings and decisions in human-readable form"
+    }
+  },
+  "$defs": {
+    "listingEntry": {
+      "type": "object",
+      "required": [
+        "type",
+        "url",
+        "given",
+        "expected"
+      ],
+      "properties": {
+        "type": {
+          "type": "string",
+          "const": "listing"
+        },
+        "url": {
+          "type": "string",
+          "format": "uri",
+          "description": "Listing page URL"
+        },
+        "given": {
+          "type": "string",
+          "description": "HTML content of the listing page"
+        },
+        "expected": {
+          "type": "object",
+          "required": [
+            "article_urls"
+          ],
+          "properties": {
+            "article_urls": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "format": "uri"
+              },
+              "description": "Expected article URLs to be extracted"
+            },
+            "article_count": {
+              "type": "integer",
+              "description": "Expected number of articles on this page"
+            },
+            "has_pagination": {
+              "type": "boolean",
+              "description": "Whether pagination is present"
+            },
+            "next_page_url": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "description": "URL of the next page if available"
+            }
+          }
+        }
+      }
+    },
+    "articleEntry": {
+      "type": "object",
+      "required": [
+        "type",
+        "url",
+        "given",
+        "expected"
+      ],
+      "properties": {
+        "type": {
+          "type": "string",
+          "const": "article"
+        },
+        "url": {
+          "type": "string",
+          "format": "uri",
+          "description": "Article page URL"
+        },
+        "given": {
+          "type": "string",
+          "description": "HTML content of the article page"
+        },
+        "expected": {
+          "type": "object",
+          "description": "Expected extracted content fields",
+          "properties": {
+            "title": {
+              "type": "string",
+              "description": "Expected article title"
+            },
+            "date": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "description": "Expected publication date"
+            },
+            "authors": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              },
+              "description": "Expected author names"
+            },
+            "lead": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "description": "Expected article lead/summary"
+            },
+            "content": {
+              "type": "string",
+              "description": "Expected content (first 500 chars)"
+            },
+            "category": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "description": "Expected category"
+            },
+            "tags": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              },
+              "description": "Expected tags"
+            },
+            "files": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "url": {
+                    "type": "string"
+                  },
+                  "title": {
+                    "type": "string"
+                  }
+                }
+              },
+              "description": "Expected downloadable files"
+            },
+            "images": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "url": {
+                    "type": "string"
+                  },
+                  "alt": {
+                    "type": "string"
+                  }
+                }
+              },
+              "description": "Expected images"
+            }
+          }
+        }
+      }
+    }
+  },
+  "additionalProperties": false
+}

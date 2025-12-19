@@ -1,4 +1,5 @@
 """HTML cleaning utilities to reduce content size for LLM processing."""
+
 import re
 from typing import Any
 
@@ -107,7 +108,9 @@ def get_html_summary(html: str) -> dict[str, Any]:
     return {
         "original_size": original_size,
         "cleaned_size": cleaned_size,
-        "reduction_percent": round((1 - cleaned_size / original_size) * 100, 1) if original_size > 0 else 0,
+        "reduction_percent": round((1 - cleaned_size / original_size) * 100, 1)
+        if original_size > 0
+        else 0,
         "has_scripts": bool(re.search(r"<script", html, re.IGNORECASE)),
         "has_styles": bool(re.search(r"<style", html, re.IGNORECASE)),
         "link_count": len(re.findall(r"<a\s", html, re.IGNORECASE)),

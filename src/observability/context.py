@@ -10,17 +10,17 @@ The ObservabilityContext wraps an OTel span and carries our business fields.
 import contextvars
 import uuid
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
-from typing import Optional, List, Any
+from datetime import UTC, datetime
+from typing import Any, Optional
 
 from opentelemetry import trace
 
-from .tracer import format_trace_id, format_span_id
-
+from .tracer import format_span_id, format_trace_id
 
 # Global context storage for business metadata
-_observability_context: contextvars.ContextVar['ObservabilityContext'] = \
-    contextvars.ContextVar('observability_context', default=None)
+_observability_context: contextvars.ContextVar["ObservabilityContext"] = contextvars.ContextVar(
+    "observability_context", default=None
+)
 
 
 @dataclass
@@ -37,14 +37,15 @@ class ObservabilityContext:
         start_time: When this context was created
         _span: Reference to OTel span (for extracting IDs)
     """
+
     # Business metadata (WE manage these - not OTel)
-    session_id: Optional[str] = None
-    request_id: Optional[str] = None
-    component_stack: List[str] = field(default_factory=list)
-    start_time: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
+    session_id: str | None = None
+    request_id: str | None = None
+    component_stack: list[str] = field(default_factory=list)
+    start_time: datetime = field(default_factory=lambda: datetime.now(UTC))
 
     # OTel span reference (for extracting IDs) - not serialized
-    _span: Optional[Any] = field(default=None, repr=False, compare=False)
+    _span: Any | None = field(default=None, repr=False, compare=False)
 
     @property
     def trace_id(self) -> str:
@@ -73,7 +74,7 @@ class ObservabilityContext:
         return ""
 
     @property
-    def parent_span_id(self) -> Optional[str]:
+    def parent_span_id(self) -> str | None:
         """Get parent span ID from OTel span.
 
         Note: OTel manages parent-child relationships internally.
@@ -84,9 +85,9 @@ class ObservabilityContext:
         """
         span = self._span or trace.get_current_span()
         # OTel SDK spans have a parent attribute with the parent SpanContext
-        if hasattr(span, 'parent') and span.parent is not None:
+        if hasattr(span, "parent") and span.parent is not None:
             parent_ctx = span.parent
-            if hasattr(parent_ctx, 'span_id') and parent_ctx.span_id:
+            if hasattr(parent_ctx, "span_id") and parent_ctx.span_id:
                 return format_span_id(parent_ctx.span_id)
         return None
 
@@ -113,7 +114,7 @@ class ObservabilityContext:
         return "unknown"
 
     @classmethod
-    def get_current(cls) -> Optional['ObservabilityContext']:
+    def get_current(cls) -> Optional["ObservabilityContext"]:
         """Get current context from contextvars.
 
         Returns:
@@ -122,7 +123,7 @@ class ObservabilityContext:
         return _observability_context.get()
 
     @classmethod
-    def create_root(cls, session_id: str = None) -> 'ObservabilityContext':
+    def create_root(cls, session_id: str | None = None) -> "ObservabilityContext":
         """Create a new root context (no parent span yet).
 
         This creates the business metadata. OTel span will be attached
@@ -138,10 +139,10 @@ class ObservabilityContext:
             session_id=session_id or f"sess_{uuid.uuid4().hex[:12]}",
             request_id=f"req_{uuid.uuid4().hex[:12]}",
             component_stack=["root"],
-            _span=None  # Will be set when entering a traced decorator
+            _span=None,  # Will be set when entering a traced decorator
         )
 
-    def create_child(self, component_name: str, span: Any = None) -> 'ObservabilityContext':
+    def create_child(self, component_name: str, span: Any = None) -> "ObservabilityContext":
         """Create a child context with inherited business metadata.
 
         The child inherits session_id, request_id and extends component_stack.
@@ -158,10 +159,10 @@ class ObservabilityContext:
             session_id=self.session_id,
             request_id=self.request_id,
             component_stack=[*self.component_stack, component_name],
-            _span=span or trace.get_current_span()
+            _span=span or trace.get_current_span(),
         )
 
-    def with_span(self, span: Any) -> 'ObservabilityContext':
+    def with_span(self, span: Any) -> "ObservabilityContext":
         """Create a new context with a different OTel span attached.
 
         Preserves all business metadata but changes the span reference.
@@ -177,7 +178,7 @@ class ObservabilityContext:
             request_id=self.request_id,
             component_stack=self.component_stack.copy(),
             start_time=self.start_time,
-            _span=span
+            _span=span,
         )
 
     def to_dict(self) -> dict:
@@ -194,11 +195,11 @@ class ObservabilityContext:
             "request_id": self.request_id,
             "triggered_by": self.triggered_by,
             "component_stack": self.component_stack,
-            "start_time": self.start_time.isoformat()
+            "start_time": self.start_time.isoformat(),
         }
 
 
-def get_or_create_context(component_name: str = "unknown") -> 'ObservabilityContext':
+def get_or_create_context(component_name: str = "unknown") -> "ObservabilityContext":
     """Get current context or create root if none exists.
 
     Args:
@@ -214,7 +215,7 @@ def get_or_create_context(component_name: str = "unknown") -> 'ObservabilityCont
             session_id=ctx.session_id,
             request_id=ctx.request_id,
             component_stack=[component_name],
-            _span=trace.get_current_span()
+            _span=trace.get_current_span(),
         )
     return ctx
 
@@ -263,12 +264,12 @@ class ObservabilitySpan:
             component_name: Name of the component for this span.
         """
         self.component_name = component_name
-        self.token: Optional[contextvars.Token] = None
-        self.context: Optional[ObservabilityContext] = None
-        self._otel_span = None
-        self._otel_token = None
+        self.token: contextvars.Token | None = None
+        self.context: ObservabilityContext | None = None
+        self._otel_span: Any = None  # Type: trace.Span when active
+        self._otel_token: Any = None  # Type: context manager token when active
 
-    def __enter__(self) -> 'ObservabilityContext':
+    def __enter__(self) -> "ObservabilityContext":
         """Enter the span context.
 
         Returns:
@@ -291,7 +292,7 @@ class ObservabilitySpan:
                 session_id=f"sess_{uuid.uuid4().hex[:12]}",
                 request_id=f"req_{uuid.uuid4().hex[:12]}",
                 component_stack=[self.component_name],
-                _span=self._otel_span
+                _span=self._otel_span,
             )
         else:
             # Existing context - create child with inherited business metadata
@@ -307,6 +308,7 @@ class ObservabilitySpan:
         if self._otel_span is not None:
             if exc_type is not None:
                 from opentelemetry.trace import Status, StatusCode
+
                 self._otel_span.set_status(Status(StatusCode.ERROR, str(exc_val)))
                 self._otel_span.record_exception(exc_val)
             self._otel_span.end()

@@ -1,0 +1,32 @@
+## Sub-Agents usage:
+That is set of information which you should be aware do not ignore it.
+if something is marked as `REQUIRED` you MUST do it.
+
+### Agent usage rules:
+
+Before you will use specific tool you have to:
+1. REQUIRED - run describe_output_contract(AGENT_NAME) you will get description with all fields which that agent can provide you
+2. REQUIRED - from that description you have to pick fields which you want to use
+    - REQUIRED - pick only fields which you want to use
+    - REQUIRED - store that fields in memory
+3. REQUIRED - run `prepare_agent_output_validation(fields, run_identifier)` tool with fields you have picked
+    - fields - list of fields which you have picked
+    - run_identifier - unique identifier for this run - you can use `generate_uuid()` tool to generate it
+    - store that identifier in memory.
+4. now you can run specific agent by dedicated tool you should pass:
+    - REQUIRED - run_identifier
+    - REQUIRED - expected fields
+
+### Available agents:
+
+{% for agent_tool in agent_tools %}
+------------------------------------------------------
+#### {{agent_tool.get_agent_name()}}
+Name: {{agent_tool.get_agent_name()}}
+Description: {{agent_tool.get_agent_description()}}
+Tool name: {{agent_tool.get_tool_name()}}
+
+tips:
+1. to describe output contract use tool call `describe_output_contract({{agent_tool.get_agent_name()}})`
+------------------------------------------------------
+{% endfor %}

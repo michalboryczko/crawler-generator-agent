@@ -12,10 +12,11 @@ The handler is injected into the observability system, making the rest
 of the code unaware of the specific backend.
 """
 
+import contextlib
+import threading
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
-from typing import Optional
-import threading
+from typing import Any
 
 from .schema import LogRecord, TraceEvent
 
@@ -62,6 +63,7 @@ class LogHandler(ABC):
 @dataclass
 class OTelConfig:
     """Configuration for OTel gRPC handler."""
+
     endpoint: str = "localhost:4317"
     insecure: bool = True
     service_name: str = "crawler-agent"
@@ -85,7 +87,7 @@ class OTelGrpcHandler(LogHandler):
         self.config = config
         self._lock = threading.Lock()
         self._initialized = False
-        self._logger_provider = None
+        self._logger_provider: Any = None  # Type: LoggerProvider when initialized
         self._initialize()
 
     def _initialize(self) -> None:
@@ -94,23 +96,20 @@ class OTelGrpcHandler(LogHandler):
         Note: Trace exporter is initialized in tracer.py, not here.
         """
         try:
+            from opentelemetry._logs import set_logger_provider
             from opentelemetry.exporter.otlp.proto.grpc._log_exporter import OTLPLogExporter
             from opentelemetry.sdk._logs import LoggerProvider
             from opentelemetry.sdk._logs.export import BatchLogRecordProcessor
-            from opentelemetry.sdk.resources import Resource, SERVICE_NAME
-            from opentelemetry._logs import set_logger_provider
+            from opentelemetry.sdk.resources import SERVICE_NAME, Resource
 
             resource = Resource.create({SERVICE_NAME: self.config.service_name})
 
             # Set up log exporter only - trace exporter is in tracer.py
             log_exporter = OTLPLogExporter(
-                endpoint=self.config.endpoint,
-                insecure=self.config.insecure
+                endpoint=self.config.endpoint, insecure=self.config.insecure
             )
             self._logger_provider = LoggerProvider(resource=resource)
-            self._logger_provider.add_log_record_processor(
-                BatchLogRecordProcessor(log_exporter)
-            )
+            self._logger_provider.add_log_record_processor(BatchLogRecordProcessor(log_exporter))
             set_logger_provider(self._logger_provider)
 
             self._initialized = True
@@ -131,9 +130,10 @@ class OTelGrpcHandler(LogHandler):
             return
 
         try:
-            from opentelemetry._logs import SeverityNumber
             import json
             import time
+
+            from opentelemetry._logs import SeverityNumber
 
             # Map our level to OTel severity
             severity_map = {
@@ -147,7 +147,7 @@ class OTelGrpcHandler(LogHandler):
             )
 
             # Build attributes dict with all our structured data
-            attributes = {
+            attributes: dict[str, str | int | float | bool] = {
                 "event": record.event,
                 "component_type": record.component_type,
                 "component_name": record.component_name,
@@ -185,9 +185,7 @@ class OTelGrpcHandler(LogHandler):
                         attributes[attr_key] = str(value)
 
             # Emit using Logger.emit() with keyword arguments
-            self._logger_provider.get_logger(
-                self.config.service_name
-            ).emit(
+            self._logger_provider.get_logger(self.config.service_name).emit(
                 timestamp=int(record.timestamp.timestamp() * 1e9),
                 observed_timestamp=time.time_ns(),
                 severity_number=severity_number,
@@ -214,18 +212,14 @@ class OTelGrpcHandler(LogHandler):
     def flush(self) -> None:
         """Force flush log exporter."""
         if self._initialized and self._logger_provider:
-            try:
+            with contextlib.suppress(Exception):
                 self._logger_provider.force_flush()
-            except Exception:
-                pass
 
     def close(self) -> None:
         """Shutdown log exporter."""
         if self._initialized and self._logger_provider:
-            try:
+            with contextlib.suppress(Exception):
                 self._logger_provider.shutdown()
-            except Exception:
-                pass
             self._initialized = False
 
 
@@ -259,28 +253,20 @@ class CompositeHandler(LogHandler):
 
     def send_log(self, record: LogRecord) -> None:
         for handler in self.handlers:
-            try:
+            with contextlib.suppress(Exception):
                 handler.send_log(record)
-            except Exception:
-                pass
 
     def send_trace(self, event: TraceEvent) -> None:
         for handler in self.handlers:
-            try:
+            with contextlib.suppress(Exception):
                 handler.send_trace(event)
-            except Exception:
-                pass
 
     def flush(self) -> None:
         for handler in self.handlers:
-            try:
+            with contextlib.suppress(Exception):
                 handler.flush()
-            except Exception:
-                pass
 
     def close(self) -> None:
         for handler in self.handlers:
-            try:
+            with contextlib.suppress(Exception):
                 handler.close()
-            except Exception:
-                pass

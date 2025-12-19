@@ -1,18 +1,19 @@
 """Tests for context propagation with OTel spans."""
 
 import pytest
+
 from src.observability import (
-    initialize_observability,
     ObservabilityConfig,
+    initialize_observability,
     shutdown,
 )
 from src.observability.context import (
     ObservabilityContext,
-    get_or_create_context,
-    set_context,
-    reset_context,
     ObservabilitySpan,
     _observability_context,
+    get_or_create_context,
+    reset_context,
+    set_context,
 )
 from src.observability.handlers import NullHandler
 
@@ -156,8 +157,12 @@ class TestObservabilitySpan:
 
         with ObservabilitySpan("test_span") as ctx:
             # With an OTel span active, we should have valid IDs
-            assert is_valid_hex(ctx.trace_id, 32), f"trace_id should be 32 hex chars, got: {ctx.trace_id}"
-            assert is_valid_hex(ctx.span_id, 16), f"span_id should be 16 hex chars, got: {ctx.span_id}"
+            assert is_valid_hex(ctx.trace_id, 32), (
+                f"trace_id should be 32 hex chars, got: {ctx.trace_id}"
+            )
+            assert is_valid_hex(ctx.span_id, 16), (
+                f"span_id should be 16 hex chars, got: {ctx.span_id}"
+            )
             assert "test_span" in ctx.component_stack
 
     def test_span_inherits_business_metadata(self):
