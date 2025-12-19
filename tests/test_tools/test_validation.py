@@ -1,6 +1,5 @@
 """Tests for tool parameter validation decorator."""
 
-import pytest
 
 from src.tools.base import BaseTool
 from src.tools.validation import validated_tool
