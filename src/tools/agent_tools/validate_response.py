@@ -112,9 +112,7 @@ class ValidateResponseTool(BaseTool):
         errors: list[dict[str, str]] = []
 
         # Validate agent_response_content if schema expects it
-        schema_requires_content = "agent_response_content" in context.schema.get(
-            "required", []
-        )
+        schema_requires_content = "agent_response_content" in context.schema.get("required", [])
         if schema_requires_content and not agent_content:
             errors.append(
                 {

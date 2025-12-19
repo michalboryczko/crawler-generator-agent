@@ -5,6 +5,7 @@ The @traced_agent decorator handles all agent instrumentation.
 
 Supports both single LLMClient (legacy) and LLMClientFactory (multi-model) modes.
 """
+
 import json
 import logging
 from typing import TYPE_CHECKING, Any, Union
@@ -63,12 +64,14 @@ class BaseAgent:
             memory_service: MemoryService for agent memory
         """
         # Handle both LLMClient and LLMClientFactory
-        if hasattr(llm, 'get_client'):
+        if hasattr(llm, "get_client"):
             # It's a factory - get a client for this agent
             self.llm_factory = llm
             effective_name = component_name or self.name
             self.llm = llm.get_client(effective_name)
-            logger.debug(f"Agent '{self.name}' initialized with factory client for '{effective_name}'")
+            logger.debug(
+                f"Agent '{self.name}' initialized with factory client for '{effective_name}'"
+            )
         else:
             # Direct LLMClient
             self.llm_factory = None
@@ -79,18 +82,17 @@ class BaseAgent:
 
         # Auto-detect AgentTools from tools list
         from ..tools.agent_tools import AgentTool
+
         self._agent_tools = [t for t in self.tools if isinstance(t, AgentTool)]
 
         # Auto-attach DescribeOutputContractTool if AgentTools present
         if self._agent_tools:
             from ..tools.agent_tools import DescribeOutputContractTool
+
             # Build schema paths from AgentTools
-            schema_paths = {
-                at.get_agent_name(): at._output_schema_path
-                for at in self._agent_tools
-            }
+            schema_paths = {at.get_agent_name(): at._output_schema_path for at in self._agent_tools}
             describe_tool = DescribeOutputContractTool(schema_paths)
-            self.tools = list(self.tools) + [describe_tool]
+            self.tools = [*list(self.tools), describe_tool]
 
         self._tool_map = {t.name: t for t in self.tools}
 
@@ -137,7 +139,7 @@ class BaseAgent:
 
         messages = [
             {"role": "system", "content": system_content},
-            {"role": "user", "content": task}
+            {"role": "user", "content": task},
         ]
 
         for iteration in range(MAX_ITERATIONS):
@@ -158,30 +160,27 @@ class BaseAgent:
                     )
 
                 # Add assistant message with only the tool call we're processing
-                messages.append({
-                    "role": "assistant",
-                    "content": response["content"],
-                    "tool_calls": [
-                        {
-                            "id": tc["id"],
-                            "type": "function",
-                            "function": {
-                                "name": tc["name"],
-                                "arguments": str(tc["arguments"])
+                messages.append(
+                    {
+                        "role": "assistant",
+                        "content": response["content"],
+                        "tool_calls": [
+                            {
+                                "id": tc["id"],
+                                "type": "function",
+                                "function": {"name": tc["name"], "arguments": str(tc["arguments"])},
                             }
-                        }
-                        for tc in tool_calls_to_process
-                    ]
-                })
+                            for tc in tool_calls_to_process
+                        ],
+                    }
+                )
 
                 # Execute the single tool call
                 for tool_call in tool_calls_to_process:
                     result = self._execute_tool(tool_call["name"], tool_call["arguments"])
-                    messages.append({
-                        "role": "tool",
-                        "tool_call_id": tool_call["id"],
-                        "content": str(result)
-                    })
+                    messages.append(
+                        {"role": "tool", "tool_call_id": tool_call["id"], "content": str(result)}
+                    )
             else:
                 # No tool calls - agent is done
                 result_data = self._extract_result_data(response["content"])
@@ -189,7 +188,7 @@ class BaseAgent:
                     success=True,
                     data=result_data,
                     memory_snapshot=self._get_memory_snapshot(),
-                    iterations=iteration + 1
+                    iterations=iteration + 1,
                 )
 
         # Max iterations reached
@@ -197,7 +196,7 @@ class BaseAgent:
             success=False,
             errors=[f"Max iterations ({MAX_ITERATIONS}) reached"],
             memory_snapshot=self._get_memory_snapshot(),
-            iterations=MAX_ITERATIONS
+            iterations=MAX_ITERATIONS,
         )
 
     def _build_final_prompt(
@@ -230,9 +229,7 @@ class BaseAgent:
         # Add response rules if validation context provided
         if run_identifier and expected_outputs:
             prompt_parts.append(
-                self._build_response_rules(
-                    expected_outputs, run_identifier, output_contract_schema
-                )
+                self._build_response_rules(expected_outputs, run_identifier, output_contract_schema)
             )
 
         # Inject context
@@ -306,7 +303,9 @@ class BaseAgent:
 
         tool = self._tool_map[name]
         try:
-            arg_summary = str(arguments)[:200] + "..." if len(str(arguments)) > 200 else str(arguments)
+            arg_summary = (
+                str(arguments)[:200] + "..." if len(str(arguments)) > 200 else str(arguments)
+            )
             logger.info(f"[{self.name}] Executing tool: {name} with args: {arg_summary}")
 
             result = tool.execute(**arguments)

@@ -3,6 +3,7 @@
 This module uses the new observability decorators for automatic logging.
 The @traced_tool decorator handles all tool instrumentation.
 """
+
 import logging
 from pathlib import Path
 from typing import Any
@@ -32,17 +33,13 @@ class FileCreateTool(BaseTool):
         if filepath.exists():
             return {
                 "success": False,
-                "error": f"File already exists: {filename}. Use file_replace to overwrite."
+                "error": f"File already exists: {filename}. Use file_replace to overwrite.",
             }
 
         filepath.write_text(content, encoding="utf-8")
         logger.info(f"Created file: {filepath}")
 
-        return {
-            "success": True,
-            "result": f"Created file: {filename}",
-            "path": str(filepath)
-        }
+        return {"success": True, "result": f"Created file: {filename}", "path": str(filepath)}
 
     def get_parameters_schema(self) -> dict[str, Any]:
         return {
@@ -50,14 +47,11 @@ class FileCreateTool(BaseTool):
             "properties": {
                 "filename": {
                     "type": "string",
-                    "description": "Relative path to file within output directory (e.g., 'plan.md', 'data/test.jsonl')"
+                    "description": "Relative path to file within output directory (e.g., 'plan.md', 'data/test.jsonl')",
                 },
-                "content": {
-                    "type": "string",
-                    "description": "Content to write to the file"
-                }
+                "content": {"type": "string", "description": "Content to write to the file"},
             },
-            "required": ["filename", "content"]
+            "required": ["filename", "content"],
         }
 
 
@@ -72,10 +66,7 @@ class FileReadTool(BaseTool):
 
     @traced_tool(name="file_read")
     def execute(
-        self,
-        filename: str,
-        head: int | None = None,
-        tail: int | None = None
+        self, filename: str, head: int | None = None, tail: int | None = None
     ) -> dict[str, Any]:
         """Read file content with optional head/tail. Instrumented by @traced_tool."""
         filepath = self.output_dir / filename
@@ -96,7 +87,7 @@ class FileReadTool(BaseTool):
             "success": True,
             "result": "\n".join(lines),
             "total_lines": total_lines,
-            "returned_lines": len(lines)
+            "returned_lines": len(lines),
         }
 
     def get_parameters_schema(self) -> dict[str, Any]:
@@ -105,18 +96,12 @@ class FileReadTool(BaseTool):
             "properties": {
                 "filename": {
                     "type": "string",
-                    "description": "Relative path to file within output directory"
+                    "description": "Relative path to file within output directory",
                 },
-                "head": {
-                    "type": "integer",
-                    "description": "Return only first N lines"
-                },
-                "tail": {
-                    "type": "integer",
-                    "description": "Return only last N lines"
-                }
+                "head": {"type": "integer", "description": "Return only first N lines"},
+                "tail": {"type": "integer", "description": "Return only last N lines"},
             },
-            "required": ["filename"]
+            "required": ["filename"],
         }
 
 
@@ -137,7 +122,7 @@ class FileAppendTool(BaseTool):
         if not filepath.exists():
             return {
                 "success": False,
-                "error": f"File not found: {filename}. Use file_create first."
+                "error": f"File not found: {filename}. Use file_create first.",
             }
 
         with filepath.open("a", encoding="utf-8") as f:
@@ -145,10 +130,7 @@ class FileAppendTool(BaseTool):
 
         logger.info(f"Appended to file: {filepath}")
 
-        return {
-            "success": True,
-            "result": f"Appended content to: {filename}"
-        }
+        return {"success": True, "result": f"Appended content to: {filename}"}
 
     def get_parameters_schema(self) -> dict[str, Any]:
         return {
@@ -156,14 +138,11 @@ class FileAppendTool(BaseTool):
             "properties": {
                 "filename": {
                     "type": "string",
-                    "description": "Relative path to file within output directory"
+                    "description": "Relative path to file within output directory",
                 },
-                "content": {
-                    "type": "string",
-                    "description": "Content to append to the file"
-                }
+                "content": {"type": "string", "description": "Content to append to the file"},
             },
-            "required": ["filename", "content"]
+            "required": ["filename", "content"],
         }
 
 
@@ -188,7 +167,7 @@ class FileReplaceTool(BaseTool):
         return {
             "success": True,
             "result": f"Replaced content of: {filename}",
-            "path": str(filepath)
+            "path": str(filepath),
         }
 
     def get_parameters_schema(self) -> dict[str, Any]:
@@ -197,12 +176,9 @@ class FileReplaceTool(BaseTool):
             "properties": {
                 "filename": {
                     "type": "string",
-                    "description": "Relative path to file within output directory"
+                    "description": "Relative path to file within output directory",
                 },
-                "content": {
-                    "type": "string",
-                    "description": "New content for the file"
-                }
+                "content": {"type": "string", "description": "New content for the file"},
             },
-            "required": ["filename", "content"]
+            "required": ["filename", "content"],
         }

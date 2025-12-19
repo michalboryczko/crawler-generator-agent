@@ -8,6 +8,7 @@ Tools now support:
 - Full AgentResult data in responses
 - Optional orchestrator memory for cross-tool data sharing
 """
+
 from typing import TYPE_CHECKING, Any, Protocol
 
 from ..observability.decorators import traced_tool
@@ -117,16 +118,13 @@ def create_agent_runner_tool(
             return {
                 "type": "object",
                 "properties": {
-                    "task": {
-                        "type": "string",
-                        "description": _task_description
-                    },
+                    "task": {"type": "string", "description": _task_description},
                     "context": {
                         "type": "object",
-                        "description": "Optional context data to pass to the agent"
-                    }
+                        "description": "Optional context data to pass to the agent",
+                    },
                 },
-                "required": ["task"]
+                "required": ["task"],
             }
 
     return AgentRunnerTool()
@@ -140,7 +138,7 @@ def create_discovery_agent_tool(discovery_agent: RunnableAgent) -> BaseTool:
         agent=discovery_agent,
         description="""Run the Discovery Agent to navigate to a URL and extract article links.
     The agent will return results in its AgentResult.""",
-        task_description="Task description for the discovery agent"
+        task_description="Task description for the discovery agent",
     )
 
 
@@ -151,7 +149,7 @@ def create_selector_agent_tool(selector_agent: RunnableAgent) -> BaseTool:
         agent=selector_agent,
         description="""Run the Selector Agent to find and verify CSS selectors.
     The agent receives context data and returns final selectors.""",
-        task_description="Task description for the selector agent"
+        task_description="Task description for the selector agent",
     )
 
 
@@ -162,7 +160,7 @@ def create_accessibility_agent_tool(accessibility_agent: RunnableAgent) -> BaseT
         agent=accessibility_agent,
         description="""Run the Accessibility Agent to check if the site works without JavaScript.
     The agent tests HTTP requests and returns accessibility results.""",
-        task_description="Task description for the accessibility agent"
+        task_description="Task description for the accessibility agent",
     )
 
 
@@ -173,7 +171,7 @@ def create_data_prep_agent_tool(data_prep_agent: RunnableAgent) -> BaseTool:
         agent=data_prep_agent,
         description="""Run the Data Prep Agent to create test datasets.
     The agent fetches sample pages and returns test data.""",
-        task_description="Task description for the data prep agent"
+        task_description="Task description for the data prep agent",
     )
 
 
@@ -215,14 +213,14 @@ class RunDiscoveryAgentTool(BaseTool):
             "properties": {
                 "task": {
                     "type": "string",
-                    "description": "Task description for the discovery agent"
+                    "description": "Task description for the discovery agent",
                 },
                 "context": {
                     "type": "object",
-                    "description": "Optional context data to pass to the agent"
-                }
+                    "description": "Optional context data to pass to the agent",
+                },
             },
-            "required": ["task"]
+            "required": ["task"],
         }
 
 
@@ -262,14 +260,14 @@ class RunSelectorAgentTool(BaseTool):
             "properties": {
                 "task": {
                     "type": "string",
-                    "description": "Task description for the selector agent"
+                    "description": "Task description for the selector agent",
                 },
                 "context": {
                     "type": "object",
-                    "description": "Optional context data to pass to the agent"
-                }
+                    "description": "Optional context data to pass to the agent",
+                },
             },
-            "required": ["task"]
+            "required": ["task"],
         }
 
 
@@ -309,14 +307,14 @@ class RunAccessibilityAgentTool(BaseTool):
             "properties": {
                 "task": {
                     "type": "string",
-                    "description": "Task description for the accessibility agent"
+                    "description": "Task description for the accessibility agent",
                 },
                 "context": {
                     "type": "object",
-                    "description": "Optional context data to pass to the agent"
-                }
+                    "description": "Optional context data to pass to the agent",
+                },
             },
-            "required": ["task"]
+            "required": ["task"],
         }
 
 
@@ -356,12 +354,12 @@ class RunDataPrepAgentTool(BaseTool):
             "properties": {
                 "task": {
                     "type": "string",
-                    "description": "Task description for the data prep agent"
+                    "description": "Task description for the data prep agent",
                 },
                 "context": {
                     "type": "object",
-                    "description": "Optional context data to pass to the agent"
-                }
+                    "description": "Optional context data to pass to the agent",
+                },
             },
-            "required": ["task"]
+            "required": ["task"],
         }

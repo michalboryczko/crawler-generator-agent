@@ -151,26 +151,24 @@ The crawler needs fallbacks for pages with different structures."""
 def register_dynamic_templates(provider: "PromptProvider") -> None:
     """Register all dynamic templates with the provider."""
     provider.register_template(
-        "article_extraction",
-        PromptTemplate(ARTICLE_EXTRACTION_TEMPLATE, name="article_extraction")
+        "article_extraction", PromptTemplate(ARTICLE_EXTRACTION_TEMPLATE, name="article_extraction")
     )
 
     provider.register_template(
         "listing_url_extraction",
-        PromptTemplate(LISTING_URL_EXTRACTION_TEMPLATE, name="listing_url_extraction")
+        PromptTemplate(LISTING_URL_EXTRACTION_TEMPLATE, name="listing_url_extraction"),
     )
 
     provider.register_template(
-        "pagination_pattern",
-        PromptTemplate(PAGINATION_PATTERN_TEMPLATE, name="pagination_pattern")
+        "pagination_pattern", PromptTemplate(PAGINATION_PATTERN_TEMPLATE, name="pagination_pattern")
     )
 
     provider.register_template(
         "article_url_pattern",
-        PromptTemplate(ARTICLE_URL_PATTERN_TEMPLATE, name="article_url_pattern")
+        PromptTemplate(ARTICLE_URL_PATTERN_TEMPLATE, name="article_url_pattern"),
     )
 
     provider.register_template(
         "selector_aggregation",
-        PromptTemplate(SELECTOR_AGGREGATION_TEMPLATE, name="selector_aggregation")
+        PromptTemplate(SELECTOR_AGGREGATION_TEMPLATE, name="selector_aggregation"),
     )

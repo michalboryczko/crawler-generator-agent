@@ -62,6 +62,7 @@ class LogHandler(ABC):
 @dataclass
 class OTelConfig:
     """Configuration for OTel gRPC handler."""
+
     endpoint: str = "localhost:4317"
     insecure: bool = True
     service_name: str = "crawler-agent"
@@ -104,13 +105,10 @@ class OTelGrpcHandler(LogHandler):
 
             # Set up log exporter only - trace exporter is in tracer.py
             log_exporter = OTLPLogExporter(
-                endpoint=self.config.endpoint,
-                insecure=self.config.insecure
+                endpoint=self.config.endpoint, insecure=self.config.insecure
             )
             self._logger_provider = LoggerProvider(resource=resource)
-            self._logger_provider.add_log_record_processor(
-                BatchLogRecordProcessor(log_exporter)
-            )
+            self._logger_provider.add_log_record_processor(BatchLogRecordProcessor(log_exporter))
             set_logger_provider(self._logger_provider)
 
             self._initialized = True
@@ -186,9 +184,7 @@ class OTelGrpcHandler(LogHandler):
                         attributes[attr_key] = str(value)
 
             # Emit using Logger.emit() with keyword arguments
-            self._logger_provider.get_logger(
-                self.config.service_name
-            ).emit(
+            self._logger_provider.get_logger(self.config.service_name).emit(
                 timestamp=int(record.timestamp.timestamp() * 1e9),
                 observed_timestamp=time.time_ns(),
                 severity_number=severity_number,

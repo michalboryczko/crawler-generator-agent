@@ -3,6 +3,7 @@
 This module uses the new observability decorators for automatic logging.
 The @traced_tool decorator handles all tool instrumentation.
 """
+
 import logging
 from typing import TYPE_CHECKING, Any
 from urllib.parse import urlparse
@@ -55,15 +56,27 @@ class GeneratePlanTool(BaseTool):
         plan = self._build_header(site_name, target_url)
         plan += self._build_scope_section(target_url, pagination_max_pages, detail_selectors)
         plan += self._build_start_urls_section(target_url, pagination_type, pagination_max_pages)
-        plan += self._build_listing_section(article_selector, listing_container_selector, listing_selectors, article_confidence)
-        plan += self._build_pagination_section(pagination_type, pagination_selector, pagination_max_pages)
+        plan += self._build_listing_section(
+            article_selector, listing_container_selector, listing_selectors, article_confidence
+        )
+        plan += self._build_pagination_section(
+            pagination_type, pagination_selector, pagination_max_pages
+        )
         plan += self._build_detail_section(detail_selectors)
         plan += self._build_data_model_section(target_url, detail_selectors)
         plan += self._build_config_section(
-            target_url, article_selector, listing_container_selector, pagination_selector,
-            pagination_type, pagination_max_pages, requires_browser, detail_selectors
+            target_url,
+            article_selector,
+            listing_container_selector,
+            pagination_selector,
+            pagination_type,
+            pagination_max_pages,
+            requires_browser,
+            detail_selectors,
         )
-        plan += self._build_accessibility_section(requires_browser, listing_accessible, articles_accessible)
+        plan += self._build_accessibility_section(
+            requires_browser, listing_accessible, articles_accessible
+        )
         plan += self._build_sample_articles_section(extracted_articles)
         plan += self._build_notes_section(requires_browser)
 
@@ -86,9 +99,11 @@ This plan is based on:
 
 """
 
-    def _build_scope_section(self, target_url: str, max_pages: int | None, detail_selectors: dict) -> str:
+    def _build_scope_section(
+        self, target_url: str, max_pages: int | None, detail_selectors: dict
+    ) -> str:
         parsed = urlparse(target_url)
-        path = parsed.path.rstrip('/')
+        path = parsed.path.rstrip("/")
 
         section = """## 1. Scope & Objectives
 
@@ -108,7 +123,9 @@ This plan is based on:
         else:
             section += f"- Listing pages: `{target_url}` (pagination to be determined)\n"
 
-        section += f"- Article detail pages: `{parsed.scheme}://{parsed.netloc}{path}/<slug>`\n\n---\n\n"
+        section += (
+            f"- Article detail pages: `{parsed.scheme}://{parsed.netloc}{path}/<slug>`\n\n---\n\n"
+        )
         return section
 
     def _get_discovered_fields(self, detail_selectors: dict) -> list[str]:
@@ -133,7 +150,9 @@ This plan is based on:
 
         return fields if fields else ["title", "publication_date", "authors", "category", "content"]
 
-    def _build_start_urls_section(self, target_url: str, pagination_type: str, max_pages: int | None) -> str:
+    def _build_start_urls_section(
+        self, target_url: str, pagination_type: str, max_pages: int | None
+    ) -> str:
         section = f"""## 2. Start URLs
 
 - Primary start URL:
@@ -150,7 +169,13 @@ This plan is based on:
         section += "---\n\n"
         return section
 
-    def _build_listing_section(self, article_selector: str, listing_container_selector: str, listing_selectors: dict, confidence: float) -> str:
+    def _build_listing_section(
+        self,
+        article_selector: str,
+        listing_container_selector: str,
+        listing_selectors: dict,
+        confidence: float,
+    ) -> str:
         section = f"""## 3. Listing Pages
 
 ### 3.1. Main content container
@@ -189,7 +214,11 @@ picking up "featured" or "recent" articles from headers/sidebars.
                     # Handle selector chains (list) or simple strings
                     if isinstance(selector_chain, list) and len(selector_chain) > 0:
                         primary = selector_chain[0]
-                        selector = primary.get("selector", str(primary)) if isinstance(primary, dict) else str(primary)
+                        selector = (
+                            primary.get("selector", str(primary))
+                            if isinstance(primary, dict)
+                            else str(primary)
+                        )
                         section += f"- **{field}:**\n  ```css\n  {selector}\n  ```\n"
                         if len(selector_chain) > 1:
                             section += f"  (+ {len(selector_chain) - 1} fallback selectors)\n"
@@ -200,7 +229,9 @@ picking up "featured" or "recent" articles from headers/sidebars.
         section += "---\n\n"
         return section
 
-    def _build_pagination_section(self, pagination_type: str, pagination_selector: str, max_pages: int | None) -> str:
+    def _build_pagination_section(
+        self, pagination_type: str, pagination_selector: str, max_pages: int | None
+    ) -> str:
         section = f"""## 4. Pagination
 
 ### 4.1. Pagination type
@@ -245,7 +276,7 @@ Recommended approach:
    - Extract article links using the article selector.
    - Extract pagination links.
 3. Either:
-   - **Deterministic loop:** Iterate `page=1..{max_pages if max_pages else 'N'}`, or
+   - **Deterministic loop:** Iterate `page=1..{max_pages if max_pages else "N"}`, or
    - **Link-following:** Follow the "next" link until it disappears or repeats.
 4. De-duplicate article URLs globally.
 
@@ -289,11 +320,41 @@ Each field has a **selector chain** - an ordered list of selectors to try until 
 
         # Default selectors if none provided
         default_selectors = {
-            "title": [{"selector": "h1.article-title, .article-view h1", "priority": 1, "success_rate": 1.0}],
-            "date": [{"selector": ".article-date, .publication-date, time[datetime]", "priority": 1, "success_rate": 1.0}],
-            "authors": [{"selector": ".article-author a, .author-name, [rel='author']", "priority": 1, "success_rate": 1.0}],
-            "category": [{"selector": ".article-category, .article-type a, .category", "priority": 1, "success_rate": 1.0}],
-            "content": [{"selector": ".article-content, .article-body, .entry-content", "priority": 1, "success_rate": 1.0}],
+            "title": [
+                {
+                    "selector": "h1.article-title, .article-view h1",
+                    "priority": 1,
+                    "success_rate": 1.0,
+                }
+            ],
+            "date": [
+                {
+                    "selector": ".article-date, .publication-date, time[datetime]",
+                    "priority": 1,
+                    "success_rate": 1.0,
+                }
+            ],
+            "authors": [
+                {
+                    "selector": ".article-author a, .author-name, [rel='author']",
+                    "priority": 1,
+                    "success_rate": 1.0,
+                }
+            ],
+            "category": [
+                {
+                    "selector": ".article-category, .article-type a, .category",
+                    "priority": 1,
+                    "success_rate": 1.0,
+                }
+            ],
+            "content": [
+                {
+                    "selector": ".article-content, .article-body, .entry-content",
+                    "priority": 1,
+                    "success_rate": 1.0,
+                }
+            ],
         }
 
         selectors_to_use = detail_selectors if detail_selectors else default_selectors
@@ -394,11 +455,15 @@ Each field has a **selector chain** - an ordered list of selectors to try until 
         # Build notes based on discovered fields
         notes = []
         if "date" in discovered_fields or "publication_date" in discovered_fields:
-            notes.append("- `date`/`publication_date` should come from the detail page, not the listing.")
+            notes.append(
+                "- `date`/`publication_date` should come from the detail page, not the listing."
+            )
         if "language" in discovered_fields:
             notes.append("- `language` extracted from `html[lang]` attribute.")
         if "files" in discovered_fields or "attachments" in discovered_fields:
-            notes.append("- `files`/`attachments` contain downloadable documents found on the page.")
+            notes.append(
+                "- `files`/`attachments` contain downloadable documents found on the page."
+            )
         if "breadcrumbs" in discovered_fields:
             notes.append("- `breadcrumbs` provide navigation path context.")
         notes.append("- `source_listing_page` is optional but useful for debugging.")
@@ -423,9 +488,15 @@ Notes:
 """
 
     def _build_config_section(
-        self, target_url: str, article_selector: str, listing_container_selector: str,
-        pagination_selector: str, pagination_type: str, max_pages: int | None,
-        requires_browser: bool, detail_selectors: dict
+        self,
+        target_url: str,
+        article_selector: str,
+        listing_container_selector: str,
+        pagination_selector: str,
+        pagination_type: str,
+        max_pages: int | None,
+        requires_browser: bool,
+        detail_selectors: dict,
     ) -> str:
         # Build detail selectors with chain support
         detail_config = self._build_detail_config(detail_selectors)
@@ -472,11 +543,11 @@ config = {{
     def _build_detail_config(self, detail_selectors: dict) -> str:
         """Build detail config section with selector chains."""
         if not detail_selectors:
-            return '''        "title": ["h1.article-title", ".article-view h1"],
+            return """        "title": ["h1.article-title", ".article-view h1"],
         "date": [".article-date", ".publication-date", "time[datetime]"],
         "authors": [".article-author a", ".author-name"],
         "category": [".article-category", ".article-type a"],
-        "content": [".article-content", ".article-body"]'''
+        "content": [".article-content", ".article-body"]"""
 
         lines = []
         for field, info in detail_selectors.items():
@@ -507,9 +578,11 @@ config = {{
             elif isinstance(info, str) and info:
                 lines.append(f'        "{field}": ["{info}"]')
 
-        return ",\n".join(lines) if lines else '        # No selectors discovered'
+        return ",\n".join(lines) if lines else "        # No selectors discovered"
 
-    def _build_accessibility_section(self, requires_browser: bool, listing_ok: bool, articles_ok: bool) -> str:
+    def _build_accessibility_section(
+        self, requires_browser: bool, listing_ok: bool, articles_ok: bool
+    ) -> str:
         section = """## 8. Accessibility & Requirements
 
 """
@@ -780,7 +853,9 @@ for test in articles:
             # Check if selector chain has any valid selectors
             has_selectors = False
             if isinstance(value, list):
-                has_selectors = any(item.get("selector") for item in value if isinstance(item, dict))
+                has_selectors = any(
+                    item.get("selector") for item in value if isinstance(item, dict)
+                )
             elif isinstance(value, dict):
                 has_selectors = bool(value.get("primary") or value.get("selector"))
             elif isinstance(value, str):
@@ -790,8 +865,12 @@ for test in articles:
                 example = field_examples.get(field.lower(), f'"{field} value"')
                 lines.append(f'        "{field}": {example}')
 
-        return ",\n".join(lines) if lines else '''        "title": "extracted title",
+        return (
+            ",\n".join(lines)
+            if lines
+            else '''        "title": "extracted title",
         "content": "article content"'''
+        )
 
     def get_parameters_schema(self) -> dict[str, Any]:
         return {"type": "object", "properties": {}}

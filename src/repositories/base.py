@@ -65,9 +65,7 @@ class AbstractMemoryRepository(ABC):
         pass
 
     @abstractmethod
-    def find_by_pattern(
-        self, session_id: str, agent_name: str, pattern: str
-    ) -> list[str]:
+    def find_by_pattern(self, session_id: str, agent_name: str, pattern: str) -> list[str]:
         """Find keys matching a glob pattern.
 
         Args:
@@ -107,9 +105,7 @@ class AbstractMemoryRepository(ABC):
         pass
 
     @abstractmethod
-    def bulk_get(
-        self, session_id: str, agent_name: str, keys: list[str]
-    ) -> dict[str, Any]:
+    def bulk_get(self, session_id: str, agent_name: str, keys: list[str]) -> dict[str, Any]:
         """Get multiple values at once.
 
         Args:

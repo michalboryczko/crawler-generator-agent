@@ -3,6 +3,7 @@
 This module defines the default model registry with configurations for
 various LLM providers. All providers use OpenAI-compatible API endpoints.
 """
+
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
@@ -136,6 +137,7 @@ def get_default_registry() -> "ModelRegistry":
         config = registry.get("gpt-4o")
     """
     from .model_registry import ModelRegistry
+
     return ModelRegistry.from_config(DEFAULT_MODELS)
 
 

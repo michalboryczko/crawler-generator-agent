@@ -83,9 +83,7 @@ class DescribeOutputContractTool(BaseTool):
             "required_fields": schema.get("required", []),
         }
 
-    def _generate_detailed_fields_markdown(
-        self, schema: dict[str, Any], prefix: str = ""
-    ) -> str:
+    def _generate_detailed_fields_markdown(self, schema: dict[str, Any], prefix: str = "") -> str:
         """Generate detailed markdown with field path, example, type, status, description.
 
         Args:
@@ -109,33 +107,23 @@ class DescribeOutputContractTool(BaseTool):
             desc = prop.get("description", "No description")
             example = self._get_example_value(prop)
 
-            lines.append(
-                f"- **{full_path}** - `{example}` - {field_type} is {req_status} - {desc}"
-            )
+            lines.append(f"- **{full_path}** - `{example}` - {field_type} is {req_status} - {desc}")
 
             # Handle nested objects
             if prop.get("type") == "object" and "properties" in prop:
                 nested_md = self._generate_detailed_fields_markdown(prop, full_path)
                 # Remove header from nested (already has one at top)
                 nested_lines = nested_md.split("\n")
-                lines.extend(
-                    [f"  {line}" for line in nested_lines if not line.startswith("###")]
-                )
+                lines.extend([f"  {line}" for line in nested_lines if not line.startswith("###")])
 
             # Handle arrays of objects
             if prop.get("type") == "array":
                 items = prop.get("items", {})
                 if items.get("type") == "object" and "properties" in items:
-                    nested_md = self._generate_detailed_fields_markdown(
-                        items, f"{full_path}[]"
-                    )
+                    nested_md = self._generate_detailed_fields_markdown(items, f"{full_path}[]")
                     nested_lines = nested_md.split("\n")
                     lines.extend(
-                        [
-                            f"  {line}"
-                            for line in nested_lines
-                            if not line.startswith("###")
-                        ]
+                        [f"  {line}" for line in nested_lines if not line.startswith("###")]
                     )
 
         return "\n".join(lines)

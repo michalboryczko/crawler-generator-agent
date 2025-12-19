@@ -1,4 +1,5 @@
 """Base tool abstraction for all agent tools."""
+
 import logging
 from abc import ABC, abstractmethod
 from typing import Any
@@ -44,8 +45,8 @@ class BaseTool(ABC):
             "function": {
                 "name": self.name,
                 "description": self.description,
-                "parameters": self.get_parameters_schema()
-            }
+                "parameters": self.get_parameters_schema(),
+            },
         }
 
     @abstractmethod

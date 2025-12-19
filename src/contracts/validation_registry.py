@@ -166,9 +166,7 @@ class ValidationRegistry:
         """
         with self._context_lock:
             expired_keys = [
-                key
-                for key, context in self._contexts.items()
-                if context.is_expired(self._ttl)
+                key for key, context in self._contexts.items() if context.is_expired(self._ttl)
             ]
             for key in expired_keys:
                 del self._contexts[key]

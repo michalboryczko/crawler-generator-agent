@@ -43,11 +43,11 @@ class ConsoleOutput(LogOutput):
     """
 
     LEVEL_COLORS: ClassVar[dict[str, str]] = {
-        "DEBUG": "\033[36m",    # Cyan
-        "INFO": "\033[32m",     # Green
+        "DEBUG": "\033[36m",  # Cyan
+        "INFO": "\033[32m",  # Green
         "WARNING": "\033[33m",  # Yellow
-        "ERROR": "\033[31m",    # Red
-        "CRITICAL": "\033[35m", # Magenta
+        "ERROR": "\033[31m",  # Red
+        "CRITICAL": "\033[35m",  # Magenta
     }
     RESET: ClassVar[str] = "\033[0m"
     DIM: ClassVar[str] = "\033[2m"
@@ -61,7 +61,7 @@ class ConsoleOutput(LogOutput):
             color: Whether to use ANSI colors.
         """
         self.stream = stream or sys.stdout
-        self.color = color and hasattr(self.stream, 'isatty') and self.stream.isatty()
+        self.color = color and hasattr(self.stream, "isatty") and self.stream.isatty()
         self._lock = threading.Lock()
 
     def write_log(self, record: LogRecord) -> None:
@@ -95,7 +95,7 @@ class ConsoleOutput(LogOutput):
 
         # Add key metrics inline
         if record.metrics.get("duration_ms"):
-            duration = record.metrics['duration_ms']
+            duration = record.metrics["duration_ms"]
             line += f" {dim}({duration:.0f}ms){reset}"
 
         # Add error indicator

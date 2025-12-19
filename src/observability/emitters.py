@@ -27,7 +27,7 @@ def emit_log(
     ctx: ObservabilityContext,
     data: dict[str, Any],
     metrics: dict[str, Any] | None = None,
-    tags: list[str] | None = None
+    tags: list[str] | None = None,
 ) -> None:
     """Emit a log record UNCONDITIONALLY.
 
@@ -54,9 +54,9 @@ def emit_log(
 
     # Get component name from data or context
     component_name = (
-        data.get(f"{component_type}_name") or
-        data.get("component_name") or
-        (ctx.component_stack[-1] if ctx.component_stack else "unknown")
+        data.get(f"{component_type}_name")
+        or data.get("component_name")
+        or (ctx.component_stack[-1] if ctx.component_stack else "unknown")
     )
 
     # Serialize data for logging (no redaction - log everything as-is)
@@ -65,19 +65,19 @@ def emit_log(
     # Create LogRecord - trace_id/span_id come from OTel span via context properties
     record = LogRecord(
         timestamp=datetime.now(UTC),
-        trace_id=ctx.trace_id,           # From OTel span context
-        span_id=ctx.span_id,             # From OTel span context
+        trace_id=ctx.trace_id,  # From OTel span context
+        span_id=ctx.span_id,  # From OTel span context
         parent_span_id=ctx.parent_span_id,  # From OTel span context
-        session_id=ctx.session_id,       # Business metadata (we manage)
-        request_id=ctx.request_id,       # Business metadata (we manage)
+        session_id=ctx.session_id,  # Business metadata (we manage)
+        request_id=ctx.request_id,  # Business metadata (we manage)
         level=level,
         event=event,
         component_type=component_type,
         component_name=component_name,
-        triggered_by=ctx.triggered_by,   # Derived from component_stack
+        triggered_by=ctx.triggered_by,  # Derived from component_stack
         data=data,
         metrics=metrics or {},
-        tags=tags or []
+        tags=tags or [],
     )
 
     # Send to handler (OTel backend → Elasticsearch)
@@ -98,7 +98,7 @@ def emit_debug(
     ctx: ObservabilityContext,
     data: dict[str, Any],
     metrics: dict[str, Any] | None = None,
-    tags: list[str] | None = None
+    tags: list[str] | None = None,
 ) -> None:
     """Convenience function to emit DEBUG level log."""
     emit_log("DEBUG", event, ctx, data, metrics, tags)
@@ -109,7 +109,7 @@ def emit_info(
     ctx: ObservabilityContext,
     data: dict[str, Any],
     metrics: dict[str, Any] | None = None,
-    tags: list[str] | None = None
+    tags: list[str] | None = None,
 ) -> None:
     """Convenience function to emit INFO level log."""
     emit_log("INFO", event, ctx, data, metrics, tags)
@@ -120,7 +120,7 @@ def emit_warning(
     ctx: ObservabilityContext,
     data: dict[str, Any],
     metrics: dict[str, Any] | None = None,
-    tags: list[str] | None = None
+    tags: list[str] | None = None,
 ) -> None:
     """Convenience function to emit WARNING level log."""
     emit_log("WARNING", event, ctx, data, metrics, tags)
@@ -131,17 +131,14 @@ def emit_error(
     ctx: ObservabilityContext,
     data: dict[str, Any],
     metrics: dict[str, Any] | None = None,
-    tags: list[str] | None = None
+    tags: list[str] | None = None,
 ) -> None:
     """Convenience function to emit ERROR level log."""
     emit_log("ERROR", event, ctx, data, metrics, tags)
 
 
 def emit_component_start(
-    component_type: str,
-    component_name: str,
-    ctx: ObservabilityContext,
-    input_data: dict[str, Any]
+    component_type: str, component_name: str, ctx: ObservabilityContext, input_data: dict[str, Any]
 ) -> None:
     """Emit component start log.
 
@@ -159,11 +156,7 @@ def emit_component_start(
         level="DEBUG",
         event=f"{component_type}.input",
         ctx=ctx,
-        data={
-            name_key: component_name,
-            F.TRIGGERED_BY: ctx.triggered_by,
-            D.INPUT: input_data
-        }
+        data={name_key: component_name, F.TRIGGERED_BY: ctx.triggered_by, D.INPUT: input_data},
     )
 
 
@@ -173,7 +166,7 @@ def emit_component_end(
     ctx: ObservabilityContext,
     output_data: dict[str, Any],
     duration_ms: float,
-    metrics: dict[str, Any] | None = None
+    metrics: dict[str, Any] | None = None,
 ) -> None:
     """Emit component completion log.
 
@@ -197,12 +190,8 @@ def emit_component_end(
         level="DEBUG",
         event=f"{component_type}.output",
         ctx=ctx,
-        data={
-            name_key: component_name,
-            D.OUTPUT: output_data,
-            D.DURATION_MS: duration_ms
-        },
-        metrics=all_metrics
+        data={name_key: component_name, D.OUTPUT: output_data, D.DURATION_MS: duration_ms},
+        metrics=all_metrics,
     )
 
 
@@ -212,7 +201,7 @@ def emit_component_error(
     ctx: ObservabilityContext,
     exception: Exception,
     input_data: dict[str, Any],
-    duration_ms: float
+    duration_ms: float,
 ) -> None:
     """Emit component error log.
 
@@ -237,7 +226,7 @@ def emit_component_error(
         D.ERROR_MESSAGE: str(exception),
         D.STACK_TRACE: traceback.format_exc(),
         D.INPUT: input_data,
-        D.DURATION_MS: duration_ms
+        D.DURATION_MS: duration_ms,
     }
 
     emit_log(
@@ -245,5 +234,5 @@ def emit_component_error(
         event=f"{component_type}.error",
         ctx=ctx,
         data=error_data,
-        metrics={M.DURATION_MS: duration_ms}
+        metrics={M.DURATION_MS: duration_ms},
     )

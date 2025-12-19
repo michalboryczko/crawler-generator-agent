@@ -5,6 +5,7 @@ The @traced_tool decorator handles all tool instrumentation.
 
 Prompts are now managed through the centralized PromptProvider.
 """
+
 import json
 import re
 import time
@@ -41,17 +42,15 @@ class FetchAndStoreHTMLTool(BaseTool):
         html = self.browser_session.get_html()
         cleaned_html = clean_html_for_llm(html)
 
-        self._service.write(memory_key, {
-            "url": url,
-            "html": cleaned_html,
-            "html_length": len(cleaned_html)
-        })
+        self._service.write(
+            memory_key, {"url": url, "html": cleaned_html, "html_length": len(cleaned_html)}
+        )
 
         return {
             "success": True,
             "result": f"Stored HTML ({len(cleaned_html)} bytes) at key: {memory_key}",
             "url": url,
-            "memory_key": memory_key
+            "memory_key": memory_key,
         }
 
     def get_parameters_schema(self) -> dict[str, Any]:
@@ -60,9 +59,9 @@ class FetchAndStoreHTMLTool(BaseTool):
             "properties": {
                 "url": {"type": "string", "description": "URL to fetch"},
                 "memory_key": {"type": "string", "description": "Memory key to store the HTML"},
-                "wait_seconds": {"type": "integer", "description": "Seconds to wait (default: 3)"}
+                "wait_seconds": {"type": "integer", "description": "Seconds to wait (default: 3)"},
             },
-            "required": ["url", "memory_key"]
+            "required": ["url", "memory_key"],
         }
 
 
@@ -80,10 +79,7 @@ class BatchFetchURLsTool(BaseTool):
 
     @traced_tool(name="batch_fetch_urls")
     def execute(
-        self,
-        urls: list[str],
-        key_prefix: str = "fetched",
-        wait_seconds: int = 3
+        self, urls: list[str], key_prefix: str = "fetched", wait_seconds: int = 3
     ) -> dict[str, Any]:
         """Fetch multiple URLs. Instrumented by @traced_tool."""
         results = []
@@ -95,19 +91,19 @@ class BatchFetchURLsTool(BaseTool):
                 html = self.browser_session.get_html()
                 cleaned_html = clean_html_for_llm(html)
 
-                memory_key = f"{key_prefix}-{i+1}"
-                self._service.write(memory_key, {
-                    "url": url,
-                    "html": cleaned_html,
-                    "html_length": len(cleaned_html)
-                })
+                memory_key = f"{key_prefix}-{i + 1}"
+                self._service.write(
+                    memory_key, {"url": url, "html": cleaned_html, "html_length": len(cleaned_html)}
+                )
 
-                results.append({
-                    "url": url,
-                    "memory_key": memory_key,
-                    "success": True,
-                    "html_length": len(cleaned_html)
-                })
+                results.append(
+                    {
+                        "url": url,
+                        "memory_key": memory_key,
+                        "success": True,
+                        "html_length": len(cleaned_html),
+                    }
+                )
 
             except Exception as e:
                 results.append({"url": url, "success": False, "error": str(e)})
@@ -119,18 +115,22 @@ class BatchFetchURLsTool(BaseTool):
             "result": f"Fetched {successful}/{len(urls)} URLs",
             "fetched_count": successful,
             "failed_count": len(urls) - successful,
-            "memory_keys": [r["memory_key"] for r in results if r.get("success")]
+            "memory_keys": [r["memory_key"] for r in results if r.get("success")],
         }
 
     def get_parameters_schema(self) -> dict[str, Any]:
         return {
             "type": "object",
             "properties": {
-                "urls": {"type": "array", "items": {"type": "string"}, "description": "URLs to fetch"},
+                "urls": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                    "description": "URLs to fetch",
+                },
                 "key_prefix": {"type": "string", "description": "Prefix for memory keys"},
-                "wait_seconds": {"type": "integer", "description": "Wait seconds per page"}
+                "wait_seconds": {"type": "integer", "description": "Wait seconds per page"},
             },
-            "required": ["urls"]
+            "required": ["urls"],
         }
 
 
@@ -147,11 +147,7 @@ class RunExtractionAgentTool(BaseTool):
         self._service = memory_service
 
     @traced_tool(name="run_extraction_agent")
-    def execute(
-        self,
-        html_memory_key: str,
-        output_memory_key: str
-    ) -> dict[str, Any]:
+    def execute(self, html_memory_key: str, output_memory_key: str) -> dict[str, Any]:
         """Run extraction agent on stored HTML. Instrumented by @traced_tool."""
         stored = self._service.read(html_memory_key)
         if not stored:
@@ -172,7 +168,7 @@ class RunExtractionAgentTool(BaseTool):
 
         messages = [
             {"role": "system", "content": extraction_prompt},
-            {"role": "user", "content": f"URL: {url}\n\nHTML:\n{html}"}
+            {"role": "user", "content": f"URL: {url}\n\nHTML:\n{html}"},
         ]
 
         response = self.llm.chat(messages)
@@ -180,7 +176,7 @@ class RunExtractionAgentTool(BaseTool):
 
         # Parse JSON
         try:
-            json_match = re.search(r'\{[\s\S]*\}', extracted_text)
+            json_match = re.search(r"\{[\s\S]*\}", extracted_text)
             if json_match:
                 extracted = json.loads(json_match.group())
             else:
@@ -193,7 +189,7 @@ class RunExtractionAgentTool(BaseTool):
             "type": "article",
             "url": url,
             "given": stored.get("html", ""),
-            "expected": extracted
+            "expected": extracted,
         }
 
         self._service.write(output_memory_key, test_entry)
@@ -201,7 +197,7 @@ class RunExtractionAgentTool(BaseTool):
         return {
             "success": True,
             "result": f"Extracted to: {output_memory_key}",
-            "fields": list(extracted.keys()) if isinstance(extracted, dict) else []
+            "fields": list(extracted.keys()) if isinstance(extracted, dict) else [],
         }
 
     def _build_extraction_prompt(self, detail_selectors: dict) -> str:
@@ -211,7 +207,7 @@ class RunExtractionAgentTool(BaseTool):
             "title": "article title",
             "date": "publication date or null",
             "authors": ["author1", "author2"],
-            "content": "first 500 characters of main content"
+            "content": "first 500 characters of main content",
         }
 
         if not detail_selectors:
@@ -248,7 +244,9 @@ class RunExtractionAgentTool(BaseTool):
             for field_name, selector_chain in detail_selectors.items():
                 if isinstance(selector_chain, list) and len(selector_chain) > 0:
                     primary = selector_chain[0]
-                    selector = primary.get("selector", "") if isinstance(primary, dict) else str(primary)
+                    selector = (
+                        primary.get("selector", "") if isinstance(primary, dict) else str(primary)
+                    )
                     if selector:
                         hints.append(f"- {field_name}: use selector '{selector}'")
             if hints:
@@ -257,9 +255,7 @@ class RunExtractionAgentTool(BaseTool):
         # Use PromptProvider template
         provider = get_prompt_provider()
         return provider.render_prompt(
-            "article_extraction",
-            json_example=json_example,
-            selector_hints=selector_hints
+            "article_extraction", json_example=json_example, selector_hints=selector_hints
         )
 
     def get_parameters_schema(self) -> dict[str, Any]:
@@ -267,9 +263,9 @@ class RunExtractionAgentTool(BaseTool):
             "type": "object",
             "properties": {
                 "html_memory_key": {"type": "string", "description": "Key containing stored HTML"},
-                "output_memory_key": {"type": "string", "description": "Key to store result"}
+                "output_memory_key": {"type": "string", "description": "Key to store result"},
             },
-            "required": ["html_memory_key", "output_memory_key"]
+            "required": ["html_memory_key", "output_memory_key"],
         }
 
 
@@ -287,9 +283,7 @@ class BatchExtractArticlesTool(BaseTool):
 
     @traced_tool(name="batch_extract_articles")
     def execute(
-        self,
-        html_key_prefix: str,
-        output_key_prefix: str = "test-data-article"
+        self, html_key_prefix: str, output_key_prefix: str = "test-data-article"
     ) -> dict[str, Any]:
         """Extract from all article HTML with matching prefix. Instrumented by @traced_tool."""
         html_keys = self._service.search(f"{html_key_prefix}-*")
@@ -301,13 +295,15 @@ class BatchExtractArticlesTool(BaseTool):
         results = []
 
         for i, html_key in enumerate(html_keys):
-            output_key = f"{output_key_prefix}-{i+1}"
+            output_key = f"{output_key_prefix}-{i + 1}"
             result = extractor.execute(html_key, output_key)
-            results.append({
-                "html_key": html_key,
-                "output_key": output_key,
-                "success": result.get("success", False)
-            })
+            results.append(
+                {
+                    "html_key": html_key,
+                    "output_key": output_key,
+                    "success": result.get("success", False),
+                }
+            )
 
         successful = sum(1 for r in results if r["success"])
 
@@ -315,17 +311,23 @@ class BatchExtractArticlesTool(BaseTool):
             "success": successful > 0,
             "result": f"Extracted {successful}/{len(html_keys)} articles",
             "extracted_count": successful,
-            "output_keys": [r["output_key"] for r in results if r["success"]]
+            "output_keys": [r["output_key"] for r in results if r["success"]],
         }
 
     def get_parameters_schema(self) -> dict[str, Any]:
         return {
             "type": "object",
             "properties": {
-                "html_key_prefix": {"type": "string", "description": "Prefix to find article HTML keys"},
-                "output_key_prefix": {"type": "string", "description": "Prefix for output keys (default: test-data-article)"}
+                "html_key_prefix": {
+                    "type": "string",
+                    "description": "Prefix to find article HTML keys",
+                },
+                "output_key_prefix": {
+                    "type": "string",
+                    "description": "Prefix for output keys (default: test-data-article)",
+                },
             },
-            "required": ["html_key_prefix"]
+            "required": ["html_key_prefix"],
         }
 
 
@@ -342,10 +344,7 @@ class RunListingExtractionAgentTool(BaseTool):
 
     @traced_tool(name="run_listing_extraction_agent")
     def execute(
-        self,
-        html_memory_key: str,
-        output_memory_key: str,
-        article_selector: str | None = None
+        self, html_memory_key: str, output_memory_key: str, article_selector: str | None = None
     ) -> dict[str, Any]:
         """Extract article URLs from listing page HTML. Instrumented by @traced_tool."""
         stored = self._service.read(html_memory_key)
@@ -371,7 +370,7 @@ class RunListingExtractionAgentTool(BaseTool):
             "article_urls": article_urls,
             "article_count": len(article_urls),
             "has_pagination": True,
-            "next_page_url": None
+            "next_page_url": None,
         }
 
         # Create listing test entry
@@ -379,7 +378,7 @@ class RunListingExtractionAgentTool(BaseTool):
             "type": "listing",
             "url": url,
             "given": stored.get("html", ""),
-            "expected": extracted
+            "expected": extracted,
         }
 
         self._service.write(output_memory_key, test_entry)
@@ -388,14 +387,15 @@ class RunListingExtractionAgentTool(BaseTool):
             "success": True,
             "result": f"Extracted {len(article_urls)} article URLs to: {output_memory_key}",
             "article_urls": article_urls,
-            "article_count": len(article_urls)
+            "article_count": len(article_urls),
         }
 
     def _extract_main_content(self, html: str, container_selector: str) -> str | None:
         """Extract just the main content container HTML using the selector."""
         try:
             from bs4 import BeautifulSoup
-            soup = BeautifulSoup(html, 'html.parser')
+
+            soup = BeautifulSoup(html, "html.parser")
             container = soup.select_one(container_selector)
             if container:
                 return str(container)
@@ -403,7 +403,9 @@ class RunListingExtractionAgentTool(BaseTool):
         except Exception:
             return None
 
-    def _extract_urls_with_llm(self, html: str, url: str, article_selector: str | None) -> list[str]:
+    def _extract_urls_with_llm(
+        self, html: str, url: str, article_selector: str | None
+    ) -> list[str]:
         """Extract URLs using LLM."""
         if len(html) > 150000:
             html = html[:150000] + "\n... [TRUNCATED]"
@@ -414,19 +416,19 @@ class RunListingExtractionAgentTool(BaseTool):
             "listing_url_extraction",
             page_url=url,
             base_url=url,
-            selector_hint=article_selector or ""
+            selector_hint=article_selector or "",
         )
 
         messages = [
             {"role": "system", "content": extraction_prompt},
-            {"role": "user", "content": f"Listing URL: {url}\n\nHTML:\n{html}"}
+            {"role": "user", "content": f"Listing URL: {url}\n\nHTML:\n{html}"},
         ]
 
         response = self.llm.chat(messages)
         extracted_text = response.get("content", "{}")
 
         try:
-            json_match = re.search(r'\{[\s\S]*\}', extracted_text)
+            json_match = re.search(r"\{[\s\S]*\}", extracted_text)
             if json_match:
                 extracted = json.loads(json_match.group())
                 return extracted.get("article_urls", [])
@@ -439,11 +441,20 @@ class RunListingExtractionAgentTool(BaseTool):
         return {
             "type": "object",
             "properties": {
-                "html_memory_key": {"type": "string", "description": "Key containing stored listing HTML"},
-                "output_memory_key": {"type": "string", "description": "Key to store listing test entry"},
-                "article_selector": {"type": "string", "description": "Optional CSS selector hint for articles"}
+                "html_memory_key": {
+                    "type": "string",
+                    "description": "Key containing stored listing HTML",
+                },
+                "output_memory_key": {
+                    "type": "string",
+                    "description": "Key to store listing test entry",
+                },
+                "article_selector": {
+                    "type": "string",
+                    "description": "Optional CSS selector hint for articles",
+                },
             },
-            "required": ["html_memory_key", "output_memory_key"]
+            "required": ["html_memory_key", "output_memory_key"],
         }
 
 
@@ -465,7 +476,7 @@ class BatchExtractListingsTool(BaseTool):
         self,
         html_key_prefix: str,
         output_key_prefix: str = "test-data-listing",
-        article_selector: str | None = None
+        article_selector: str | None = None,
     ) -> dict[str, Any]:
         """Extract from all listing HTML with matching prefix. Instrumented by @traced_tool."""
         html_keys = self._service.search(f"{html_key_prefix}-*")
@@ -478,15 +489,17 @@ class BatchExtractListingsTool(BaseTool):
         all_article_urls = []
 
         for i, html_key in enumerate(html_keys):
-            output_key = f"{output_key_prefix}-{i+1}"
+            output_key = f"{output_key_prefix}-{i + 1}"
             result = extractor.execute(html_key, output_key, article_selector)
             extracted_urls = result.get("article_urls", [])
-            results.append({
-                "html_key": html_key,
-                "output_key": output_key,
-                "success": result.get("success", False),
-                "article_count": len(extracted_urls)
-            })
+            results.append(
+                {
+                    "html_key": html_key,
+                    "output_key": output_key,
+                    "success": result.get("success", False),
+                    "article_count": len(extracted_urls),
+                }
+            )
             if result.get("success") and extracted_urls:
                 all_article_urls.extend(extracted_urls)
 
@@ -512,18 +525,25 @@ class BatchExtractListingsTool(BaseTool):
             "extracted_count": successful,
             "total_article_urls": total_articles,
             "output_keys": [r["output_key"] for r in results if r["success"]],
-            "article_urls_sample": unique_article_urls[:10] if unique_article_urls else []
+            "article_urls_sample": unique_article_urls[:10] if unique_article_urls else [],
         }
 
     def get_parameters_schema(self) -> dict[str, Any]:
         return {
             "type": "object",
             "properties": {
-                "html_key_prefix": {"type": "string", "description": "Prefix to find listing HTML keys"},
-                "output_key_prefix": {"type": "string", "description": "Prefix for output keys (default: test-data-listing)"},
-                "article_selector": {"type": "string", "description": "Optional CSS selector hint for articles"}
+                "html_key_prefix": {
+                    "type": "string",
+                    "description": "Prefix to find listing HTML keys",
+                },
+                "output_key_prefix": {
+                    "type": "string",
+                    "description": "Prefix for output keys (default: test-data-listing)",
+                },
+                "article_selector": {
+                    "type": "string",
+                    "description": "Optional CSS selector hint for articles",
+                },
             },
-            "required": ["html_key_prefix"]
+            "required": ["html_key_prefix"],
         }
-
-

@@ -3,6 +3,7 @@
 This module uses the new observability decorators for automatic logging.
 The @traced_agent decorator handles all agent instrumentation.
 """
+
 import logging
 from pathlib import Path
 from typing import TYPE_CHECKING
@@ -80,6 +81,7 @@ class MainAgent(BaseAgent):
             self._container = container
         else:
             from ..infrastructure import Container
+
             self._container = Container.create_inmemory()
 
         # Load agents config if not provided
@@ -89,19 +91,17 @@ class MainAgent(BaseAgent):
 
         # Create sub-agents with isolated memory services
         self.discovery_agent = DiscoveryAgent(
-            llm, browser_session,
-            memory_service=self._container.memory_service("discovery")
+            llm, browser_session, memory_service=self._container.memory_service("discovery")
         )
         self.selector_agent = SelectorAgent(
-            llm, browser_session,
-            memory_service=self._container.memory_service("selector")
+            llm, browser_session, memory_service=self._container.memory_service("selector")
         )
         self.accessibility_agent = AccessibilityAgent(
-            llm,
-            memory_service=self._container.memory_service("accessibility")
+            llm, memory_service=self._container.memory_service("accessibility")
         )
         self.data_prep_agent = DataPrepAgent(
-            llm, browser_session,
+            llm,
+            browser_session,
             memory_service=self._container.memory_service("data_prep"),
             output_dir=output_dir,
         )

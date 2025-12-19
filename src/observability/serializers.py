@@ -64,13 +64,15 @@ def safe_serialize(obj: Any, max_depth: int = 10, current_depth: int = 0) -> Any
             return safe_serialize(asdict(obj), max_depth, current_depth + 1)
         except Exception:
             # Some dataclasses may fail to convert, fallback to __dict__
-            if hasattr(obj, '__dict__'):
+            if hasattr(obj, "__dict__"):
                 return safe_serialize(obj.__dict__, max_depth, current_depth + 1)
             return str(obj)
 
     if isinstance(obj, dict):
         return {
-            safe_serialize(k, max_depth, current_depth + 1): safe_serialize(v, max_depth, current_depth + 1)
+            safe_serialize(k, max_depth, current_depth + 1): safe_serialize(
+                v, max_depth, current_depth + 1
+            )
             for k, v in obj.items()
         }
 
@@ -82,14 +84,14 @@ def safe_serialize(obj: Any, max_depth: int = 10, current_depth: int = 0) -> Any
 
     if isinstance(obj, bytes):
         try:
-            return obj.decode('utf-8')
+            return obj.decode("utf-8")
         except UnicodeDecodeError:
             return f"<bytes: {len(obj)} bytes>"
 
     if isinstance(obj, type):
         return f"<class {obj.__name__}>"
 
-    if hasattr(obj, '__dict__'):
+    if hasattr(obj, "__dict__"):
         try:
             return safe_serialize(obj.__dict__, max_depth, current_depth + 1)
         except Exception:
@@ -143,5 +145,5 @@ def extract_error_info(exception: Exception) -> dict:
         "error_message": str(exception),
         "error_module": type(exception).__module__,
         "stack_trace": traceback.format_exc(),
-        "exception_args": safe_serialize(exception.args)
+        "exception_args": safe_serialize(exception.args),
     }

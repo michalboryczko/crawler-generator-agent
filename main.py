@@ -4,6 +4,7 @@
 This module uses the observability system for structured logging and tracing.
 The observability decorators handle automatic instrumentation of all components.
 """
+
 import argparse
 import logging
 import os
@@ -39,6 +40,7 @@ from src.services import SessionService
 @dataclass
 class CliArgs:
     """Parsed command-line arguments."""
+
     url: str | None
     log_level: str
     multi_model: bool
@@ -49,39 +51,30 @@ class CliArgs:
 
 def parse_arguments() -> CliArgs:
     """Parse command-line arguments."""
-    parser = argparse.ArgumentParser(
-        description="Create a web crawler plan for a given URL"
-    )
+    parser = argparse.ArgumentParser(description="Create a web crawler plan for a given URL")
+    parser.add_argument("url", nargs="?", help="Target URL to analyze")
     parser.add_argument(
-        "url",
-        nargs="?",
-        help="Target URL to analyze"
-    )
-    parser.add_argument(
-        "--log-level", "-l",
+        "--log-level",
+        "-l",
         default="INFO",
         choices=["DEBUG", "INFO", "WARNING", "ERROR"],
-        help="Logging level"
+        help="Logging level",
     )
     parser.add_argument(
-        "--multi-model", "-m",
+        "--multi-model",
+        "-m",
         action="store_true",
-        help="Enable multi-model mode (use LLMClientFactory with per-component models)"
+        help="Enable multi-model mode (use LLMClientFactory with per-component models)",
+    )
+    parser.add_argument("--list-models", action="store_true", help="List available models and exit")
+    parser.add_argument(
+        "--env-file", "-e", default=".env", help="Path to .env file (default: .env)"
     )
     parser.add_argument(
-        "--list-models",
-        action="store_true",
-        help="List available models and exit"
-    )
-    parser.add_argument(
-        "--env-file", "-e",
-        default=".env",
-        help="Path to .env file (default: .env)"
-    )
-    parser.add_argument(
-        "--devtools-url", "-d",
+        "--devtools-url",
+        "-d",
         default=None,
-        help="Chrome DevTools WebSocket URL (e.g., ws://localhost:9222). Overrides CDP_URL env var"
+        help="Chrome DevTools WebSocket URL (e.g., ws://localhost:9222). Overrides CDP_URL env var",
     )
     args = parser.parse_args()
 
@@ -91,7 +84,7 @@ def parse_arguments() -> CliArgs:
         multi_model=args.multi_model,
         list_models=args.list_models,
         env_file=args.env_file,
-        devtools_url=args.devtools_url
+        devtools_url=args.devtools_url,
     )
 
 
@@ -122,7 +115,7 @@ def setup_logging(level: str) -> logging.Logger:
         format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
         handlers=[
             logging.StreamHandler(sys.stdout),
-        ]
+        ],
     )
     return logging.getLogger(__name__)
 
@@ -133,11 +126,13 @@ def setup_observability() -> ObservabilityContext:
     otel_insecure = os.environ.get("OTEL_INSECURE", "true").lower() == "true"
     service_name = os.environ.get("SERVICE_NAME", "crawler-agent")
 
-    otel_handler = OTelGrpcHandler(OTelConfig(
-        endpoint=otel_endpoint,
-        insecure=otel_insecure,
-        service_name=service_name,
-    ))
+    otel_handler = OTelGrpcHandler(
+        OTelConfig(
+            endpoint=otel_endpoint,
+            insecure=otel_insecure,
+            service_name=service_name,
+        )
+    )
 
     obs_config = ObservabilityConfig(
         service_name=service_name,
@@ -154,10 +149,7 @@ def setup_observability() -> ObservabilityContext:
 
 
 def create_llm_client(
-    app_config: AppConfig,
-    multi_model: bool,
-    ctx: ObservabilityContext,
-    logger: logging.Logger
+    app_config: AppConfig, multi_model: bool, ctx: ObservabilityContext, logger: logging.Logger
 ) -> tuple[LLMClient, LLMClientFactory | None]:
     """Create LLM client (single or factory-based)."""
     if multi_model:
@@ -170,8 +162,8 @@ def create_llm_client(
             data={
                 "mode": "multi-model",
                 "model_count": len(llm_factory.registry),
-                "main_agent_model": llm_factory.get_component_model("main_agent")
-            }
+                "main_agent_model": llm_factory.get_component_model("main_agent"),
+            },
         )
         return llm, llm_factory
     else:
@@ -179,7 +171,7 @@ def create_llm_client(
         emit_info(
             event="llm.client.initialized",
             ctx=ctx,
-            data={"mode": "legacy", "model": app_config.openai.model}
+            data={"mode": "legacy", "model": app_config.openai.model},
         )
         return llm, None
 
@@ -189,7 +181,7 @@ def run_crawler_workflow(
     app_config: AppConfig,
     llm: LLMClient,
     ctx: ObservabilityContext,
-    logger: logging.Logger
+    logger: logging.Logger,
 ) -> int:
     """Run the crawler workflow and return exit code."""
     output_dir = app_config.output.get_output_dir(url)
@@ -214,15 +206,11 @@ def run_crawler_workflow(
 
     logger.info("Connecting to Chrome DevTools...")
     emit_info(
-        event="browser.connect.start",
-        ctx=ctx,
-        data={"message": "Connecting to Chrome DevTools..."}
+        event="browser.connect.start", ctx=ctx, data={"message": "Connecting to Chrome DevTools..."}
     )
     browser_session.connect()
     emit_info(
-        event="browser.connect.complete",
-        ctx=ctx,
-        data={"message": "Connected to Chrome DevTools"}
+        event="browser.connect.complete", ctx=ctx, data={"message": "Connected to Chrome DevTools"}
     )
 
     try:
@@ -235,14 +223,14 @@ def run_crawler_workflow(
             container=container,
             session_service=session_service,
             ctx=ctx,
-            logger=logger
+            logger=logger,
         )
     finally:
         browser_session.disconnect()
         emit_info(
             event="browser.disconnect",
             ctx=ctx,
-            data={"message": "Disconnected from Chrome DevTools"}
+            data={"message": "Disconnected from Chrome DevTools"},
         )
 
 
@@ -255,7 +243,7 @@ def _execute_agent(
     container: Container,
     session_service: "SessionService",
     ctx: ObservabilityContext,
-    logger: logging.Logger
+    logger: logging.Logger,
 ) -> int:
     """Execute the main agent and handle results."""
     memory_service = container.memory_service("main_agent")
@@ -265,7 +253,9 @@ def _execute_agent(
     result = agent.create_crawl_plan(url)
 
     if result.success:
-        return _handle_success(result, output_dir, app_config, container, session_service, ctx, logger)
+        return _handle_success(
+            result, output_dir, app_config, container, session_service, ctx, logger
+        )
     else:
         return _handle_failure(result, container, session_service, ctx, logger)
 
@@ -277,7 +267,7 @@ def _handle_success(
     container: Container,
     session_service: "SessionService",
     ctx: ObservabilityContext,
-    logger: logging.Logger
+    logger: logging.Logger,
 ) -> int:
     """Handle successful crawl plan creation."""
     logger.info("Crawl plan created successfully")
@@ -285,11 +275,7 @@ def _handle_success(
 
     if app_config.output.template_dir and app_config.output.template_dir.exists():
         logger.info(f"Copying templates from: {app_config.output.template_dir}")
-        shutil.copytree(
-            app_config.output.template_dir,
-            output_dir,
-            dirs_exist_ok=True
-        )
+        shutil.copytree(app_config.output.template_dir, output_dir, dirs_exist_ok=True)
 
     # Mark session as successful
     session_service.mark_success(container.session_id)
@@ -299,7 +285,7 @@ def _handle_success(
         event="application.complete",
         ctx=ctx,
         data={"output_dir": str(output_dir), "success": True},
-        tags=["application", "success"]
+        tags=["application", "success"],
     )
     return 0
 
@@ -309,7 +295,7 @@ def _handle_failure(
     container: Container,
     session_service: "SessionService",
     ctx: ObservabilityContext,
-    logger: logging.Logger
+    logger: logging.Logger,
 ) -> int:
     """Handle failed crawl plan creation."""
     error_message = result.errors[0] if result.errors else "Unknown error"
@@ -322,7 +308,7 @@ def _handle_failure(
         event="application.failed",
         ctx=ctx,
         data={"error": error_message, "success": False},
-        tags=["application", "failure"]
+        tags=["application", "failure"],
     )
     return 1
 
@@ -357,26 +343,18 @@ def main() -> int:
         event="application.start",
         ctx=ctx,
         data={"target_url": args.url, "log_level": args.log_level},
-        tags=["application", "startup"]
+        tags=["application", "startup"],
     )
 
     try:
         app_config = AppConfig.from_env()
         logger.info(f"Using model: {app_config.openai.model}")
-        emit_info(
-            event="config.loaded",
-            ctx=ctx,
-            data={"model": app_config.openai.model}
-        )
+        emit_info(event="config.loaded", ctx=ctx, data={"model": app_config.openai.model})
 
         llm, _ = create_llm_client(app_config, args.multi_model, ctx, logger)
 
         return run_crawler_workflow(
-            url=args.url,
-            app_config=app_config,
-            llm=llm,
-            ctx=ctx,
-            logger=logger
+            url=args.url, app_config=app_config, llm=llm, ctx=ctx, logger=logger
         )
 
     except KeyboardInterrupt:
@@ -385,7 +363,7 @@ def main() -> int:
             event="application.interrupted",
             ctx=ctx,
             data={"message": "Interrupted by user"},
-            tags=["application", "interrupted"]
+            tags=["application", "interrupted"],
         )
         return 130
     except Exception as e:
@@ -393,11 +371,8 @@ def main() -> int:
         emit_error(
             event="application.error",
             ctx=ctx,
-            data={
-                "error_type": type(e).__name__,
-                "error_message": str(e)
-            },
-            tags=["application", "error", "unhandled"]
+            data={"error_type": type(e).__name__, "error_message": str(e)},
+            tags=["application", "error", "unhandled"],
         )
         return 1
     finally:

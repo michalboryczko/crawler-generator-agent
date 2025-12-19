@@ -108,9 +108,7 @@ class Container:
             repository = InMemoryRepository()
         elif config.backend_type == "sqlalchemy":
             if not config.database_url:
-                raise ValueError(
-                    "DATABASE_URL required when STORAGE_BACKEND=sqlalchemy"
-                )
+                raise ValueError("DATABASE_URL required when STORAGE_BACKEND=sqlalchemy")
             from ..repositories.sqlalchemy import SQLAlchemyRepository
 
             repository = SQLAlchemyRepository(
@@ -159,9 +157,7 @@ def get_container() -> Container:
         The global Container instance
     """
     if _container is None:
-        raise RuntimeError(
-            "Container not initialized. Call init_container() first."
-        )
+        raise RuntimeError("Container not initialized. Call init_container() first.")
     return _container
 
 

@@ -4,6 +4,7 @@ This module provides a central registry for defining available models and their
 connection details. Each model configuration includes API key environment variable,
 base URL, and provider-specific parameters.
 """
+
 import logging
 import os
 from dataclasses import dataclass, field
@@ -104,9 +105,7 @@ class ModelRegistry:
             config: The ModelConfig to register
         """
         if config.model_id in self.models:
-            logger.warning(
-                f"Overwriting existing model configuration: {config.model_id}"
-            )
+            logger.warning(f"Overwriting existing model configuration: {config.model_id}")
         self.models[config.model_id] = config
         logger.debug(f"Registered model: {config.model_id}")
 
@@ -124,10 +123,7 @@ class ModelRegistry:
         """
         if model_id not in self.models:
             available = ", ".join(sorted(self.models.keys()))
-            raise ValueError(
-                f"Unknown model: {model_id}. "
-                f"Available models: [{available}]"
-            )
+            raise ValueError(f"Unknown model: {model_id}. Available models: [{available}]")
         return self.models[model_id]
 
     def list_models(self) -> list[str]:

@@ -1,4 +1,5 @@
 """Configuration management."""
+
 import os
 import re
 from dataclasses import dataclass, field
@@ -33,6 +34,7 @@ def url_to_dirname(url: str) -> str:
 @dataclass
 class OutputConfig:
     """Output directory configuration."""
+
     base_dir: Path
     template_dir: Path | None = None
 
@@ -63,6 +65,7 @@ class OpenAIConfig:
 
     See docs/multi-model-configuration.md for migration guide.
     """
+
     api_key: str
     model: str = "gpt-5.1"
     temperature: float = 0.0
@@ -96,6 +99,7 @@ class BrowserConfig:
 
     CDP_URL takes precedence if both are set.
     """
+
     host: str = "localhost"
     port: int = 9222
     timeout: int = 30
@@ -229,6 +233,7 @@ class AgentsConfig:
 @dataclass
 class AppConfig:
     """Main application configuration."""
+
     openai: OpenAIConfig
     browser: BrowserConfig
     output: OutputConfig

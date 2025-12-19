@@ -109,9 +109,7 @@ class SQLAlchemyRepository(AbstractMemoryRepository):
             session.commit()
             return result.rowcount > 0
 
-    def find_by_pattern(
-        self, session_id: str, agent_name: str, pattern: str
-    ) -> list[str]:
+    def find_by_pattern(self, session_id: str, agent_name: str, pattern: str) -> list[str]:
         """Find keys matching a glob pattern.
 
         Note: Uses in-memory filtering with fnmatch for glob compatibility.
@@ -124,10 +122,14 @@ class SQLAlchemyRepository(AbstractMemoryRepository):
     def list_keys(self, session_id: str, agent_name: str) -> list[str]:
         """List all keys for a session/agent."""
         with self._get_session() as session:
-            stmt = select(MemoryEntry.key).where(
-                MemoryEntry.session_id == session_id,
-                MemoryEntry.agent_name == agent_name,
-            ).order_by(MemoryEntry.key)
+            stmt = (
+                select(MemoryEntry.key)
+                .where(
+                    MemoryEntry.session_id == session_id,
+                    MemoryEntry.agent_name == agent_name,
+                )
+                .order_by(MemoryEntry.key)
+            )
 
             result = session.execute(stmt).scalars().all()
             return list(result)
@@ -143,9 +145,7 @@ class SQLAlchemyRepository(AbstractMemoryRepository):
             session.commit()
             return result.rowcount
 
-    def bulk_get(
-        self, session_id: str, agent_name: str, keys: list[str]
-    ) -> dict[str, Any]:
+    def bulk_get(self, session_id: str, agent_name: str, keys: list[str]) -> dict[str, Any]:
         """Get multiple values at once."""
         if not keys:
             return {}

@@ -3,6 +3,7 @@
 This agent inherits from BaseAgent which uses the @traced_agent decorator
 for automatic observability instrumentation.
 """
+
 from typing import TYPE_CHECKING
 
 from src.prompts import get_prompt_provider

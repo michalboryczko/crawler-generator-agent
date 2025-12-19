@@ -5,6 +5,7 @@ The @traced_tool decorator handles all tool instrumentation.
 
 Prompts are now managed through the centralized PromptProvider.
 """
+
 import json
 import logging
 import time
@@ -51,10 +52,7 @@ class ListingPageExtractorTool(BaseTool):
 
     @traced_tool(name="extract_listing_page")
     def execute(
-        self,
-        url: str,
-        wait_seconds: int = 5,
-        listing_container_selector: str | None = None
+        self, url: str, wait_seconds: int = 5, listing_container_selector: str | None = None
     ) -> dict[str, Any]:
         """Extract selectors and URLs from a listing page. Instrumented by @traced_tool."""
         logger.info(f"Extracting listing page: {url}")
@@ -76,7 +74,7 @@ class ListingPageExtractorTool(BaseTool):
         # Fresh LLM call with isolated context
         messages = [
             {"role": "system", "content": _get_listing_extraction_prompt()},
-            {"role": "user", "content": f"Analyze this listing page HTML:\n\n{cleaned_html}"}
+            {"role": "user", "content": f"Analyze this listing page HTML:\n\n{cleaned_html}"},
         ]
 
         response = self.llm.chat(messages)
@@ -109,33 +107,26 @@ class ListingPageExtractorTool(BaseTool):
                 "url": url,
                 "selectors": result.get("selectors", {}),
                 "article_urls": article_urls,
-                "notes": result.get("notes", "")
+                "notes": result.get("notes", ""),
             }
         else:
-            return {
-                "success": False,
-                "url": url,
-                "error": "Failed to parse LLM response"
-            }
+            return {"success": False, "url": url, "error": "Failed to parse LLM response"}
 
     def get_parameters_schema(self) -> dict[str, Any]:
         return {
             "type": "object",
             "properties": {
-                "url": {
-                    "type": "string",
-                    "description": "URL of the listing page to analyze"
-                },
+                "url": {"type": "string", "description": "URL of the listing page to analyze"},
                 "wait_seconds": {
                     "type": "integer",
-                    "description": "Time to wait for page load (default: 5)"
+                    "description": "Time to wait for page load (default: 5)",
                 },
                 "listing_container_selector": {
                     "type": "string",
-                    "description": "Optional CSS selector to focus on main content container"
-                }
+                    "description": "Optional CSS selector to focus on main content container",
+                },
             },
-            "required": ["url"]
+            "required": ["url"],
         }
 
 
@@ -154,11 +145,7 @@ class ArticlePageExtractorTool(BaseTool):
         self.browser = browser
 
     @traced_tool(name="extract_article_page")
-    def execute(
-        self,
-        url: str,
-        wait_seconds: int = 5
-    ) -> dict[str, Any]:
+    def execute(self, url: str, wait_seconds: int = 5) -> dict[str, Any]:
         """Extract detail selectors from an article page. Instrumented by @traced_tool."""
         logger.info(f"Extracting article page: {url}")
 
@@ -179,7 +166,7 @@ class ArticlePageExtractorTool(BaseTool):
         # Fresh LLM call with isolated context
         messages = [
             {"role": "system", "content": _get_article_extraction_prompt()},
-            {"role": "user", "content": f"Analyze this article page HTML:\n\n{cleaned_html}"}
+            {"role": "user", "content": f"Analyze this article page HTML:\n\n{cleaned_html}"},
         ]
 
         response = self.llm.chat(messages)
@@ -192,39 +179,29 @@ class ArticlePageExtractorTool(BaseTool):
             selectors = result.get("selectors", {})
             found_count = sum(1 for s in selectors.values() if s.get("found", False))
 
-            logger.info(
-                f"Extracted from {url}: "
-                f"{found_count}/{len(selectors)} selectors found"
-            )
+            logger.info(f"Extracted from {url}: {found_count}/{len(selectors)} selectors found")
 
             return {
                 "success": True,
                 "url": url,
                 "selectors": selectors,
                 "extracted_values": result.get("extracted_values", {}),
-                "notes": result.get("notes", "")
+                "notes": result.get("notes", ""),
             }
         else:
-            return {
-                "success": False,
-                "url": url,
-                "error": "Failed to parse LLM response"
-            }
+            return {"success": False, "url": url, "error": "Failed to parse LLM response"}
 
     def get_parameters_schema(self) -> dict[str, Any]:
         return {
             "type": "object",
             "properties": {
-                "url": {
-                    "type": "string",
-                    "description": "URL of the article page to analyze"
-                },
+                "url": {"type": "string", "description": "URL of the article page to analyze"},
                 "wait_seconds": {
                     "type": "integer",
-                    "description": "Time to wait for page load (default: 5)"
-                }
+                    "description": "Time to wait for page load (default: 5)",
+                },
             },
-            "required": ["url"]
+            "required": ["url"],
         }
 
 
@@ -246,9 +223,7 @@ class SelectorAggregatorTool(BaseTool):
 
     @traced_tool(name="aggregate_selectors")
     def execute(
-        self,
-        listing_extractions: list[dict],
-        article_extractions: list[dict]
+        self, listing_extractions: list[dict], article_extractions: list[dict]
     ) -> dict[str, Any]:
         """Aggregate selectors into ordered chains. Instrumented by @traced_tool."""
         # Aggregate listing selectors into chains
@@ -265,8 +240,8 @@ class SelectorAggregatorTool(BaseTool):
                 "listing_pages_analyzed": len(listing_extractions),
                 "article_pages_analyzed": len(article_extractions),
                 "listing_notes": listing_result.get("notes", ""),
-                "article_notes": article_result.get("notes", "")
-            }
+                "article_notes": article_result.get("notes", ""),
+            },
         }
 
     def _aggregate_listing_selectors(self, extractions: list[dict]) -> dict:
@@ -294,18 +269,20 @@ class SelectorAggregatorTool(BaseTool):
                 chain = []
                 for selector, count in counter.most_common():
                     success_rate = count / total_pages if total_pages > 0 else 0
-                    chain.append({
-                        "selector": selector,
-                        "success_rate": round(success_rate, 2),
-                        "found_on_pages": count
-                    })
+                    chain.append(
+                        {
+                            "selector": selector,
+                            "success_rate": round(success_rate, 2),
+                            "found_on_pages": count,
+                        }
+                    )
                 selectors[key] = chain
             else:
                 selectors[key] = []
 
         return {
             "selectors": selectors,
-            "notes": f"Created selector chains from {total_pages} listing pages"
+            "notes": f"Created selector chains from {total_pages} listing pages",
         }
 
     def _aggregate_article_selectors(self, extractions: list[dict]) -> dict:
@@ -331,18 +308,20 @@ class SelectorAggregatorTool(BaseTool):
         # Use PromptProvider template for selector aggregation
         provider = get_prompt_provider()
         selector_variations_json = json.dumps(
-            {k: dict(Counter(v)) for k, v in selector_variations.items()},
-            indent=2
+            {k: dict(Counter(v)) for k, v in selector_variations.items()}, indent=2
         )
         prompt = provider.render_prompt(
             "selector_aggregation",
             total_pages=total_pages,
-            selector_variations_json=selector_variations_json
+            selector_variations_json=selector_variations_json,
         )
 
         messages = [
-            {"role": "system", "content": "You are a CSS selector analyst. Create ordered selector chains with ALL working selectors. Respond with JSON only."},
-            {"role": "user", "content": prompt}
+            {
+                "role": "system",
+                "content": "You are a CSS selector analyst. Create ordered selector chains with ALL working selectors. Respond with JSON only.",
+            },
+            {"role": "user", "content": prompt},
         ]
 
         try:
@@ -360,7 +339,9 @@ class SelectorAggregatorTool(BaseTool):
         # Fallback: build chains from frequency data
         return self._fallback_chain_aggregation(selector_variations, total_pages)
 
-    def _merge_with_frequency_data(self, llm_result: dict, variations: dict, total_pages: int) -> dict:
+    def _merge_with_frequency_data(
+        self, llm_result: dict, variations: dict, total_pages: int
+    ) -> dict:
         """Merge LLM ordering with frequency/success rate data."""
         selectors = llm_result.get("selectors", {})
 
@@ -381,17 +362,19 @@ class SelectorAggregatorTool(BaseTool):
             existing_selectors = {item.get("selector") for item in chain if isinstance(item, dict)}
             for selector, count in freq_data.items():
                 if selector and selector not in existing_selectors:
-                    chain.append({
-                        "selector": selector,
-                        "priority": len(chain) + 1,
-                        "success_rate": round(count / total_pages, 2) if total_pages > 0 else 0,
-                        "found_on_pages": count,
-                        "notes": "additional selector found"
-                    })
+                    chain.append(
+                        {
+                            "selector": selector,
+                            "priority": len(chain) + 1,
+                            "success_rate": round(count / total_pages, 2) if total_pages > 0 else 0,
+                            "found_on_pages": count,
+                            "notes": "additional selector found",
+                        }
+                    )
 
         return {
             "selectors": selectors,
-            "notes": llm_result.get("notes", f"Selector chains from {total_pages} article pages")
+            "notes": llm_result.get("notes", f"Selector chains from {total_pages} article pages"),
         }
 
     def _fallback_chain_aggregation(self, variations: dict, total_pages: int) -> dict:
@@ -403,13 +386,15 @@ class SelectorAggregatorTool(BaseTool):
                 chain = []
                 priority = 1
                 for selector, count in counter.most_common():
-                    chain.append({
-                        "selector": selector,
-                        "priority": priority,
-                        "success_rate": round(count / total_pages, 2) if total_pages > 0 else 0,
-                        "found_on_pages": count,
-                        "notes": "primary" if priority == 1 else "fallback"
-                    })
+                    chain.append(
+                        {
+                            "selector": selector,
+                            "priority": priority,
+                            "success_rate": round(count / total_pages, 2) if total_pages > 0 else 0,
+                            "found_on_pages": count,
+                            "notes": "primary" if priority == 1 else "fallback",
+                        }
+                    )
                     priority += 1
                 selectors[key] = chain
             else:
@@ -417,7 +402,7 @@ class SelectorAggregatorTool(BaseTool):
 
         return {
             "selectors": selectors,
-            "notes": f"Fallback chain aggregation from {total_pages} pages"
+            "notes": f"Fallback chain aggregation from {total_pages} pages",
         }
 
     def get_parameters_schema(self) -> dict[str, Any]:
@@ -427,13 +412,13 @@ class SelectorAggregatorTool(BaseTool):
                 "listing_extractions": {
                     "type": "array",
                     "items": {"type": "object"},
-                    "description": "Results from ListingPageExtractorTool for each page"
+                    "description": "Results from ListingPageExtractorTool for each page",
                 },
                 "article_extractions": {
                     "type": "array",
                     "items": {"type": "object"},
-                    "description": "Results from ArticlePageExtractorTool for each page"
-                }
+                    "description": "Results from ArticlePageExtractorTool for each page",
+                },
             },
-            "required": ["listing_extractions", "article_extractions"]
+            "required": ["listing_extractions", "article_extractions"],
         }

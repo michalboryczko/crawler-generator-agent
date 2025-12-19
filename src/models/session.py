@@ -61,10 +61,7 @@ class Session(Base):
     )
 
     def __repr__(self) -> str:
-        return (
-            f"Session(id={self.id!r}, target_site={self.target_site!r}, "
-            f"status={self.status!r})"
-        )
+        return f"Session(id={self.id!r}, target_site={self.target_site!r}, status={self.status!r})"
 
     def mark_success(self) -> None:
         """Mark session as successfully completed."""

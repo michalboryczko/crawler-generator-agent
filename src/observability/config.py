@@ -34,6 +34,7 @@ class ObservabilityConfig:
         console_enabled: Whether to output to console (dev only)
         console_color: Whether to use colored console output
     """
+
     service_name: str = "crawler-agent"
 
     # OTel Collector settings
@@ -44,7 +45,7 @@ class ObservabilityConfig:
     console_enabled: bool = True
     console_color: bool = True
 
-    def create_console_output(self) -> Optional['LogOutput']:
+    def create_console_output(self) -> Optional["LogOutput"]:
         """Create console output if enabled.
 
         Returns:
@@ -54,6 +55,7 @@ class ObservabilityConfig:
             return None
 
         from .outputs import ConsoleOutput
+
         return ConsoleOutput(color=self.console_color)
 
     @classmethod
@@ -80,16 +82,13 @@ class ObservabilityConfig:
 
 
 # Global state
-_handler: Optional['LogHandler'] = None
-_console_output: Optional['LogOutput'] = None
+_handler: Optional["LogHandler"] = None
+_console_output: Optional["LogOutput"] = None
 _initialized: bool = False
 _config: ObservabilityConfig | None = None
 
 
-def initialize_observability(
-    handler: 'LogHandler',
-    config: ObservabilityConfig = None
-) -> None:
+def initialize_observability(handler: "LogHandler", config: ObservabilityConfig = None) -> None:
     """Initialize the observability system.
 
     This initializes:
@@ -110,10 +109,11 @@ def initialize_observability(
 
     # Initialize OTel tracer for span creation
     from .tracer import init_tracer
+
     init_tracer(
         endpoint=config.otel_endpoint,
         service_name=config.service_name,
-        insecure=config.otel_insecure
+        insecure=config.otel_insecure,
     )
 
     _handler = handler
@@ -121,12 +121,12 @@ def initialize_observability(
     _initialized = True
 
 
-def get_handler() -> Optional['LogHandler']:
+def get_handler() -> Optional["LogHandler"]:
     """Get the configured handler."""
     return _handler
 
 
-def get_console_output() -> Optional['LogOutput']:
+def get_console_output() -> Optional["LogOutput"]:
     """Get the console output if enabled."""
     return _console_output
 
@@ -147,6 +147,7 @@ def shutdown() -> None:
 
     # Shutdown tracer
     from .tracer import shutdown_tracer
+
     shutdown_tracer()
 
     if _handler:

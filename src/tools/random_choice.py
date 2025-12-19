@@ -3,6 +3,7 @@
 This module uses the new observability decorators for automatic logging.
 The @traced_tool decorator handles all tool instrumentation.
 """
+
 import logging
 import random
 from typing import Any
@@ -17,14 +18,12 @@ class RandomChoiceTool(BaseTool):
     """Randomly pick items from a list."""
 
     name = "random_choice"
-    description = "Randomly pick N items from a list of candidates. Useful for sampling without bias."
+    description = (
+        "Randomly pick N items from a list of candidates. Useful for sampling without bias."
+    )
 
     @traced_tool(name="random_choice")
-    def execute(
-        self,
-        candidates: list[Any],
-        count: int
-    ) -> dict[str, Any]:
+    def execute(self, candidates: list[Any], count: int) -> dict[str, Any]:
         """Pick random items from candidates. Instrumented by @traced_tool."""
         if not candidates:
             return {"success": False, "error": "Candidates list is empty"}
@@ -47,7 +46,7 @@ class RandomChoiceTool(BaseTool):
             "success": True,
             "result": picked,
             "count": len(picked),
-            "total_candidates": len(candidates)
+            "total_candidates": len(candidates),
         }
 
     def get_parameters_schema(self) -> dict[str, Any]:
@@ -57,12 +56,9 @@ class RandomChoiceTool(BaseTool):
                 "candidates": {
                     "type": "array",
                     "items": {},
-                    "description": "List of items to choose from"
+                    "description": "List of items to choose from",
                 },
-                "count": {
-                    "type": "integer",
-                    "description": "Number of items to randomly pick"
-                }
+                "count": {"type": "integer", "description": "Number of items to randomly pick"},
             },
-            "required": ["candidates", "count"]
+            "required": ["candidates", "count"],
         }

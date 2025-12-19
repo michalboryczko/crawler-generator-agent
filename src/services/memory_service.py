@@ -109,9 +109,7 @@ class MemoryService:
         Returns:
             List of matching keys
         """
-        return self._repository.find_by_pattern(
-            self._session_id, self._agent_name, pattern
-        )
+        return self._repository.find_by_pattern(self._session_id, self._agent_name, pattern)
 
     def list_keys(self) -> list[str]:
         """List all keys.
@@ -159,10 +157,7 @@ class MemoryService:
                 self.write(key, value)
                 count += 1
 
-        logger.debug(
-            f"[{self._agent_name}] Merged {count} keys "
-            f"from [{source.agent_name}]"
-        )
+        logger.debug(f"[{self._agent_name}] Merged {count} keys from [{source.agent_name}]")
         return count
 
     def export_keys(self, keys: list[str]) -> dict[str, Any]:

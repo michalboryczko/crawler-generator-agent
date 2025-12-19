@@ -27,9 +27,7 @@ class InMemoryRepository(AbstractMemoryRepository):
         self._entries: dict[str, MemoryEntry] = {}
         self._id_counter = 0
 
-    def _make_composite_key(
-        self, session_id: str, agent_name: str, key: str
-    ) -> str:
+    def _make_composite_key(self, session_id: str, agent_name: str, key: str) -> str:
         """Create composite key for internal storage."""
         return f"{session_id}:{agent_name}:{key}"
 
@@ -44,9 +42,7 @@ class InMemoryRepository(AbstractMemoryRepository):
 
     def save(self, entry: MemoryEntry) -> MemoryEntry:
         """Save or update a memory entry."""
-        composite_key = self._make_composite_key(
-            entry.session_id, entry.agent_name, entry.key
-        )
+        composite_key = self._make_composite_key(entry.session_id, entry.agent_name, entry.key)
         existing = self._entries.get(composite_key)
 
         now = datetime.now(UTC)
@@ -73,9 +69,7 @@ class InMemoryRepository(AbstractMemoryRepository):
             return True
         return False
 
-    def find_by_pattern(
-        self, session_id: str, agent_name: str, pattern: str
-    ) -> list[str]:
+    def find_by_pattern(self, session_id: str, agent_name: str, pattern: str) -> list[str]:
         """Find keys matching a glob pattern."""
         prefix = self._get_prefix(session_id, agent_name)
         prefix_len = len(prefix)
@@ -104,18 +98,14 @@ class InMemoryRepository(AbstractMemoryRepository):
     def clear(self, session_id: str, agent_name: str) -> int:
         """Clear all entries for a session/agent."""
         prefix = self._get_prefix(session_id, agent_name)
-        keys_to_delete = [
-            k for k in self._entries if k.startswith(prefix)
-        ]
+        keys_to_delete = [k for k in self._entries if k.startswith(prefix)]
 
         for k in keys_to_delete:
             del self._entries[k]
 
         return len(keys_to_delete)
 
-    def bulk_get(
-        self, session_id: str, agent_name: str, keys: list[str]
-    ) -> dict[str, Any]:
+    def bulk_get(self, session_id: str, agent_name: str, keys: list[str]) -> dict[str, Any]:
         """Get multiple values at once."""
         result = {}
         for key in keys:

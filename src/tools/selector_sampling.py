@@ -5,6 +5,7 @@ The @traced_tool decorator handles all tool instrumentation.
 
 Prompts are now managed through the centralized PromptProvider.
 """
+
 import json
 import logging
 import random
@@ -43,10 +44,7 @@ class ListingPagesGeneratorTool(BaseTool):
 
     @traced_tool(name="generate_listing_pages")
     def execute(
-        self,
-        target_url: str,
-        max_pages: int,
-        pagination_links: list[str] | None = None
+        self, target_url: str, max_pages: int, pagination_links: list[str] | None = None
     ) -> dict[str, Any]:
         """Generate listing page URLs to analyze. Instrumented by @traced_tool."""
         # Detect pagination pattern from links
@@ -58,7 +56,7 @@ class ListingPagesGeneratorTool(BaseTool):
                 "pattern_type": "page_number",
                 "param_name": "page",
                 "base_url": target_url,
-                "url_template": f"{target_url}?page={{n}}"
+                "url_template": f"{target_url}?page={{n}}",
             }
 
         # Calculate sample size: 2% of total, min 5, max 20
@@ -86,7 +84,7 @@ class ListingPagesGeneratorTool(BaseTool):
             "sample_size": sample_size,
             "total_pages": max_pages,
             "sample_percentage": round(sample_size / max_pages * 100, 1),
-            "pagination_pattern": pattern_info
+            "pagination_pattern": pattern_info,
         }
 
     def _detect_pagination_pattern(self, target_url: str, pagination_links: list[str]) -> dict:
@@ -94,14 +92,15 @@ class ListingPagesGeneratorTool(BaseTool):
         # Use PromptProvider template for pagination pattern detection
         provider = get_prompt_provider()
         prompt = provider.render_prompt(
-            "pagination_pattern",
-            target_url=target_url,
-            pagination_links=pagination_links
+            "pagination_pattern", target_url=target_url, pagination_links=pagination_links
         )
 
         messages = [
-            {"role": "system", "content": "You are a URL pattern analyzer. Analyze pagination URLs to understand the pattern. Respond with valid JSON only."},
-            {"role": "user", "content": prompt}
+            {
+                "role": "system",
+                "content": "You are a URL pattern analyzer. Analyze pagination URLs to understand the pattern. Respond with valid JSON only.",
+            },
+            {"role": "user", "content": prompt},
         ]
 
         try:
@@ -140,12 +139,14 @@ class ListingPagesGeneratorTool(BaseTool):
                         base_url = urlunparse(base_parsed._replace(query=base_query))
 
                         return {
-                            "pattern_type": "offset" if param in ["offset", "start", "skip", "from"] else "page_number",
+                            "pattern_type": "offset"
+                            if param in ["offset", "start", "skip", "from"]
+                            else "page_number",
                             "param_name": param,
                             "base_url": base_url if base_url else target_url,
                             "url_template": f"{target_url}{'&' if '?' in target_url else '?'}{param}={{n}}",
                             "offset_multiplier": None,
-                            "starts_at": 1
+                            "starts_at": 1,
                         }
                     except ValueError:
                         continue
@@ -157,10 +158,12 @@ class ListingPagesGeneratorTool(BaseTool):
             "base_url": target_url,
             "url_template": f"{target_url}{'&' if '?' in target_url else '?'}page={{n}}",
             "offset_multiplier": None,
-            "starts_at": 1
+            "starts_at": 1,
         }
 
-    def _generate_urls(self, target_url: str, page_numbers: list[int], pattern_info: dict) -> list[str]:
+    def _generate_urls(
+        self, target_url: str, page_numbers: list[int], pattern_info: dict
+    ) -> list[str]:
         """Generate URLs using the detected pattern."""
         urls = []
         url_template = pattern_info.get("url_template", f"{target_url}?page={{n}}")
@@ -183,11 +186,11 @@ class ListingPagesGeneratorTool(BaseTool):
                 # Handle template that might have expressions like {n*20}
                 if "{n*" in url_template:
                     # Extract multiplier from template
-                    match = re.search(r'\{n\*(\d+)\}', url_template)
+                    match = re.search(r"\{n\*(\d+)\}", url_template)
                     if match:
                         mult = int(match.group(1))
                         value = (page_num - 1) * mult
-                        url = re.sub(r'\{n\*\d+\}', str(value), url_template)
+                        url = re.sub(r"\{n\*\d+\}", str(value), url_template)
                     else:
                         url = url_template.replace("{n}", str(value))
                 else:
@@ -233,21 +236,15 @@ class ListingPagesGeneratorTool(BaseTool):
         return {
             "type": "object",
             "properties": {
-                "target_url": {
-                    "type": "string",
-                    "description": "Base URL of the listing page"
-                },
-                "max_pages": {
-                    "type": "integer",
-                    "description": "Total number of pages available"
-                },
+                "target_url": {"type": "string", "description": "Base URL of the listing page"},
+                "max_pages": {"type": "integer", "description": "Total number of pages available"},
                 "pagination_links": {
                     "type": "array",
                     "items": {"type": "string"},
-                    "description": "Sample pagination URLs to analyze for pattern detection (optional)"
-                }
+                    "description": "Sample pagination URLs to analyze for pattern detection (optional)",
+                },
             },
-            "required": ["target_url", "max_pages"]
+            "required": ["target_url", "max_pages"],
         }
 
 
@@ -268,17 +265,11 @@ class ArticlePagesGeneratorTool(BaseTool):
 
     @traced_tool(name="generate_article_pages")
     def execute(
-        self,
-        article_urls: list[str],
-        min_per_group: int = 3,
-        sample_percentage: float = 0.20
+        self, article_urls: list[str], min_per_group: int = 3, sample_percentage: float = 0.20
     ) -> dict[str, Any]:
         """Generate article URLs to analyze. Instrumented by @traced_tool."""
         if not article_urls:
-            return {
-                "success": False,
-                "error": "No article URLs provided"
-            }
+            return {"success": False, "error": "No article URLs provided"}
 
         # Group URLs by pattern using LLM
         groups = self._group_urls_by_pattern(article_urls)
@@ -299,7 +290,7 @@ class ArticlePagesGeneratorTool(BaseTool):
             group_samples[pattern] = {
                 "total_in_group": len(urls),
                 "sampled_count": sample_count,
-                "sampled_urls": sampled
+                "sampled_urls": sampled,
             }
 
         logger.info(
@@ -313,7 +304,7 @@ class ArticlePagesGeneratorTool(BaseTool):
             "total_urls": len(article_urls),
             "selected_count": len(selected_urls),
             "pattern_groups": group_samples,
-            "num_patterns": len(groups)
+            "num_patterns": len(groups),
         }
 
     def _group_urls_by_pattern(self, urls: list[str]) -> dict[str, list[str]]:
@@ -327,14 +318,14 @@ class ArticlePagesGeneratorTool(BaseTool):
 
         # Use PromptProvider template for article URL pattern grouping
         provider = get_prompt_provider()
-        prompt = provider.render_prompt(
-            "article_url_pattern",
-            sample_urls=sample_urls
-        )
+        prompt = provider.render_prompt("article_url_pattern", sample_urls=sample_urls)
 
         messages = [
-            {"role": "system", "content": "You are a URL pattern analyzer. Respond with valid JSON only."},
-            {"role": "user", "content": prompt}
+            {
+                "role": "system",
+                "content": "You are a URL pattern analyzer. Respond with valid JSON only.",
+            },
+            {"role": "user", "content": prompt},
         ]
 
         try:
@@ -418,16 +409,16 @@ class ArticlePagesGeneratorTool(BaseTool):
                 "article_urls": {
                     "type": "array",
                     "items": {"type": "string"},
-                    "description": "All collected article URLs"
+                    "description": "All collected article URLs",
                 },
                 "min_per_group": {
                     "type": "integer",
-                    "description": "Minimum samples per pattern group (default: 3)"
+                    "description": "Minimum samples per pattern group (default: 3)",
                 },
                 "sample_percentage": {
                     "type": "number",
-                    "description": "Percentage to sample per group (default: 0.20)"
-                }
+                    "description": "Percentage to sample per group (default: 0.20)",
+                },
             },
-            "required": ["article_urls"]
+            "required": ["article_urls"],
         }

@@ -159,7 +159,9 @@ class MemoryDumpTool(BaseTool):
     """Dump memory keys to JSONL file."""
 
     name = "memory_dump"
-    description = "Dump specified memory keys to a JSONL file. Each line contains the value of one key."
+    description = (
+        "Dump specified memory keys to a JSONL file. Each line contains the value of one key."
+    )
 
     def __init__(self, service: "MemoryService", output_dir: Path) -> None:
         self._service = service

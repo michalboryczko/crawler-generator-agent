@@ -7,6 +7,7 @@ This module provides:
 Uses the new observability decorators for automatic logging.
 The @traced_llm_client decorator handles all LLM call instrumentation.
 """
+
 import json
 import logging
 from typing import Any
@@ -35,17 +36,14 @@ MODEL_COSTS: dict[str, dict[str, float]] = {
     "gpt-5-nano": {"input": 0.00005, "output": 0.0004},
     "gpt-5.2-pro": {"input": 0.021, "output": 0.168},
     "gpt-5-pro": {"input": 0.015, "output": 0.12},
-
     # OpenAI GPT-4.1 Series
     "gpt-4.1": {"input": 0.002, "output": 0.008},
     "gpt-4.1-mini": {"input": 0.0004, "output": 0.0016},
     "gpt-4.1-nano": {"input": 0.0001, "output": 0.0004},
-
     # OpenAI GPT-4o Series
     "gpt-4o": {"input": 0.0025, "output": 0.01},
     "gpt-4o-2024-05-13": {"input": 0.005, "output": 0.015},
     "gpt-4o-mini": {"input": 0.00015, "output": 0.0006},
-
     # OpenAI o-Series (Reasoning)
     "o1": {"input": 0.015, "output": 0.06},
     "o1-pro": {"input": 0.15, "output": 0.6},
@@ -54,19 +52,16 @@ MODEL_COSTS: dict[str, dict[str, float]] = {
     "o3-pro": {"input": 0.02, "output": 0.08},
     "o3-mini": {"input": 0.0011, "output": 0.0044},
     "o4-mini": {"input": 0.0011, "output": 0.0044},
-
     # OpenAI Legacy Models
     "gpt-4-turbo": {"input": 0.01, "output": 0.03},
     "gpt-4": {"input": 0.03, "output": 0.06},
     "gpt-4-32k": {"input": 0.06, "output": 0.12},
     "gpt-3.5-turbo": {"input": 0.0005, "output": 0.0015},
-
     # Anthropic models
     "claude-3-opus-20240229": {"input": 0.015, "output": 0.075},
     "claude-3-sonnet-20240229": {"input": 0.003, "output": 0.015},
     "claude-3-haiku-20240307": {"input": 0.00025, "output": 0.00125},
     "claude-3-5-sonnet-20241022": {"input": 0.003, "output": 0.015},
-
     # Kimi/Moonshot models (pricing per 1K tokens, converted from per 1M)
     # Source: https://platform.moonshot.cn/docs/pricing
     # Using cache miss pricing for input
@@ -75,7 +70,6 @@ MODEL_COSTS: dict[str, dict[str, float]] = {
     "kimi-k2-turbo-preview": {"input": 0.00115, "output": 0.008},
     "kimi-k2-thinking": {"input": 0.0006, "output": 0.0025},
     "kimi-k2-thinking-turbo": {"input": 0.00115, "output": 0.008},
-
     # Embeddings
     "text-embedding-3-small": {"input": 0.00002, "output": 0.0},
     "text-embedding-3-large": {"input": 0.00013, "output": 0.0},
@@ -94,10 +88,7 @@ def estimate_cost(model: str, tokens_input: int, tokens_output: int) -> float:
         Estimated cost in USD
     """
     costs = MODEL_COSTS.get(model, {"input": 0, "output": 0})
-    return (
-        (tokens_input / 1000) * costs["input"] +
-        (tokens_output / 1000) * costs["output"]
-    )
+    return (tokens_input / 1000) * costs["input"] + (tokens_output / 1000) * costs["output"]
 
 
 class LLMClient:
@@ -216,9 +207,7 @@ class LLMClient:
             result["tokens_output"] = response.usage.completion_tokens
             result["tokens_total"] = response.usage.total_tokens
             result["estimated_cost_usd"] = estimate_cost(
-                self.model,
-                response.usage.prompt_tokens,
-                response.usage.completion_tokens
+                self.model, response.usage.prompt_tokens, response.usage.completion_tokens
             )
 
         return result
@@ -259,11 +248,7 @@ class LLMClient:
                         f"Raw arguments: {tc.function.arguments[:200]}"
                     )
                     arguments = {}
-                tool_calls.append({
-                    "id": tc.id,
-                    "name": tc.function.name,
-                    "arguments": arguments
-                })
+                tool_calls.append({"id": tc.id, "name": tc.function.name, "arguments": arguments})
             result["tool_calls"] = tool_calls
 
         return result
@@ -338,17 +323,11 @@ class LLMClientFactory:
                 component_name=component_name,
             )
 
-            logger.debug(
-                f"Created LLM client for '{component_name}' using model '{model_id}'"
-            )
+            logger.debug(f"Created LLM client for '{component_name}' using model '{model_id}'")
 
         return self._clients[component_name]
 
-    def get_client_for_model(
-        self,
-        model_id: str,
-        component_name: str | None = None
-    ) -> LLMClient:
+    def get_client_for_model(self, model_id: str, component_name: str | None = None) -> LLMClient:
         """Get client for a specific model (bypassing component mapping).
 
         Useful for tools that need to create isolated LLM contexts or
@@ -423,8 +402,4 @@ class LLMClientFactory:
         return cls(registry, component_config)
 
     def __repr__(self) -> str:
-        return (
-            f"LLMClientFactory("
-            f"models={len(self.registry)}, "
-            f"cached_clients={len(self._clients)})"
-        )
+        return f"LLMClientFactory(models={len(self.registry)}, cached_clients={len(self._clients)})"

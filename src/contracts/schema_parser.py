@@ -46,9 +46,7 @@ def inject_agent_response_content(schema: dict[str, Any]) -> dict[str, Any]:
     return schema
 
 
-def load_schema(
-    schema_path: str | Path, inject_response_content: bool = False
-) -> dict[str, Any]:
+def load_schema(schema_path: str | Path, inject_response_content: bool = False) -> dict[str, Any]:
     """Load JSON schema from file path.
 
     Args:
@@ -71,7 +69,7 @@ def load_schema(
     try:
         schema = json.loads(path.read_text())
     except json.JSONDecodeError as e:
-        raise SchemaLoadError(str(schema_path), f"Invalid JSON: {e}")
+        raise SchemaLoadError(str(schema_path), f"Invalid JSON: {e}") from e
 
     if inject_response_content:
         schema = inject_agent_response_content(schema)
@@ -147,22 +145,20 @@ def _generate_example_value(prop: dict[str, Any]) -> Any:
     else:
         # Handle union types like ["string", "null"]
         if isinstance(prop_type, list):
+            type_defaults = {
+                "string": "<string>",
+                "integer": 0,
+                "number": 0.0,
+                "boolean": True,
+            }
             for t in prop_type:
-                if t == "string":
-                    return "<string>"
-                elif t == "integer":
-                    return 0
-                elif t == "number":
-                    return 0.0
-                elif t == "boolean":
-                    return True
+                if t in type_defaults:
+                    return type_defaults[t]
             return None
         return None
 
 
-def generate_example_json(
-    schema: dict[str, Any], wrap_in_data: bool = False
-) -> dict[str, Any]:
+def generate_example_json(schema: dict[str, Any], wrap_in_data: bool = False) -> dict[str, Any]:
     """Generate example JSON structure from schema.
 
     Args:
