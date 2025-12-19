@@ -11,6 +11,7 @@ from urllib.parse import urljoin
 from ..core.browser import BrowserSession
 from ..observability.decorators import traced_tool
 from .base import BaseTool
+from .validation import validated_tool
 
 logger = logging.getLogger(__name__)
 
@@ -26,6 +27,7 @@ class FindSelectorTool(BaseTool):
         self.session = session
 
     @traced_tool(name="find_selector")
+    @validated_tool
     def execute(self, selector_type: str, hint: str | None = None) -> dict[str, Any]:
         """Find potential selectors based on type and hints. Instrumented by @traced_tool."""
         if selector_type == "articles":
@@ -137,6 +139,7 @@ class TestSelectorTool(BaseTool):
         self.session = session
 
     @traced_tool(name="test_selector")
+    @validated_tool
     def execute(self, selector: str) -> dict[str, Any]:
         """Test a CSS selector. Instrumented by @traced_tool."""
         elements = self.session.query_selector_all(selector)
@@ -161,6 +164,7 @@ class VerifySelectorTool(BaseTool):
         self.session = session
 
     @traced_tool(name="verify_selector")
+    @validated_tool
     def execute(
         self, selector: str, expected_urls: list[str], base_url: str | None = None
     ) -> dict[str, Any]:
@@ -227,6 +231,7 @@ class CompareSelectorsTool(BaseTool):
         self.session = session
 
     @traced_tool(name="compare_selectors")
+    @validated_tool
     def execute(
         self, selectors: list[str], expected_urls: list[str], base_url: str | None = None
     ) -> dict[str, Any]:

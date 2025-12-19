@@ -10,6 +10,7 @@ from typing import Any
 
 from ..observability.decorators import traced_tool
 from .base import BaseTool
+from .validation import validated_tool
 
 logger = logging.getLogger(__name__)
 
@@ -24,6 +25,7 @@ class FileCreateTool(BaseTool):
         self.output_dir = output_dir
 
     @traced_tool(name="file_create")
+    @validated_tool
     def execute(self, filename: str, content: str) -> dict[str, Any]:
         """Create a file with content. Instrumented by @traced_tool."""
         filepath = self.output_dir / filename
@@ -65,6 +67,7 @@ class FileReadTool(BaseTool):
         self.output_dir = output_dir
 
     @traced_tool(name="file_read")
+    @validated_tool
     def execute(
         self, filename: str, head: int | None = None, tail: int | None = None
     ) -> dict[str, Any]:
@@ -115,6 +118,7 @@ class FileAppendTool(BaseTool):
         self.output_dir = output_dir
 
     @traced_tool(name="file_append")
+    @validated_tool
     def execute(self, filename: str, content: str) -> dict[str, Any]:
         """Append content to file. Instrumented by @traced_tool."""
         filepath = self.output_dir / filename
@@ -156,6 +160,7 @@ class FileReplaceTool(BaseTool):
         self.output_dir = output_dir
 
     @traced_tool(name="file_replace")
+    @validated_tool
     def execute(self, filename: str, content: str) -> dict[str, Any]:
         """Replace file content. Instrumented by @traced_tool."""
         filepath = self.output_dir / filename

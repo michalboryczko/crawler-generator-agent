@@ -10,6 +10,7 @@ from typing import Any
 
 from ..observability.decorators import traced_tool
 from .base import BaseTool
+from .validation import validated_tool
 
 logger = logging.getLogger(__name__)
 
@@ -23,6 +24,7 @@ class RandomChoiceTool(BaseTool):
     )
 
     @traced_tool(name="random_choice")
+    @validated_tool
     def execute(self, candidates: list[Any], count: int) -> dict[str, Any]:
         """Pick random items from candidates. Instrumented by @traced_tool."""
         if not candidates:

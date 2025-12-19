@@ -5,6 +5,7 @@ from typing import Any
 
 from ...observability.decorators import traced_tool
 from ..base import BaseTool
+from ..validation import validated_tool
 
 
 class GenerateUuidTool(BaseTool):
@@ -37,6 +38,7 @@ class GenerateUuidTool(BaseTool):
         )
 
     @traced_tool()
+    @validated_tool
     def execute(self) -> dict[str, Any]:
         """Generate a new UUID4.
 

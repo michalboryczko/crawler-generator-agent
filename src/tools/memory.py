@@ -18,6 +18,7 @@ from typing import TYPE_CHECKING, Any
 
 from ..observability.decorators import traced_tool
 from .base import BaseTool
+from .validation import validated_tool
 
 if TYPE_CHECKING:
     from ..services.memory_service import MemoryService
@@ -35,6 +36,7 @@ class MemoryReadTool(BaseTool):
         self._service = service
 
     @traced_tool(name="memory_read")
+    @validated_tool
     def execute(self, key: str) -> dict[str, Any]:
         """Read from memory."""
         value = self._service.read(key)
@@ -67,6 +69,7 @@ class MemoryWriteTool(BaseTool):
         self._service = service
 
     @traced_tool(name="memory_write")
+    @validated_tool
     def execute(self, key: str, value: Any) -> dict[str, Any]:
         """Write to memory."""
         overwritten = self._service.read(key) is not None
@@ -107,6 +110,7 @@ class MemorySearchTool(BaseTool):
         self._service = service
 
     @traced_tool(name="memory_search")
+    @validated_tool
     def execute(self, pattern: str) -> dict[str, Any]:
         """Search memory keys."""
         keys = self._service.search(pattern)
@@ -139,6 +143,7 @@ class MemoryListTool(BaseTool):
         self._service = service
 
     @traced_tool(name="memory_list")
+    @validated_tool
     def execute(self) -> dict[str, Any]:
         """List all memory keys."""
         keys = self._service.list_keys()
@@ -168,6 +173,7 @@ class MemoryDumpTool(BaseTool):
         self._output_dir = output_dir
 
     @traced_tool(name="memory_dump")
+    @validated_tool
     def execute(self, keys: list[str], filename: str) -> dict[str, Any]:
         """Dump keys to JSONL file."""
         output_path = self._output_dir / filename
