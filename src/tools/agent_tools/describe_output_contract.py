@@ -6,6 +6,7 @@ from typing import Any
 from ...contracts.schema_parser import generate_example_json, load_schema
 from ...observability.decorators import traced_tool
 from ..base import BaseTool
+from ..validation import validated_tool
 
 
 class DescribeOutputContractTool(BaseTool):
@@ -53,6 +54,7 @@ class DescribeOutputContractTool(BaseTool):
         return "Get the expected output contract (JSON schema) for a sub-agent."
 
     @traced_tool()
+    @validated_tool
     def execute(self, agent_name: str) -> dict[str, Any]:
         """Get output contract description for an agent.
 

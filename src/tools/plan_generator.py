@@ -10,6 +10,7 @@ from urllib.parse import urlparse
 
 from ..observability.decorators import traced_tool
 from .base import BaseTool
+from .validation import validated_tool
 
 if TYPE_CHECKING:
     from ..services.memory_service import MemoryService
@@ -28,6 +29,7 @@ class GeneratePlanTool(BaseTool):
         self._service = memory_service
 
     @traced_tool(name="generate_plan_md")
+    @validated_tool
     def execute(self) -> dict[str, Any]:
         """Generate plan markdown. Instrumented by @traced_tool."""
         # Read all data from memory
@@ -665,6 +667,7 @@ class GenerateTestPlanTool(BaseTool):
         self._service = memory_service
 
     @traced_tool(name="generate_test_md")
+    @validated_tool
     def execute(self) -> dict[str, Any]:
         """Generate test plan markdown. Instrumented by @traced_tool."""
         target_url = self._service.read("target_url") or "Unknown"

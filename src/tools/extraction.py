@@ -16,6 +16,7 @@ from ..core.html_cleaner import clean_html_for_llm
 from ..observability.decorators import traced_tool
 from ..prompts import get_prompt_provider
 from .base import BaseTool
+from .validation import validated_tool
 
 if TYPE_CHECKING:
     from ..services.memory_service import MemoryService
@@ -37,6 +38,7 @@ class FetchAndStoreHTMLTool(BaseTool):
         self._service = memory_service
 
     @traced_tool(name="fetch_and_store_html")
+    @validated_tool
     def execute(self, url: str, memory_key: str, wait_seconds: int = 3) -> dict[str, Any]:
         """Fetch URL and store in memory. Instrumented by @traced_tool."""
         self.browser_session.navigate(url)
@@ -81,6 +83,7 @@ class BatchFetchURLsTool(BaseTool):
         self._service = memory_service
 
     @traced_tool(name="batch_fetch_urls")
+    @validated_tool
     def execute(
         self, urls: list[str], key_prefix: str = "fetched", wait_seconds: int = 3
     ) -> dict[str, Any]:
@@ -150,6 +153,7 @@ class RunExtractionAgentTool(BaseTool):
         self._service = memory_service
 
     @traced_tool(name="run_extraction_agent")
+    @validated_tool
     def execute(self, html_memory_key: str, output_memory_key: str) -> dict[str, Any]:
         """Run extraction agent on stored HTML. Instrumented by @traced_tool."""
         stored = self._service.read(html_memory_key)
@@ -286,6 +290,7 @@ class BatchExtractArticlesTool(BaseTool):
         self._service = memory_service
 
     @traced_tool(name="batch_extract_articles")
+    @validated_tool
     def execute(
         self, html_key_prefix: str, output_key_prefix: str = "test-data-article"
     ) -> dict[str, Any]:
@@ -347,6 +352,7 @@ class RunListingExtractionAgentTool(BaseTool):
         self._service = memory_service
 
     @traced_tool(name="run_listing_extraction_agent")
+    @validated_tool
     def execute(
         self, html_memory_key: str, output_memory_key: str, article_selector: str | None = None
     ) -> dict[str, Any]:
@@ -476,6 +482,7 @@ class BatchExtractListingsTool(BaseTool):
         self._service = memory_service
 
     @traced_tool(name="batch_extract_listings")
+    @validated_tool
     def execute(
         self,
         html_key_prefix: str,

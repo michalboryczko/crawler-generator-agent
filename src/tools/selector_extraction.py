@@ -20,6 +20,7 @@ from ..core.llm import LLMClient
 from ..observability.decorators import traced_tool
 from ..prompts import get_prompt_provider
 from .base import BaseTool
+from .validation import validated_tool
 
 logger = logging.getLogger(__name__)
 
@@ -51,6 +52,7 @@ class ListingPageExtractorTool(BaseTool):
         self.browser = browser
 
     @traced_tool(name="extract_listing_page")
+    @validated_tool
     def execute(
         self, url: str, wait_seconds: int = 5, listing_container_selector: str | None = None
     ) -> dict[str, Any]:
@@ -145,6 +147,7 @@ class ArticlePageExtractorTool(BaseTool):
         self.browser = browser
 
     @traced_tool(name="extract_article_page")
+    @validated_tool
     def execute(self, url: str, wait_seconds: int = 5) -> dict[str, Any]:
         """Extract detail selectors from an article page. Instrumented by @traced_tool."""
         logger.info(f"Extracting article page: {url}")
@@ -222,6 +225,7 @@ class SelectorAggregatorTool(BaseTool):
         self.llm = llm
 
     @traced_tool(name="aggregate_selectors")
+    @validated_tool
     def execute(
         self, listing_extractions: list[dict], article_extractions: list[dict]
     ) -> dict[str, Any]:

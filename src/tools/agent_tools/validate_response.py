@@ -8,6 +8,7 @@ import jsonschema
 from ...contracts.validation_registry import ValidationRegistry
 from ...observability.decorators import traced_tool
 from ..base import BaseTool
+from ..validation import validated_tool
 
 
 class ValidateResponseTool(BaseTool):
@@ -53,6 +54,7 @@ class ValidateResponseTool(BaseTool):
         )
 
     @traced_tool()
+    @validated_tool
     def execute(
         self,
         run_identifier: str,

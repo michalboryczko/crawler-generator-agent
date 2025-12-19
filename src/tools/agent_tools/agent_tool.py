@@ -9,6 +9,7 @@ from typing import TYPE_CHECKING, Any
 from ...contracts.schema_parser import generate_example_json, generate_fields_markdown, load_schema
 from ...observability.decorators import traced_tool
 from ..base import BaseTool
+from ..validation import validated_tool
 
 if TYPE_CHECKING:
     from ...agents.base import BaseAgent
@@ -105,6 +106,7 @@ class AgentTool(BaseTool):
         return self._input_schema
 
     @traced_tool()  # Uses self.name dynamically (run_{agent.name})
+    @validated_tool
     def execute(
         self,
         task: str,

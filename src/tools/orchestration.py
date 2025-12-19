@@ -13,6 +13,7 @@ from typing import TYPE_CHECKING, Any, Protocol
 
 from ..observability.decorators import traced_tool
 from .base import BaseTool
+from .validation import validated_tool
 
 if TYPE_CHECKING:
     from ..agents.result import AgentResult
@@ -101,6 +102,7 @@ def create_agent_runner_tool(
             self.orchestrator_memory = _orchestrator_memory
 
         @traced_tool(name=_tool_name)
+        @validated_tool
         def execute(self, task: str, context: dict[str, Any] | None = None) -> dict[str, Any]:
             """Run the agent with given task. Instrumented by @traced_tool."""
             result = self.agent.run(task, context=context)
@@ -194,6 +196,7 @@ class RunDiscoveryAgentTool(BaseTool):
         self.store_keys = store_keys or []
 
     @traced_tool(name="run_discovery_agent")
+    @validated_tool
     def execute(self, task: str, context: dict[str, Any] | None = None) -> dict[str, Any]:
         """Run discovery agent. Instrumented by @traced_tool."""
         result = self.agent.run(task, context=context)
@@ -242,6 +245,7 @@ class RunSelectorAgentTool(BaseTool):
         self.store_keys = store_keys or []
 
     @traced_tool(name="run_selector_agent")
+    @validated_tool
     def execute(self, task: str, context: dict[str, Any] | None = None) -> dict[str, Any]:
         """Run selector agent. Instrumented by @traced_tool."""
         result = self.agent.run(task, context=context)
@@ -289,6 +293,7 @@ class RunAccessibilityAgentTool(BaseTool):
         self.store_keys = store_keys or []
 
     @traced_tool(name="run_accessibility_agent")
+    @validated_tool
     def execute(self, task: str, context: dict[str, Any] | None = None) -> dict[str, Any]:
         """Run accessibility agent. Instrumented by @traced_tool."""
         result = self.agent.run(task, context=context)
@@ -336,6 +341,7 @@ class RunDataPrepAgentTool(BaseTool):
         self.store_keys = store_keys or []
 
     @traced_tool(name="run_data_prep_agent")
+    @validated_tool
     def execute(self, task: str, context: dict[str, Any] | None = None) -> dict[str, Any]:
         """Run data prep agent. Instrumented by @traced_tool."""
         result = self.agent.run(task, context=context)

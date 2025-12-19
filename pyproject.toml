@@ -88,7 +88,7 @@ warn_return_any = false
 warn_unused_ignores = true
 ignore_missing_imports = true
 disable_error_code = [
-    "override",      # Allow flexible tool execute() signatures
+    "override",      # Tool execute() signatures differ for IDE hints; @validated_tool handles runtime validation
     "attr-defined",  # Singleton pattern dynamic attributes
     "misc",          # Various edge cases (type declarations in __new__)
     "union-attr",    # JSON parsing returns dict | list, we handle it

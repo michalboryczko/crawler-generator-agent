@@ -5,6 +5,7 @@ from typing import Any
 from ...contracts.schema_parser import generate_fields_markdown, load_schema
 from ...observability.decorators import traced_tool
 from ..base import BaseTool
+from ..validation import validated_tool
 
 
 class DescribeInputContractTool(BaseTool):
@@ -44,6 +45,7 @@ class DescribeInputContractTool(BaseTool):
         return "Get the expected input contract for a sub-agent - what context data it requires."
 
     @traced_tool()
+    @validated_tool
     def execute(self, agent_name: str) -> dict[str, Any]:
         """Get input contract description for an agent.
 

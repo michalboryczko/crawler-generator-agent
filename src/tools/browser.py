@@ -11,6 +11,7 @@ from ..core.browser import BrowserSession
 from ..core.html_cleaner import clean_html_for_llm, get_html_summary
 from ..observability.decorators import traced_tool
 from .base import BaseTool
+from .validation import validated_tool
 
 
 class NavigateTool(BaseTool):
@@ -23,6 +24,7 @@ class NavigateTool(BaseTool):
         self.session = session
 
     @traced_tool(name="browser_navigate")
+    @validated_tool
     def execute(self, url: str) -> dict[str, Any]:
         """Navigate to URL. Instrumented by @traced_tool."""
         result = self.session.navigate(url)
@@ -48,6 +50,7 @@ class GetHTMLTool(BaseTool):
         self.session = session
 
     @traced_tool(name="browser_get_html")
+    @validated_tool
     def execute(self, raw: bool = False) -> dict[str, Any]:
         """Get page HTML. Instrumented by @traced_tool."""
         html = self.session.get_html()
@@ -94,6 +97,7 @@ class ClickTool(BaseTool):
         self.session = session
 
     @traced_tool(name="browser_click")
+    @validated_tool
     def execute(self, selector: str) -> dict[str, Any]:
         """Click element. Instrumented by @traced_tool."""
         result = self.session.click(selector)
@@ -123,6 +127,7 @@ class QuerySelectorTool(BaseTool):
         self.session = session
 
     @traced_tool(name="browser_query")
+    @validated_tool
     def execute(self, selector: str) -> dict[str, Any]:
         """Query DOM elements. Instrumented by @traced_tool."""
         elements = self.session.query_selector_all(selector)
@@ -146,6 +151,7 @@ class WaitTool(BaseTool):
         self.session = session
 
     @traced_tool(name="browser_wait")
+    @validated_tool
     def execute(self, selector: str | None = None, seconds: int | None = None) -> dict[str, Any]:
         """Wait for selector or time. Instrumented by @traced_tool."""
         if seconds:
@@ -179,6 +185,7 @@ class ExtractLinksTool(BaseTool):
         self.session = session
 
     @traced_tool(name="browser_extract_links")
+    @validated_tool
     def execute(self) -> dict[str, Any]:
         """Extract links from page. Instrumented by @traced_tool."""
         elements = self.session.query_selector_all("a[href]")
