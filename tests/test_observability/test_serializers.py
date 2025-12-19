@@ -51,6 +51,7 @@ class TestSafeSerialize:
 
     def test_enum(self):
         """Test enum serialization."""
+
         class Color(Enum):
             RED = "red"
             BLUE = "blue"
@@ -59,6 +60,7 @@ class TestSafeSerialize:
 
     def test_dataclass(self):
         """Test dataclass serialization."""
+
         @dataclass
         class Person:
             name: str
@@ -118,6 +120,7 @@ class TestSafeSerialize:
 
     def test_object_with_dict(self):
         """Test objects with __dict__ are serialized."""
+
         class CustomObject:
             def __init__(self):
                 self.x = 1
@@ -130,9 +133,11 @@ class TestSafeSerialize:
 
     def test_unserializable_fallback(self):
         """Test that unserializable objects become strings."""
+
         # Use a class with no __dict__ (via __slots__) and failing __str__
         class NoStr:
             __slots__ = ()  # No __dict__
+
             def __str__(self):
                 raise Exception("Can't stringify")
 

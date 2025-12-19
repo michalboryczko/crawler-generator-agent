@@ -7,8 +7,8 @@ from src.repositories.inmemory import InMemoryRepository
 from src.services.memory_service import MemoryService
 from src.tools.orchestration import (
     RunAccessibilityAgentTool,
-    RunDiscoveryAgentTool,
     RunDataPrepAgentTool,
+    RunDiscoveryAgentTool,
     RunSelectorAgentTool,
     _extract_result_info,
     create_agent_runner_tool,
@@ -48,7 +48,7 @@ class TestExtractResultInfo:
         result = AgentResult.ok(
             extracted_articles=[{"text": "Article 1"}],
             pagination_type="numbered",
-            pagination_max_pages=10
+            pagination_max_pages=10,
         )
         result.iterations = 3
         info = _extract_result_info(result)
@@ -72,12 +72,7 @@ class TestExtractResultInfo:
 
     def test_failure_with_empty_errors(self):
         """Handle failure with empty error list."""
-        result = AgentResult(
-            success=False,
-            data={},
-            iterations=1,
-            errors=[]
-        )
+        result = AgentResult(success=False, data={}, iterations=1, errors=[])
         info = _extract_result_info(result)
 
         assert info["success"] is False
@@ -100,9 +95,7 @@ class TestCreateAgentRunnerTool:
         result.iterations = 1
         agent = MockAgent(result)
         tool = create_agent_runner_tool(
-            tool_name="test_tool",
-            agent=agent,
-            description="Test description"
+            tool_name="test_tool", agent=agent, description="Test description"
         )
         assert tool.name == "test_tool"
 
@@ -112,9 +105,7 @@ class TestCreateAgentRunnerTool:
         result.iterations = 1
         agent = MockAgent(result)
         tool = create_agent_runner_tool(
-            tool_name="test_tool",
-            agent=agent,
-            description="Test description"
+            tool_name="test_tool", agent=agent, description="Test description"
         )
 
         context = {"previous_results": [1, 2, 3]}
@@ -124,18 +115,10 @@ class TestCreateAgentRunnerTool:
 
     def test_tool_returns_structured_data(self):
         """Response includes full data dict."""
-        result = AgentResult.ok(
-            articles=[{"title": "Test"}],
-            count=1,
-            result="found 1 article"
-        )
+        result = AgentResult.ok(articles=[{"title": "Test"}], count=1, result="found 1 article")
         result.iterations = 3
         agent = MockAgent(result)
-        tool = create_agent_runner_tool(
-            tool_name="test_tool",
-            agent=agent,
-            description="Test"
-        )
+        tool = create_agent_runner_tool(tool_name="test_tool", agent=agent, description="Test")
 
         response = tool.execute(task="find articles")
 
@@ -150,7 +133,7 @@ class TestCreateAgentRunnerTool:
         result = AgentResult.ok(
             extracted_articles=[{"text": "Article"}],
             pagination_type="numbered",
-            other_data="not stored"
+            other_data="not stored",
         )
         result.iterations = 1
         agent = MockAgent(result)
@@ -159,7 +142,7 @@ class TestCreateAgentRunnerTool:
             agent=agent,
             description="Test",
             orchestrator_memory=orchestrator_memory,
-            store_keys=["extracted_articles", "pagination_type"]
+            store_keys=["extracted_articles", "pagination_type"],
         )
 
         tool.execute(task="analyze page")
@@ -173,11 +156,7 @@ class TestCreateAgentRunnerTool:
         result = AgentResult.failure("Page not found")
         result.iterations = 1
         agent = MockAgent(result)
-        tool = create_agent_runner_tool(
-            tool_name="test_tool",
-            agent=agent,
-            description="Test"
-        )
+        tool = create_agent_runner_tool(tool_name="test_tool", agent=agent, description="Test")
 
         response = tool.execute(task="navigate")
 
@@ -197,7 +176,7 @@ class TestCreateAgentRunnerTool:
             agent=agent,
             description="Test",
             orchestrator_memory=orchestrator_memory,
-            store_keys=["key1"]
+            store_keys=["key1"],
         )
 
         tool.execute(task="fail")
@@ -213,7 +192,7 @@ class TestCreateAgentRunnerTool:
             tool_name="test_tool",
             agent=agent,
             description="Test",
-            task_description="Custom task desc"
+            task_description="Custom task desc",
         )
 
         schema = tool.get_parameters_schema()
@@ -249,9 +228,7 @@ class TestRunDiscoveryAgentTool:
         result.iterations = 1
         agent = MockAgent(result)
         tool = RunDiscoveryAgentTool(
-            agent,
-            orchestrator_memory=memory,
-            store_keys=["pagination_type"]
+            agent, orchestrator_memory=memory, store_keys=["pagination_type"]
         )
 
         tool.execute(task="analyze")
@@ -286,9 +263,7 @@ class TestRunAccessibilityAgentTool:
         result.iterations = 1
         agent = MockAgent(result)
         tool = RunAccessibilityAgentTool(
-            agent,
-            orchestrator_memory=memory,
-            store_keys=["http_accessible"]
+            agent, orchestrator_memory=memory, store_keys=["http_accessible"]
         )
 
         tool.execute(task="check accessibility")

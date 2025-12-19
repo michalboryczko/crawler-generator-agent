@@ -13,17 +13,10 @@ def sample_discovery_input_schema():
     return {
         "type": "object",
         "properties": {
-            "url": {
-                "type": "string",
-                "format": "uri",
-                "description": "Target URL to analyze"
-            },
-            "page_html": {
-                "type": "string",
-                "description": "HTML content of the page"
-            }
+            "url": {"type": "string", "format": "uri", "description": "Target URL to analyze"},
+            "page_html": {"type": "string", "description": "HTML content of the page"},
         },
-        "required": ["url", "page_html"]
+        "required": ["url", "page_html"],
     }
 
 
@@ -33,16 +26,13 @@ def sample_selector_input_schema():
     return {
         "type": "object",
         "properties": {
-            "html": {
-                "type": "string",
-                "description": "HTML content to analyze"
-            },
+            "html": {"type": "string", "description": "HTML content to analyze"},
             "target_description": {
                 "type": "string",
-                "description": "Description of elements to find"
-            }
+                "description": "Description of elements to find",
+            },
         },
-        "required": ["html"]
+        "required": ["html"],
     }
 
 

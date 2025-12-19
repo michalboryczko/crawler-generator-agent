@@ -1,9 +1,7 @@
 """Tests for AgentTool class with prompt attachment."""
 
 import json
-from pathlib import Path
-from typing import Any
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock
 
 import pytest
 
@@ -31,13 +29,15 @@ class MockAgent:
         output_contract_schema: dict | None = None,
     ):
         """Mock run method that records calls."""
-        self._run_calls.append({
-            "task": task,
-            "context": context,
-            "expected_outputs": expected_outputs,
-            "run_identifier": run_identifier,
-            "output_contract_schema": output_contract_schema,
-        })
+        self._run_calls.append(
+            {
+                "task": task,
+                "context": context,
+                "expected_outputs": expected_outputs,
+                "run_identifier": run_identifier,
+                "output_contract_schema": output_contract_schema,
+            }
+        )
         result = MagicMock()
         result.success = True
         result.data = {"result": "mock_result"}
@@ -61,15 +61,15 @@ def sample_schema():
             "article_urls": {
                 "type": "array",
                 "items": {"type": "string", "format": "uri"},
-                "description": "List of discovered article URLs"
+                "description": "List of discovered article URLs",
             },
             "pagination_type": {
                 "type": "string",
                 "enum": ["numbered", "load_more", "infinite_scroll", "none"],
-                "description": "Type of pagination detected"
-            }
+                "description": "Type of pagination detected",
+            },
         },
-        "required": ["article_urls", "pagination_type"]
+        "required": ["article_urls", "pagination_type"],
     }
 
 
@@ -79,13 +79,9 @@ def sample_input_schema():
     return {
         "type": "object",
         "properties": {
-            "url": {
-                "type": "string",
-                "format": "uri",
-                "description": "Target URL to analyze"
-            }
+            "url": {"type": "string", "format": "uri", "description": "Target URL to analyze"}
         },
-        "required": ["url"]
+        "required": ["url"],
     }
 
 
@@ -97,10 +93,7 @@ class TestAgentToolCreation:
         schema_path = tmp_path / "output.schema.json"
         schema_path.write_text(json.dumps(sample_schema))
 
-        tool = AgentTool(
-            agent=mock_agent,
-            output_schema_path=str(schema_path)
-        )
+        tool = AgentTool(agent=mock_agent, output_schema_path=str(schema_path))
 
         assert tool.agent is mock_agent
         # Original fields should be present
@@ -117,7 +110,7 @@ class TestAgentToolCreation:
         tool = AgentTool(
             agent=mock_agent,
             output_schema_path=str(schema_path),
-            description="Custom description for discovery"
+            description="Custom description for discovery",
         )
 
         assert tool.description == "Custom description for discovery"
@@ -132,9 +125,7 @@ class TestAgentToolCreation:
         input_path.write_text(json.dumps(sample_input_schema))
 
         tool = AgentTool(
-            agent=mock_agent,
-            output_schema_path=str(output_path),
-            input_schema_path=str(input_path)
+            agent=mock_agent, output_schema_path=str(output_path), input_schema_path=str(input_path)
         )
 
         # Input schema is not modified
@@ -195,7 +186,7 @@ class TestAgentToolExecute:
 
         tool = AgentTool(agent=mock_agent, output_schema_path=str(schema_path))
 
-        result = tool.execute(task="Find all article URLs on the page")
+        tool.execute(task="Find all article URLs on the page")
 
         assert len(mock_agent._run_calls) == 1
         assert mock_agent._run_calls[0]["task"] == "Find all article URLs on the page"
@@ -285,9 +276,7 @@ class TestAgentToolPromptAttachment:
 
         assert "run_discovery_agent" in attachment
 
-    def test_prompt_attachment_contains_output_contract(
-        self, mock_agent, sample_schema, tmp_path
-    ):
+    def test_prompt_attachment_contains_output_contract(self, mock_agent, sample_schema, tmp_path):
         """prompt_attachment contains output contract section."""
         schema_path = tmp_path / "output.schema.json"
         schema_path.write_text(json.dumps(sample_schema))
@@ -300,9 +289,7 @@ class TestAgentToolPromptAttachment:
         assert "article_urls" in attachment
         assert "pagination_type" in attachment
 
-    def test_prompt_attachment_contains_example_json(
-        self, mock_agent, sample_schema, tmp_path
-    ):
+    def test_prompt_attachment_contains_example_json(self, mock_agent, sample_schema, tmp_path):
         """prompt_attachment contains example JSON."""
         schema_path = tmp_path / "output.schema.json"
         schema_path.write_text(json.dumps(sample_schema))
@@ -351,9 +338,7 @@ class TestAgentToolPromptAttachment:
         input_path.write_text(json.dumps(sample_input_schema))
 
         tool = AgentTool(
-            agent=mock_agent,
-            output_schema_path=str(output_path),
-            input_schema_path=str(input_path)
+            agent=mock_agent, output_schema_path=str(output_path), input_schema_path=str(input_path)
         )
 
         attachment = tool.prompt_attachment()
@@ -395,9 +380,7 @@ class TestAgentToolOpenAISchema:
 class TestAgentToolSchemaInjection:
     """Tests for agent_response_content field injection."""
 
-    def test_output_schema_has_agent_response_content(
-        self, mock_agent, sample_schema, tmp_path
-    ):
+    def test_output_schema_has_agent_response_content(self, mock_agent, sample_schema, tmp_path):
         """Output schema should have agent_response_content injected."""
         schema_path = tmp_path / "output.schema.json"
         schema_path.write_text(json.dumps(sample_schema))
@@ -432,9 +415,7 @@ class TestAgentToolSchemaInjection:
         input_path.write_text(json.dumps(sample_input_schema))
 
         tool = AgentTool(
-            agent=mock_agent,
-            output_schema_path=str(output_path),
-            input_schema_path=str(input_path)
+            agent=mock_agent, output_schema_path=str(output_path), input_schema_path=str(input_path)
         )
 
         # Input schema should NOT have the field

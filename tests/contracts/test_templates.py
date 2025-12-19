@@ -59,7 +59,7 @@ class TestRenderSubAgentItem:
             tool_name="run_discovery_agent",
             description="Find article URLs on a page",
             fields_markdown="**article_urls** (required): List of URLs",
-            example_json={"article_urls": ["https://example.com/a1"]}
+            example_json={"article_urls": ["https://example.com/a1"]},
         )
 
         assert "discovery_agent" in result
@@ -76,7 +76,7 @@ class TestRenderSubAgentItem:
             tool_name="run_test",
             description="Test",
             fields_markdown="fields",
-            example_json={"test": "value"}
+            example_json={"test": "value"},
         )
 
         assert "Example Output" in result
@@ -90,7 +90,7 @@ class TestRenderSubAgentItem:
             tool_name="run_test",
             description="Test",
             fields_markdown="fields",
-            example_json=None
+            example_json=None,
         )
 
         assert "test_agent" in result
@@ -230,23 +230,17 @@ class TestRenderContractSummary:
             "description": "Discovery agent output schema",
             "type": "object",
             "properties": {
-                "article_urls": {
-                    "type": "array",
-                    "description": "List of discovered URLs"
-                },
-                "pagination_type": {
-                    "type": "string",
-                    "description": "Type of pagination"
-                }
+                "article_urls": {"type": "array", "description": "List of discovered URLs"},
+                "pagination_type": {"type": "string", "description": "Type of pagination"},
             },
-            "required": ["article_urls", "pagination_type"]
+            "required": ["article_urls", "pagination_type"],
         }
 
         result = render_template(
             "contract_summary.md.j2",
             agent_name="discovery_agent",
             schema_path="discovery/output.schema.json",
-            schema=schema
+            schema=schema,
         )
 
         assert "discovery_agent" in result
@@ -257,17 +251,13 @@ class TestRenderContractSummary:
 
     def test_render_contract_summary_missing_description(self):
         """Handle schema without description."""
-        schema = {
-            "type": "object",
-            "properties": {},
-            "required": []
-        }
+        schema = {"type": "object", "properties": {}, "required": []}
 
         result = render_template(
             "contract_summary.md.j2",
             agent_name="test_agent",
             schema_path="test.schema.json",
-            schema=schema
+            schema=schema,
         )
 
         assert "test_agent" in result
@@ -279,5 +269,7 @@ class TestTemplateErrors:
 
     def test_template_not_found(self):
         """FileNotFoundError for unknown template."""
-        with pytest.raises(Exception):  # Jinja2 raises TemplateNotFound
+        from jinja2 import TemplateNotFound
+
+        with pytest.raises(TemplateNotFound):
             render_template("nonexistent_template.j2")

@@ -55,8 +55,6 @@ jobs:
           path: coverage.xml
 
   type-check:
-    # Disabled until mypy is configured
-    if: false
     needs: lint
     runs-on: ubuntu-latest
     steps:

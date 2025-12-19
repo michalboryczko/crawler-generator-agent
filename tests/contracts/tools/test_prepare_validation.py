@@ -4,8 +4,8 @@ import json
 
 import pytest
 
-from src.tools.agent_tools.prepare_validation import PrepareAgentOutputValidationTool
 from src.contracts.validation_registry import ValidationRegistry
+from src.tools.agent_tools.prepare_validation import PrepareAgentOutputValidationTool
 
 
 @pytest.fixture
@@ -17,15 +17,15 @@ def sample_discovery_schema():
             "article_urls": {
                 "type": "array",
                 "items": {"type": "string", "format": "uri"},
-                "description": "List of discovered article URLs"
+                "description": "List of discovered article URLs",
             },
             "pagination_type": {
                 "type": "string",
                 "enum": ["numbered", "load_more", "infinite_scroll", "none"],
-                "description": "Type of pagination detected"
-            }
+                "description": "Type of pagination detected",
+            },
         },
-        "required": ["article_urls", "pagination_type"]
+        "required": ["article_urls", "pagination_type"],
     }
 
 
@@ -65,8 +65,7 @@ class TestPrepareAgentOutputValidationTool:
     def test_execute_registers_context(self, tool_with_schema):
         """execute() registers validation context in registry."""
         result = tool_with_schema.execute(
-            run_identifier="test-uuid-123",
-            agent_name="discovery_agent"
+            run_identifier="test-uuid-123", agent_name="discovery_agent"
         )
 
         assert result["success"] is True
@@ -84,7 +83,7 @@ class TestPrepareAgentOutputValidationTool:
         result = tool_with_schema.execute(
             run_identifier="test-uuid-456",
             agent_name="discovery_agent",
-            expected_outputs=["article_urls"]  # Only one field
+            expected_outputs=["article_urls"],  # Only one field
         )
 
         assert result["success"] is True
@@ -98,8 +97,7 @@ class TestPrepareAgentOutputValidationTool:
     def test_execute_defaults_to_required_fields(self, tool_with_schema):
         """execute() defaults expected_outputs to schema required fields."""
         result = tool_with_schema.execute(
-            run_identifier="test-uuid-789",
-            agent_name="discovery_agent"
+            run_identifier="test-uuid-789", agent_name="discovery_agent"
         )
 
         # Should use schema's required fields
@@ -108,10 +106,7 @@ class TestPrepareAgentOutputValidationTool:
 
     def test_execute_unknown_agent(self, tool_with_schema):
         """execute() returns error for unknown agent."""
-        result = tool_with_schema.execute(
-            run_identifier="test-uuid",
-            agent_name="unknown_agent"
-        )
+        result = tool_with_schema.execute(run_identifier="test-uuid", agent_name="unknown_agent")
 
         assert result["success"] is False
         assert "error" in result
@@ -120,8 +115,7 @@ class TestPrepareAgentOutputValidationTool:
     def test_execute_returns_message(self, tool_with_schema):
         """execute() returns message with instructions."""
         result = tool_with_schema.execute(
-            run_identifier="test-uuid-msg",
-            agent_name="discovery_agent"
+            run_identifier="test-uuid-msg", agent_name="discovery_agent"
         )
 
         assert "message" in result
@@ -160,14 +154,10 @@ class TestPrepareValidationWithCustomRegistry:
         custom_registry = ValidationRegistry()
 
         tool = PrepareAgentOutputValidationTool(
-            schema_paths={"discovery_agent": str(schema_path)},
-            registry=custom_registry
+            schema_paths={"discovery_agent": str(schema_path)}, registry=custom_registry
         )
 
-        tool.execute(
-            run_identifier="custom-uuid",
-            agent_name="discovery_agent"
-        )
+        tool.execute(run_identifier="custom-uuid", agent_name="discovery_agent")
 
         # Should be in custom registry
         assert custom_registry.is_registered("custom-uuid")

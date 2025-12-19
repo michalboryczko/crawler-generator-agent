@@ -119,6 +119,7 @@ class LLMClient:
         component_name: str | None = None,
     ):
         self.component_name = component_name
+        self.model_config: ModelConfig | None
 
         # Handle both config types for backward compatibility
         if isinstance(config, ModelConfig):
@@ -139,7 +140,7 @@ class LLMClient:
             self.client = OpenAI(**client_kwargs)
 
             # Store for backward compatibility
-            self.config = config  # type: ignore
+            self.config: OpenAIConfig | ModelConfig = config
 
         else:
             # Legacy OpenAIConfig support

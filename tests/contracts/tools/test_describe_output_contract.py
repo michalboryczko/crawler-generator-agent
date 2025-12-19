@@ -16,15 +16,15 @@ def sample_discovery_schema():
             "article_urls": {
                 "type": "array",
                 "items": {"type": "string", "format": "uri"},
-                "description": "List of discovered article URLs"
+                "description": "List of discovered article URLs",
             },
             "pagination_type": {
                 "type": "string",
                 "enum": ["numbered", "load_more", "infinite_scroll", "none"],
-                "description": "Type of pagination detected"
-            }
+                "description": "Type of pagination detected",
+            },
         },
-        "required": ["article_urls", "pagination_type"]
+        "required": ["article_urls", "pagination_type"],
     }
 
 
@@ -34,18 +34,15 @@ def sample_selector_schema():
     return {
         "type": "object",
         "properties": {
-            "selector": {
-                "type": "string",
-                "description": "CSS selector for target elements"
-            },
+            "selector": {"type": "string", "description": "CSS selector for target elements"},
             "confidence": {
                 "type": "number",
                 "minimum": 0,
                 "maximum": 1,
-                "description": "Confidence score for the selector"
-            }
+                "description": "Confidence score for the selector",
+            },
         },
-        "required": ["selector"]
+        "required": ["selector"],
     }
 
 
@@ -180,19 +177,12 @@ class TestDescribeOutputContractToolEdgeCases:
 
     def test_schema_with_no_required(self, tmp_path):
         """Handle schema with no required fields."""
-        schema = {
-            "type": "object",
-            "properties": {
-                "optional_field": {"type": "string"}
-            }
-        }
+        schema = {"type": "object", "properties": {"optional_field": {"type": "string"}}}
 
         schema_path = tmp_path / "optional.schema.json"
         schema_path.write_text(json.dumps(schema))
 
-        tool = DescribeOutputContractTool(
-            schema_paths={"optional_agent": str(schema_path)}
-        )
+        tool = DescribeOutputContractTool(schema_paths={"optional_agent": str(schema_path)})
 
         result = tool.execute(agent_name="optional_agent")
 
@@ -210,9 +200,9 @@ class TestDetailedFieldsMarkdown:
             "type": "object",
             "properties": {
                 "name": {"type": "string", "description": "The name"},
-                "count": {"type": "integer", "description": "The count"}
+                "count": {"type": "integer", "description": "The count"},
             },
-            "required": ["name"]
+            "required": ["name"],
         }
 
         schema_path = tmp_path / "test.schema.json"
@@ -231,9 +221,9 @@ class TestDetailedFieldsMarkdown:
             "type": "object",
             "properties": {
                 "required_field": {"type": "string"},
-                "optional_field": {"type": "string"}
+                "optional_field": {"type": "string"},
             },
-            "required": ["required_field"]
+            "required": ["required_field"],
         }
 
         schema_path = tmp_path / "test.schema.json"
@@ -252,12 +242,9 @@ class TestDetailedFieldsMarkdown:
         schema = {
             "type": "object",
             "properties": {
-                "url": {
-                    "type": "string",
-                    "examples": ["https://example.com"]
-                },
-                "count": {"type": "integer"}
-            }
+                "url": {"type": "string", "examples": ["https://example.com"]},
+                "count": {"type": "integer"},
+            },
         }
 
         schema_path = tmp_path / "test.schema.json"
@@ -281,10 +268,10 @@ class TestDetailedFieldsMarkdown:
                     "type": "object",
                     "properties": {
                         "type": {"type": "string", "description": "Pagination type"},
-                        "max_pages": {"type": "integer", "description": "Max pages"}
-                    }
+                        "max_pages": {"type": "integer", "description": "Max pages"},
+                    },
                 }
-            }
+            },
         }
 
         schema_path = tmp_path / "test.schema.json"
@@ -309,11 +296,11 @@ class TestDetailedFieldsMarkdown:
                         "type": "object",
                         "properties": {
                             "title": {"type": "string", "description": "Article title"},
-                            "url": {"type": "string", "description": "Article URL"}
-                        }
-                    }
+                            "url": {"type": "string", "description": "Article URL"},
+                        },
+                    },
                 }
-            }
+            },
         }
 
         schema_path = tmp_path / "test.schema.json"
@@ -335,9 +322,9 @@ class TestDetailedFieldsMarkdown:
                 "status": {
                     "type": "string",
                     "enum": ["pending", "active", "completed"],
-                    "description": "Current status"
+                    "description": "Current status",
                 }
-            }
+            },
         }
 
         schema_path = tmp_path / "test.schema.json"
@@ -357,11 +344,8 @@ class TestDetailedFieldsMarkdown:
         schema = {
             "type": "object",
             "properties": {
-                "optional_value": {
-                    "type": ["string", "null"],
-                    "description": "May be null"
-                }
-            }
+                "optional_value": {"type": ["string", "null"], "description": "May be null"}
+            },
         }
 
         schema_path = tmp_path / "test.schema.json"

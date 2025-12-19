@@ -3,7 +3,7 @@
 import json
 from pathlib import Path
 from typing import Any
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock
 
 import pytest
 
@@ -22,9 +22,7 @@ class MockLLMClient:
         self._call_count = 0
         self.chat_calls = []
 
-    def chat(
-        self, messages: list[dict], tools: list | None = None
-    ) -> dict[str, Any]:
+    def chat(self, messages: list[dict], tools: list | None = None) -> dict[str, Any]:
         """Return canned response and record call."""
         self.chat_calls.append({"messages": messages, "tools": tools})
 
@@ -91,10 +89,8 @@ def sample_schema_path(tmp_path: Path) -> str:
     schema = {
         "$schema": "http://json-schema.org/draft-07/schema#",
         "type": "object",
-        "properties": {
-            "result": {"type": "string", "description": "Test result"}
-        },
-        "required": ["result"]
+        "properties": {"result": {"type": "string", "description": "Test result"}},
+        "required": ["result"],
     }
     schema_file = tmp_path / "test_output.schema.json"
     schema_file.write_text(json.dumps(schema))
@@ -266,8 +262,7 @@ class TestBuildFinalPrompt:
         agent.system_prompt = "Base prompt."
 
         prompt = agent._build_final_prompt(
-            expected_outputs=["article_urls"],
-            run_identifier="uuid-123"
+            expected_outputs=["article_urls"], run_identifier="uuid-123"
         )
 
         assert "Base prompt." in prompt
@@ -282,9 +277,7 @@ class TestBuildFinalPrompt:
         agent.system_prompt = "Base prompt."
 
         prompt = agent._build_final_prompt(
-            expected_outputs=["field1"],
-            run_identifier="uuid-456",
-            context={"data": "test"}
+            expected_outputs=["field1"], run_identifier="uuid-456", context={"data": "test"}
         )
 
         # All sections present
@@ -329,8 +322,7 @@ class TestBuildResponseRules:
         agent = BaseAgent(llm=llm)
 
         rules = agent._build_response_rules(
-            expected_outputs=["field1", "field2"],
-            run_identifier="test-uuid"
+            expected_outputs=["field1", "field2"], run_identifier="test-uuid"
         )
 
         assert "test-uuid" in rules
@@ -342,8 +334,7 @@ class TestBuildResponseRules:
         agent = BaseAgent(llm=llm)
 
         rules = agent._build_response_rules(
-            expected_outputs=["article_urls", "pagination_type"],
-            run_identifier="uuid-123"
+            expected_outputs=["article_urls", "pagination_type"], run_identifier="uuid-123"
         )
 
         assert "article_urls" in rules
@@ -375,10 +366,7 @@ class TestRunWithValidationParams:
         agent = BaseAgent(llm=llm)
 
         # Should not raise
-        result = agent.run(
-            task="test",
-            expected_outputs=["field1"]
-        )
+        result = agent.run(task="test", expected_outputs=["field1"])
 
         assert isinstance(result, AgentResult)
 
@@ -388,10 +376,7 @@ class TestRunWithValidationParams:
         agent = BaseAgent(llm=llm)
 
         # Should not raise
-        result = agent.run(
-            task="test",
-            run_identifier="uuid-123"
-        )
+        result = agent.run(task="test", run_identifier="uuid-123")
 
         assert isinstance(result, AgentResult)
 
@@ -414,7 +399,7 @@ class TestRunWithValidationParams:
             task="test",
             expected_outputs=["field1"],
             run_identifier="uuid-123",
-            context={"key": "value"}
+            context={"key": "value"},
         )
 
         assert len(build_calls) == 1

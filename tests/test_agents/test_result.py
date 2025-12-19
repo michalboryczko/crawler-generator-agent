@@ -19,11 +19,7 @@ class TestAgentResultBasics:
 
     def test_creation_with_data(self) -> None:
         """Test creating result with data."""
-        result = AgentResult(
-            success=True,
-            data={"key": "value", "count": 42},
-            iterations=5
-        )
+        result = AgentResult(success=True, data={"key": "value", "count": 42}, iterations=5)
         assert result.success is True
         assert result.data == {"key": "value", "count": 42}
         assert result.iterations == 5
@@ -112,11 +108,7 @@ class TestAgentResultToDict:
 
     def test_to_dict_with_errors(self) -> None:
         """Test serialization includes errors."""
-        result = AgentResult(
-            success=False,
-            errors=["Error 1", "Error 2"],
-            iterations=3
-        )
+        result = AgentResult(success=False, errors=["Error 1", "Error 2"], iterations=3)
         d = result.to_dict()
 
         assert d["success"] is False
@@ -125,10 +117,7 @@ class TestAgentResultToDict:
 
     def test_to_dict_does_not_include_memory_snapshot(self) -> None:
         """Test memory_snapshot is not in serialized dict."""
-        result = AgentResult(
-            success=True,
-            memory_snapshot={"internal": "state"}
-        )
+        result = AgentResult(success=True, memory_snapshot={"internal": "state"})
         d = result.to_dict()
 
         assert "memory_snapshot" not in d
@@ -147,11 +136,7 @@ class TestAgentResultFailureFactory:
 
     def test_failure_with_data(self) -> None:
         """Test failure() includes additional data."""
-        result = AgentResult.failure(
-            "Connection timeout",
-            url="https://example.com",
-            attempt=3
-        )
+        result = AgentResult.failure("Connection timeout", url="https://example.com", attempt=3)
 
         assert result.success is False
         assert result.errors == ["Connection timeout"]
@@ -172,11 +157,7 @@ class TestAgentResultOkFactory:
 
     def test_ok_with_data(self) -> None:
         """Test ok() includes provided data."""
-        result = AgentResult.ok(
-            articles=["url1", "url2"],
-            count=2,
-            pagination="numbered"
-        )
+        result = AgentResult.ok(articles=["url1", "url2"], count=2, pagination="numbered")
 
         assert result.success is True
         assert result.data["articles"] == ["url1", "url2"]
@@ -220,11 +201,7 @@ class TestAgentResultChaining:
 
     def test_chaining_multiple_operations(self) -> None:
         """Test chaining multiple operations."""
-        result = (
-            AgentResult.ok(initial="data")
-            .merge_data({"more": "data"})
-            .add_error("warning")
-        )
+        result = AgentResult.ok(initial="data").merge_data({"more": "data"}).add_error("warning")
 
         assert result.data["initial"] == "data"
         assert result.data["more"] == "data"

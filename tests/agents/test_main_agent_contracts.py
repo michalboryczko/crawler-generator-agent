@@ -7,14 +7,13 @@ Tests verify that MainAgent:
 """
 
 import json
+from unittest.mock import MagicMock
+
 import pytest
-from pathlib import Path
-from unittest.mock import MagicMock, patch
 
 from src.agents.main_agent import MainAgent
-from src.contracts import SCHEMAS_BASE_PATH
+from src.core.config import AgentSchemaConfig, AgentsConfig
 from src.tools.agent_tools import AgentTool, GenerateUuidTool, PrepareAgentOutputValidationTool
-from src.core.config import AgentsConfig, AgentSchemaConfig
 
 
 @pytest.fixture
@@ -176,7 +175,9 @@ class TestAgentToolsHaveSchemas:
 
     def test_accessibility_agent_tool_has_output_schema(self, main_agent):
         """Accessibility agent tool should have output schema path."""
-        tool = next((t for t in main_agent.agent_tools if t.name == "run_accessibility_agent"), None)
+        tool = next(
+            (t for t in main_agent.agent_tools if t.name == "run_accessibility_agent"), None
+        )
         assert tool is not None
         assert tool.output_schema is not None
 

@@ -22,7 +22,7 @@ def create_mock_llm(responses: list[dict[str, Any]] | None = None) -> MagicMock:
     """
     # Use spec to prevent auto-creation of 'get_client' attribute
     # which would make BaseAgent think this is a factory
-    mock_llm = MagicMock(spec=['chat'])
+    mock_llm = MagicMock(spec=["chat"])
 
     if responses is None:
         responses = [{"content": "Done", "tool_calls": []}]
@@ -46,9 +46,7 @@ class TestBaseAgentRunReturnsAgentResult:
 
     def test_run_returns_agent_result_on_success(self) -> None:
         """Test run() returns AgentResult with success=True when agent completes."""
-        mock_llm = create_mock_llm([
-            {"content": "Task completed successfully", "tool_calls": []}
-        ])
+        mock_llm = create_mock_llm([{"content": "Task completed successfully", "tool_calls": []}])
 
         agent = BaseAgent(mock_llm)
         result = agent.run("Test task")
@@ -61,9 +59,9 @@ class TestBaseAgentRunReturnsAgentResult:
     def test_run_returns_agent_result_on_max_iterations(self) -> None:
         """Test run() returns AgentResult with failure on max iterations."""
         # Always return a tool call to trigger max iterations
-        mock_llm = create_mock_llm([
-            {"content": "", "tool_calls": [{"id": "1", "name": "unknown_tool", "arguments": {}}]}
-        ])
+        mock_llm = create_mock_llm(
+            [{"content": "", "tool_calls": [{"id": "1", "name": "unknown_tool", "arguments": {}}]}]
+        )
 
         agent = BaseAgent(mock_llm)
         result = agent.run("Test task")
@@ -80,9 +78,7 @@ class TestBaseAgentContextInjection:
 
     def test_context_injected_to_system_message(self) -> None:
         """Test that context dict is injected into system message."""
-        mock_llm = create_mock_llm([
-            {"content": "Done", "tool_calls": []}
-        ])
+        mock_llm = create_mock_llm([{"content": "Done", "tool_calls": []}])
 
         agent = BaseAgent(mock_llm)
         context = {"target_url": "https://example.com", "max_pages": 10}
@@ -101,9 +97,7 @@ class TestBaseAgentContextInjection:
 
     def test_no_context_injection_when_none(self) -> None:
         """Test that system message is unchanged when context is None."""
-        mock_llm = create_mock_llm([
-            {"content": "Done", "tool_calls": []}
-        ])
+        mock_llm = create_mock_llm([{"content": "Done", "tool_calls": []}])
 
         agent = BaseAgent(mock_llm)
         original_prompt = agent.system_prompt
@@ -123,9 +117,7 @@ class TestBaseAgentMemorySnapshot:
 
     def test_memory_snapshot_included_when_service_exists(self) -> None:
         """Test memory_snapshot is populated when agent has memory service."""
-        mock_llm = create_mock_llm([
-            {"content": "Done", "tool_calls": []}
-        ])
+        mock_llm = create_mock_llm([{"content": "Done", "tool_calls": []}])
 
         repo = InMemoryRepository()
         memory_service = MemoryService(repo, "test-session", "test-agent")
@@ -141,9 +133,7 @@ class TestBaseAgentMemorySnapshot:
 
     def test_memory_snapshot_none_when_no_service(self) -> None:
         """Test memory_snapshot is None when agent has no memory service."""
-        mock_llm = create_mock_llm([
-            {"content": "Done", "tool_calls": []}
-        ])
+        mock_llm = create_mock_llm([{"content": "Done", "tool_calls": []}])
 
         agent = BaseAgent(mock_llm, memory_service=None)
         result = agent.run("Test task")
@@ -170,9 +160,7 @@ class TestBaseAgentExtractResultData:
             def _extract_result_data(self, content: str) -> dict:
                 return {"custom_key": content, "parsed": True}
 
-        mock_llm = create_mock_llm([
-            {"content": "Custom response", "tool_calls": []}
-        ])
+        mock_llm = create_mock_llm([{"content": "Custom response", "tool_calls": []}])
 
         agent = CustomAgent(mock_llm)
         result = agent.run("Test task")
@@ -187,11 +175,13 @@ class TestBaseAgentIterationCount:
     def test_iterations_count_is_correct(self) -> None:
         """Test iterations count reflects actual iterations."""
         # Two iterations with tool calls, then complete on third
-        mock_llm = create_mock_llm([
-            {"content": "", "tool_calls": [{"id": "1", "name": "test_tool", "arguments": {}}]},
-            {"content": "", "tool_calls": [{"id": "2", "name": "test_tool", "arguments": {}}]},
-            {"content": "Done", "tool_calls": []}
-        ])
+        mock_llm = create_mock_llm(
+            [
+                {"content": "", "tool_calls": [{"id": "1", "name": "test_tool", "arguments": {}}]},
+                {"content": "", "tool_calls": [{"id": "2", "name": "test_tool", "arguments": {}}]},
+                {"content": "Done", "tool_calls": []},
+            ]
+        )
 
         mock_tool = MagicMock()
         mock_tool.name = "test_tool"
@@ -231,10 +221,15 @@ class TestBaseAgentToolExecution:
 
     def test_tool_execution_in_loop(self) -> None:
         """Test that tool is executed during run loop."""
-        mock_llm = create_mock_llm([
-            {"content": "", "tool_calls": [{"id": "1", "name": "my_tool", "arguments": {"arg": "val"}}]},
-            {"content": "Final result", "tool_calls": []}
-        ])
+        mock_llm = create_mock_llm(
+            [
+                {
+                    "content": "",
+                    "tool_calls": [{"id": "1", "name": "my_tool", "arguments": {"arg": "val"}}],
+                },
+                {"content": "Final result", "tool_calls": []},
+            ]
+        )
 
         mock_tool = MagicMock()
         mock_tool.name = "my_tool"

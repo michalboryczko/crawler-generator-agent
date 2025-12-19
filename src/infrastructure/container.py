@@ -103,6 +103,7 @@ class Container:
         """
         session_id = session_id or str(uuid.uuid4())
         db_session_factory = None
+        repository: AbstractMemoryRepository
 
         if config.backend_type == "memory":
             repository = InMemoryRepository()

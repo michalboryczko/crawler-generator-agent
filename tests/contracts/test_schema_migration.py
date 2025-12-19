@@ -4,7 +4,6 @@ import json
 import sys
 from pathlib import Path
 from tempfile import TemporaryDirectory
-from unittest.mock import patch
 
 import pytest
 
@@ -101,9 +100,7 @@ class TestAddFieldFunction:
             schema_path = Path(tmpdir) / "output.schema.json"
             original = {
                 "type": "object",
-                "properties": {
-                    "agent_response_content": {"type": "string", "description": "test"}
-                },
+                "properties": {"agent_response_content": {"type": "string", "description": "test"}},
             }
             with open(schema_path, "w") as f:
                 json.dump(original, f)

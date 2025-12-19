@@ -247,7 +247,7 @@ class SelectorAggregatorTool(BaseTool):
     def _aggregate_listing_selectors(self, extractions: list[dict]) -> dict:
         """Aggregate listing selectors into chains ordered by success rate."""
         # Collect all selector variations with counts
-        selector_variations = {}
+        selector_variations: dict[str, list[str]] = {}
         total_pages = len([e for e in extractions if e.get("success")])
 
         for extraction in extractions:
@@ -288,7 +288,7 @@ class SelectorAggregatorTool(BaseTool):
     def _aggregate_article_selectors(self, extractions: list[dict]) -> dict:
         """Aggregate article selectors into chains ordered by success rate."""
         # Collect all selector variations with counts
-        selector_variations = {}
+        selector_variations: dict[str, list[str]] = {}
         total_pages = len([e for e in extractions if e.get("success")])
 
         for extraction in extractions:

@@ -88,7 +88,9 @@ _initialized: bool = False
 _config: ObservabilityConfig | None = None
 
 
-def initialize_observability(handler: "LogHandler", config: ObservabilityConfig = None) -> None:
+def initialize_observability(
+    handler: "LogHandler", config: ObservabilityConfig | None = None
+) -> None:
     """Initialize the observability system.
 
     This initializes:

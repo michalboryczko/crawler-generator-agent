@@ -9,13 +9,13 @@ import time
 
 import pytest
 
+from src.contracts.validation_registry import ValidationRegistry
+from src.prompts.template_renderer import render_template
 from src.tools.agent_tools import (
     GenerateUuidTool,
     PrepareAgentOutputValidationTool,
     ValidateResponseTool,
 )
-from src.contracts.validation_registry import ValidationRegistry
-from src.prompts.template_renderer import render_template
 
 
 class TestFullValidationWorkflow:
@@ -152,9 +152,7 @@ class TestFullValidationWorkflow:
         run_identifier = uuid_tool.execute()["run_identifier"]
 
         prepare_tool = PrepareAgentOutputValidationTool(schema_paths)
-        result = prepare_tool.execute(
-            run_identifier=run_identifier, agent_name="unknown_agent"
-        )
+        result = prepare_tool.execute(run_identifier=run_identifier, agent_name="unknown_agent")
         assert not result["success"]
         assert "Unknown agent" in result["error"]
 
@@ -201,9 +199,7 @@ class TestConcurrentValidation:
                 results[f"uuid_{thread_id}"] = run_identifier
 
                 # Prepare validation
-                prepare_tool.execute(
-                    run_identifier=run_identifier, agent_name="test_agent"
-                )
+                prepare_tool.execute(run_identifier=run_identifier, agent_name="test_agent")
 
                 # Validate with unique value
                 response = {"value": thread_id}
@@ -215,10 +211,7 @@ class TestConcurrentValidation:
                 errors.append((thread_id, str(e)))
 
         # Run 10 concurrent threads
-        threads = [
-            threading.Thread(target=register_and_validate, args=(i,))
-            for i in range(10)
-        ]
+        threads = [threading.Thread(target=register_and_validate, args=(i,)) for i in range(10)]
         for t in threads:
             t.start()
         for t in threads:
@@ -337,9 +330,7 @@ class TestSchemaValidationDetails:
 
         # Valid nested structure
         valid_response = {"nested": {"inner_field": "test value"}}
-        result = validate_tool.execute(
-            run_identifier=run_identifier, response_json=valid_response
-        )
+        result = validate_tool.execute(run_identifier=run_identifier, response_json=valid_response)
         assert result["valid"]
 
     def test_array_items_validation(self, tmp_path):
@@ -375,5 +366,6 @@ class TestSchemaValidationDetails:
             run_identifier=run_identifier, response_json=invalid_response
         )
         assert not result["valid"]
-        assert any("minItems" in e["message"] or "[]" in e["message"]
-                   for e in result["validation_errors"])
+        assert any(
+            "minItems" in e["message"] or "[]" in e["message"] for e in result["validation_errors"]
+        )

@@ -261,7 +261,10 @@ class TestDataFlowWorkflow:
         )
 
         # Verify data flowed correctly
-        assert selector_agent.last_context["article_links"] == discovery_response["data"]["extracted_articles"]
+        assert (
+            selector_agent.last_context["article_links"]
+            == discovery_response["data"]["extracted_articles"]
+        )
         assert selector_response["data"]["article_link_selector"] == "a.article-link"
 
     def test_full_agent_chain_with_shared_memory(self):
@@ -311,9 +314,7 @@ class TestDataFlowWorkflow:
 
         # Execute chain
         discovery_tool.execute(task="Analyze site")
-        selector_tool.execute(
-            task="Find selectors", context={"url": shared_memory.read("url")}
-        )
+        selector_tool.execute(task="Find selectors", context={"url": shared_memory.read("url")})
         accessibility_tool.execute(
             task="Check accessibility",
             context={"selector": shared_memory.read("article_selector")},

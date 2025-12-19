@@ -19,7 +19,7 @@ class TestContractValidationError:
         """Test creating error with validation errors."""
         errors = [
             {"path": "name", "message": "Required field missing"},
-            {"path": "age", "message": "Must be integer"}
+            {"path": "age", "message": "Must be integer"},
         ]
         error = ContractValidationError("Validation failed", errors=errors)
 

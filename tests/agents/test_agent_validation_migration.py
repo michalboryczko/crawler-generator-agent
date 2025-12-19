@@ -1,9 +1,5 @@
 """Tests for sub-agent validation tool migration."""
 
-from unittest.mock import MagicMock, patch
-
-import pytest
-
 from src.tools.agent_tools import ValidateResponseTool
 
 

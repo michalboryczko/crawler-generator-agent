@@ -1,6 +1,5 @@
 """Tests for ToolResult dataclass."""
 
-
 from src.tools.result import ToolResult
 
 

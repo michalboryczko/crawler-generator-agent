@@ -266,8 +266,8 @@ class ObservabilitySpan:
         self.component_name = component_name
         self.token: contextvars.Token | None = None
         self.context: ObservabilityContext | None = None
-        self._otel_span = None
-        self._otel_token = None
+        self._otel_span: Any = None  # Type: trace.Span when active
+        self._otel_token: Any = None  # Type: context manager token when active
 
     def __enter__(self) -> "ObservabilityContext":
         """Enter the span context.

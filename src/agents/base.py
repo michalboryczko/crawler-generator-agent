@@ -64,6 +64,7 @@ class BaseAgent:
             memory_service: MemoryService for agent memory
         """
         # Handle both LLMClient and LLMClientFactory
+        self.llm_factory: Any = None  # Type: LLMClientFactory when using factory mode
         if hasattr(llm, "get_client"):
             # It's a factory - get a client for this agent
             self.llm_factory = llm
@@ -137,7 +138,7 @@ class BaseAgent:
             output_contract_schema=output_contract_schema,
         )
 
-        messages = [
+        messages: list[dict[str, Any]] = [
             {"role": "system", "content": system_content},
             {"role": "user", "content": task},
         ]

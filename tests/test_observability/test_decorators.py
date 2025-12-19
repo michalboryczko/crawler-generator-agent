@@ -39,6 +39,7 @@ class TestTracedTool:
 
     def test_sync_function_returns_result(self):
         """Test that decorated sync function returns correct result."""
+
         @traced_tool(name="add_tool")
         def add(a: int, b: int) -> dict:
             return {"sum": a + b}
@@ -65,6 +66,7 @@ class TestTracedTool:
 
     def test_error_is_reraised(self):
         """Test that exceptions are re-raised after logging."""
+
         @traced_tool(name="error_tool")
         def failing():
             raise ValueError("test error")
@@ -74,6 +76,7 @@ class TestTracedTool:
 
     def test_method_decorator(self):
         """Test decorator works on class methods."""
+
         class MyTool:
             @traced_tool(name="method_tool")
             def execute(self, value: int) -> dict:
@@ -89,6 +92,7 @@ class TestTracedAgent:
 
     def test_sync_agent(self):
         """Test sync agent function."""
+
         @traced_agent(name="test_agent")
         def run_agent(task: str) -> dict:
             return {"success": True, "task": task}
@@ -99,6 +103,7 @@ class TestTracedAgent:
     @pytest.mark.asyncio
     async def test_async_agent(self):
         """Test async agent function."""
+
         @traced_agent(name="async_agent")
         async def run_async_agent(task: str) -> dict:
             await asyncio.sleep(0.001)
@@ -113,13 +118,14 @@ class TestTracedLLMClient:
 
     def test_llm_client_decorator(self):
         """Test LLM client decorator."""
+
         @traced_llm_client(provider="openai")
         def chat(messages: list, model: str = "gpt-4") -> dict:
             return {
                 "content": "Hello!",
                 "tokens_input": 10,
                 "tokens_output": 5,
-                "finish_reason": "stop"
+                "finish_reason": "stop",
             }
 
         result = chat([{"role": "user", "content": "Hi"}])
@@ -143,6 +149,7 @@ class TestNestedTracing:
         @traced_tool(name="inner_tool")
         def inner_tool():
             from src.observability.context import ObservabilityContext
+
             ctx = ObservabilityContext.get_current()
             captured_contexts.append(("inner", ctx))
             return {}
@@ -150,6 +157,7 @@ class TestNestedTracing:
         @traced_tool(name="outer_tool")
         def outer_tool():
             from src.observability.context import ObservabilityContext
+
             ctx = ObservabilityContext.get_current()
             captured_contexts.append(("outer", ctx))
             return inner_tool()
@@ -184,6 +192,7 @@ class TestNestedTracing:
         @traced_agent(name="test_agent")
         def run_agent():
             from src.observability.context import ObservabilityContext
+
             ctx = ObservabilityContext.get_current()
             trace_ids.append(ctx.trace_id)
             return {}
@@ -202,22 +211,46 @@ class TestNestedTracing:
         @traced_tool(name="tool_a")
         def tool_a():
             from src.observability.context import ObservabilityContext
+
             ctx = ObservabilityContext.get_current()
-            spans.append({"name": "tool_a", "trace_id": ctx.trace_id, "span_id": ctx.span_id, "parent": ctx.parent_span_id})
+            spans.append(
+                {
+                    "name": "tool_a",
+                    "trace_id": ctx.trace_id,
+                    "span_id": ctx.span_id,
+                    "parent": ctx.parent_span_id,
+                }
+            )
             return {}
 
         @traced_tool(name="tool_b")
         def tool_b():
             from src.observability.context import ObservabilityContext
+
             ctx = ObservabilityContext.get_current()
-            spans.append({"name": "tool_b", "trace_id": ctx.trace_id, "span_id": ctx.span_id, "parent": ctx.parent_span_id})
+            spans.append(
+                {
+                    "name": "tool_b",
+                    "trace_id": ctx.trace_id,
+                    "span_id": ctx.span_id,
+                    "parent": ctx.parent_span_id,
+                }
+            )
             return {}
 
         @traced_agent(name="test_agent")
         def run_agent():
             from src.observability.context import ObservabilityContext
+
             ctx = ObservabilityContext.get_current()
-            spans.append({"name": "agent", "trace_id": ctx.trace_id, "span_id": ctx.span_id, "parent": ctx.parent_span_id})
+            spans.append(
+                {
+                    "name": "agent",
+                    "trace_id": ctx.trace_id,
+                    "span_id": ctx.span_id,
+                    "parent": ctx.parent_span_id,
+                }
+            )
             tool_a()
             tool_b()
             return {}
@@ -243,9 +276,11 @@ class TestOTelSpanIds:
 
     def test_span_id_is_16_hex_chars(self):
         """Test that span_id is 16 hex characters (64-bit)."""
+
         @traced_tool(name="test_tool")
         def test_tool():
             from src.observability.context import ObservabilityContext
+
             ctx = ObservabilityContext.get_current()
             return {"span_id": ctx.span_id}
 
@@ -259,9 +294,11 @@ class TestOTelSpanIds:
 
     def test_trace_id_is_32_hex_chars(self):
         """Test that trace_id is 32 hex characters (128-bit)."""
+
         @traced_tool(name="test_tool")
         def test_tool():
             from src.observability.context import ObservabilityContext
+
             ctx = ObservabilityContext.get_current()
             return {"trace_id": ctx.trace_id}
 
@@ -284,6 +321,7 @@ class TestBusinessMetadata:
         @traced_tool(name="inner")
         def inner():
             from src.observability.context import ObservabilityContext
+
             ctx = ObservabilityContext.get_current()
             session_ids.append(ctx.session_id)
             return {}
@@ -291,6 +329,7 @@ class TestBusinessMetadata:
         @traced_agent(name="outer")
         def outer():
             from src.observability.context import ObservabilityContext
+
             ctx = ObservabilityContext.get_current()
             session_ids.append(ctx.session_id)
             inner()
@@ -311,6 +350,7 @@ class TestBusinessMetadata:
         @traced_tool(name="child_tool")
         def child_tool():
             from src.observability.context import ObservabilityContext
+
             ctx = ObservabilityContext.get_current()
             triggered_by_values.append(ctx.triggered_by)
             return {}
@@ -318,6 +358,7 @@ class TestBusinessMetadata:
         @traced_agent(name="parent_agent")
         def parent_agent():
             from src.observability.context import ObservabilityContext
+
             ctx = ObservabilityContext.get_current()
             triggered_by_values.append(ctx.triggered_by)
             child_tool()

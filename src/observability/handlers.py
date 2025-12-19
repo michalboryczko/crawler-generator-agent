@@ -16,6 +16,7 @@ import contextlib
 import threading
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
+from typing import Any
 
 from .schema import LogRecord, TraceEvent
 
@@ -86,7 +87,7 @@ class OTelGrpcHandler(LogHandler):
         self.config = config
         self._lock = threading.Lock()
         self._initialized = False
-        self._logger_provider = None
+        self._logger_provider: Any = None  # Type: LoggerProvider when initialized
         self._initialize()
 
     def _initialize(self) -> None:
@@ -146,7 +147,7 @@ class OTelGrpcHandler(LogHandler):
             )
 
             # Build attributes dict with all our structured data
-            attributes = {
+            attributes: dict[str, str | int | float | bool] = {
                 "event": record.event,
                 "component_type": record.component_type,
                 "component_name": record.component_name,

@@ -98,6 +98,13 @@ class ValidateResponseTool(BaseTool):
                 "error": f"No validation context for run_identifier: {run_identifier}",
             }
 
+        # Ensure response_json is a dict for further processing
+        if not isinstance(response_json, dict):
+            return {
+                "success": False,
+                "error": f"Expected JSON object, got {type(response_json).__name__}",
+            }
+
         # Extract data from wrapper if present
         if "data" in response_json and isinstance(response_json.get("data"), dict):
             validation_data = response_json["data"]

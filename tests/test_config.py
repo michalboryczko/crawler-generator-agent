@@ -85,6 +85,7 @@ class TestOutputConfig:
     def test_get_output_dir(self):
         """Test get_output_dir generates correct path with timestamp."""
         import re
+
         config = OutputConfig(base_dir=Path("/tmp/output"))
         output_dir = config.get_output_dir("https://example.com/page")
         # Format: {base_dir}/{dirname}_{timestamp}

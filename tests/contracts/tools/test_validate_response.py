@@ -2,8 +2,8 @@
 
 import pytest
 
-from src.tools.agent_tools.validate_response import ValidateResponseTool
 from src.contracts.validation_registry import ValidationRegistry
+from src.tools.agent_tools.validate_response import ValidateResponseTool
 
 
 @pytest.fixture
@@ -15,15 +15,15 @@ def sample_discovery_schema():
             "article_urls": {
                 "type": "array",
                 "items": {"type": "string", "format": "uri"},
-                "description": "List of discovered article URLs"
+                "description": "List of discovered article URLs",
             },
             "pagination_type": {
                 "type": "string",
                 "enum": ["numbered", "load_more", "infinite_scroll", "none"],
-                "description": "Type of pagination detected"
-            }
+                "description": "Type of pagination detected",
+            },
         },
-        "required": ["article_urls", "pagination_type"]
+        "required": ["article_urls", "pagination_type"],
     }
 
 
@@ -43,7 +43,7 @@ def registry_with_context(sample_discovery_schema):
         run_identifier="valid-uuid",
         schema=sample_discovery_schema,
         agent_name="discovery_agent",
-        expected_outputs=["article_urls", "pagination_type"]
+        expected_outputs=["article_urls", "pagination_type"],
     )
     return registry
 
@@ -68,16 +68,12 @@ class TestValidateResponseTool:
     def test_execute_valid_response(self, tool_with_registry):
         """execute() returns valid=True for valid JSON."""
         valid_response = {
-            "article_urls": [
-                "https://example.com/article1",
-                "https://example.com/article2"
-            ],
-            "pagination_type": "numbered"
+            "article_urls": ["https://example.com/article1", "https://example.com/article2"],
+            "pagination_type": "numbered",
         }
 
         result = tool_with_registry.execute(
-            run_identifier="valid-uuid",
-            response_json=valid_response
+            run_identifier="valid-uuid", response_json=valid_response
         )
 
         assert result["success"] is True
@@ -92,8 +88,7 @@ class TestValidateResponseTool:
         }
 
         result = tool_with_registry.execute(
-            run_identifier="valid-uuid",
-            response_json=invalid_response
+            run_identifier="valid-uuid", response_json=invalid_response
         )
 
         assert result["success"] is True  # Tool succeeded, but validation failed
@@ -105,12 +100,11 @@ class TestValidateResponseTool:
         """execute() returns valid=False for wrong field types."""
         invalid_response = {
             "article_urls": "not-an-array",  # Should be array
-            "pagination_type": "numbered"
+            "pagination_type": "numbered",
         }
 
         result = tool_with_registry.execute(
-            run_identifier="valid-uuid",
-            response_json=invalid_response
+            run_identifier="valid-uuid", response_json=invalid_response
         )
 
         assert result["success"] is True
@@ -121,12 +115,11 @@ class TestValidateResponseTool:
         """execute() returns valid=False for invalid enum value."""
         invalid_response = {
             "article_urls": ["https://example.com/article1"],
-            "pagination_type": "invalid_type"  # Not in enum
+            "pagination_type": "invalid_type",  # Not in enum
         }
 
         result = tool_with_registry.execute(
-            run_identifier="valid-uuid",
-            response_json=invalid_response
+            run_identifier="valid-uuid", response_json=invalid_response
         )
 
         assert result["success"] is True
@@ -137,12 +130,11 @@ class TestValidateResponseTool:
         """Validation errors include path information."""
         invalid_response = {
             "article_urls": ["https://example.com/article1"],
-            "pagination_type": "invalid"
+            "pagination_type": "invalid",
         }
 
         result = tool_with_registry.execute(
-            run_identifier="valid-uuid",
-            response_json=invalid_response
+            run_identifier="valid-uuid", response_json=invalid_response
         )
 
         errors = result["validation_errors"]
@@ -153,8 +145,7 @@ class TestValidateResponseTool:
     def test_execute_unknown_run_identifier(self, tool_with_registry):
         """execute() returns error for unknown run_identifier."""
         result = tool_with_registry.execute(
-            run_identifier="unknown-uuid",
-            response_json={"any": "data"}
+            run_identifier="unknown-uuid", response_json={"any": "data"}
         )
 
         assert result["success"] is False
@@ -166,8 +157,7 @@ class TestValidateResponseTool:
         invalid_response = {"article_urls": "wrong"}
 
         result = tool_with_registry.execute(
-            run_identifier="valid-uuid",
-            response_json=invalid_response
+            run_identifier="valid-uuid", response_json=invalid_response
         )
 
         assert "message" in result
@@ -203,21 +193,15 @@ class TestValidateResponseToolDefaultRegistry:
             run_identifier="singleton-uuid",
             schema=sample_discovery_schema,
             agent_name="discovery_agent",
-            expected_outputs=[]
+            expected_outputs=[],
         )
 
         # Create tool without injecting registry
         tool = ValidateResponseTool()
 
-        valid_response = {
-            "article_urls": ["https://example.com/a"],
-            "pagination_type": "none"
-        }
+        valid_response = {"article_urls": ["https://example.com/a"], "pagination_type": "none"}
 
-        result = tool.execute(
-            run_identifier="singleton-uuid",
-            response_json=valid_response
-        )
+        result = tool.execute(run_identifier="singleton-uuid", response_json=valid_response)
 
         assert result["success"] is True
         assert result["valid"] is True
@@ -366,15 +350,12 @@ class TestValidateResponseToolEdgeCases:
             run_identifier="empty-uuid",
             schema={"type": "object", "properties": {}},
             agent_name="empty_agent",
-            expected_outputs=[]
+            expected_outputs=[],
         )
 
         tool = ValidateResponseTool(registry=registry)
 
-        result = tool.execute(
-            run_identifier="empty-uuid",
-            response_json={}
-        )
+        result = tool.execute(run_identifier="empty-uuid", response_json={})
 
         assert result["success"] is True
         assert result["valid"] is True
@@ -386,23 +367,18 @@ class TestValidateResponseToolEdgeCases:
             run_identifier="extra-uuid",
             schema={
                 "type": "object",
-                "properties": {
-                    "name": {"type": "string"}
-                },
-                "required": ["name"]
+                "properties": {"name": {"type": "string"}},
+                "required": ["name"],
             },
             agent_name="test_agent",
-            expected_outputs=["name"]
+            expected_outputs=["name"],
         )
 
         tool = ValidateResponseTool(registry=registry)
 
         result = tool.execute(
             run_identifier="extra-uuid",
-            response_json={
-                "name": "test",
-                "extra_field": "should be allowed"
-            }
+            response_json={"name": "test", "extra_field": "should be allowed"},
         )
 
         assert result["success"] is True

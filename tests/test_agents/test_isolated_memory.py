@@ -108,8 +108,12 @@ class TestAgentResultDataFlow:
                 return {
                     "content": "",
                     "tool_calls": [
-                        {"id": "1", "name": "memory_write", "arguments": {"key": "test", "value": "data"}}
-                    ]
+                        {
+                            "id": "1",
+                            "name": "memory_write",
+                            "arguments": {"key": "test", "value": "data"},
+                        }
+                    ],
                 }
             # Second call: done
             return {"content": "Done", "tool_calls": []}
@@ -178,8 +182,5 @@ class TestMemoryServiceMergeWorkflow:
         # Export only relevant keys for selector agent
         context = discovery_service.export_keys(["url", "links"])
 
-        assert context == {
-            "url": "https://example.com",
-            "links": ["l1", "l2", "l3"]
-        }
+        assert context == {"url": "https://example.com", "links": ["l1", "l2", "l3"]}
         assert "internal_state" not in context

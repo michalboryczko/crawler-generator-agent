@@ -27,6 +27,8 @@ dev = [
     "pytest-asyncio>=0.23.0",
     "pytest-cov>=4.1.0",
     "ruff>=0.1.0",
+    "mypy>=1.0.0",
+    "types-PyYAML>=6.0.0",
 ]
 mysql = [
     "pymysql>=1.1.0",
@@ -79,3 +81,36 @@ packages = ["src"]
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
+
+[tool.mypy]
+python_version = "3.11"
+warn_return_any = false
+warn_unused_ignores = true
+ignore_missing_imports = true
+disable_error_code = [
+    "override",      # Allow flexible tool execute() signatures
+    "attr-defined",  # Singleton pattern dynamic attributes
+    "misc",          # Various edge cases (type declarations in __new__)
+    "union-attr",    # JSON parsing returns dict | list, we handle it
+    "arg-type",      # Flexible argument types in tools
+    "return-value",  # Decorator return types, sorted() key functions
+]
+exclude = [
+    "tests/",
+    "infra/",
+    ".venv/",
+]
+
+# SQLAlchemy models and related services need special handling
+[[tool.mypy.overrides]]
+module = "src.models.*"
+ignore_errors = true
+
+[[tool.mypy.overrides]]
+module = "src.repositories.*"
+ignore_errors = true
+
+[[tool.mypy.overrides]]
+module = "src.services.session_service"
+ignore_errors = true
+

@@ -217,17 +217,13 @@ class TestPromptProvider:
     def test_register_template(self):
         """Register and use a template."""
         provider = PromptProvider()
-        provider.register_template(
-            "test_template", PromptTemplate("URL: {{ url }}", name="test")
-        )
+        provider.register_template("test_template", PromptTemplate("URL: {{ url }}", name="test"))
         assert provider.has_template("test_template")
 
     def test_render_prompt(self):
         """Render registered template."""
         provider = PromptProvider()
-        provider.register_template(
-            "test_template", PromptTemplate("URL: {{ url }}", name="test")
-        )
+        provider.register_template("test_template", PromptTemplate("URL: {{ url }}", name="test"))
         result = provider.render_prompt("test_template", url="http://example.com")
         assert "http://example.com" in result
 
@@ -240,9 +236,7 @@ class TestPromptProvider:
     def test_render_prompt_missing_context_raises(self):
         """Rendering with missing context raises ValueError."""
         provider = PromptProvider()
-        provider.register_template(
-            "needs_var", PromptTemplate("{{ required }}", name="needs")
-        )
+        provider.register_template("needs_var", PromptTemplate("{{ required }}", name="needs"))
         with pytest.raises(ValueError, match="Missing context variables"):
             provider.render_prompt("needs_var")
 

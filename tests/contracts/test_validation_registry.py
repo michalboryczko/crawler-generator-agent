@@ -17,7 +17,7 @@ class TestValidationContext:
             run_identifier="test-uuid",
             schema={"type": "object"},
             agent_name="test_agent",
-            expected_outputs=["field1", "field2"]
+            expected_outputs=["field1", "field2"],
         )
 
         assert context.run_identifier == "test-uuid"
@@ -29,10 +29,7 @@ class TestValidationContext:
     def test_context_not_expired(self):
         """Context is not expired immediately after creation."""
         context = ValidationContext(
-            run_identifier="test",
-            schema={},
-            agent_name="agent",
-            expected_outputs=[]
+            run_identifier="test", schema={}, agent_name="agent", expected_outputs=[]
         )
 
         assert not context.is_expired(ttl=3600)
@@ -44,7 +41,7 @@ class TestValidationContext:
             schema={},
             agent_name="agent",
             expected_outputs=[],
-            created_at=time.time() - 10  # Created 10 seconds ago
+            created_at=time.time() - 10,  # Created 10 seconds ago
         )
 
         assert context.is_expired(ttl=5)  # 5 second TTL
@@ -65,11 +62,11 @@ class TestValidationRegistry:
         """Register context and retrieve it."""
         registry = ValidationRegistry()
 
-        context = registry.register(
+        registry.register(
             run_identifier="uuid-123",
             schema={"type": "object", "required": ["name"]},
             agent_name="discovery_agent",
-            expected_outputs=["name", "value"]
+            expected_outputs=["name", "value"],
         )
 
         retrieved = registry.get("uuid-123")
@@ -93,10 +90,7 @@ class TestValidationRegistry:
         registry = ValidationRegistry()
 
         registry.register(
-            run_identifier="registered-uuid",
-            schema={},
-            agent_name="agent",
-            expected_outputs=[]
+            run_identifier="registered-uuid", schema={}, agent_name="agent", expected_outputs=[]
         )
 
         assert registry.is_registered("registered-uuid")
@@ -109,7 +103,7 @@ class TestValidationRegistry:
             run_identifier="shared-uuid",
             schema={"shared": True},
             agent_name="agent1",
-            expected_outputs=[]
+            expected_outputs=[],
         )
 
         registry2 = ValidationRegistry()
@@ -132,10 +126,7 @@ class TestValidationRegistry:
         registry = ValidationRegistry(ttl=0.1)  # 100ms TTL
 
         registry.register(
-            run_identifier="expiring-uuid",
-            schema={},
-            agent_name="agent",
-            expected_outputs=[]
+            run_identifier="expiring-uuid", schema={}, agent_name="agent", expected_outputs=[]
         )
 
         # Should exist immediately
@@ -209,15 +200,12 @@ class TestValidationRegistryThreadSafety:
                         run_identifier=f"thread-{thread_id}-{i}",
                         schema={"thread": thread_id, "index": i},
                         agent_name=f"agent_{thread_id}",
-                        expected_outputs=[f"field_{i}"]
+                        expected_outputs=[f"field_{i}"],
                     )
             except Exception as e:
                 errors.append(str(e))
 
-        threads = [
-            threading.Thread(target=register_batch, args=(t,))
-            for t in range(num_threads)
-        ]
+        threads = [threading.Thread(target=register_batch, args=(t,)) for t in range(num_threads)]
 
         for t in threads:
             t.start()

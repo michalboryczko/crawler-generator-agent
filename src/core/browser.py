@@ -17,7 +17,7 @@ class CDPClient:
 
     def __init__(self, config: BrowserConfig):
         self.config = config
-        self.ws = None
+        self.ws: Any = None  # Type: websockets connection when connected
         self._message_id = 0
         self._responses: dict[int, Any] = {}
 

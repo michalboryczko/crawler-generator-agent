@@ -381,7 +381,7 @@ class ArticlePagesGeneratorTool(BaseTool):
 
     def _simple_path_grouping(self, urls: list[str]) -> dict[str, list[str]]:
         """Simple grouping based on path depth and structure."""
-        groups = {}
+        groups: dict[str, list[str]] = {}
 
         for url in urls:
             parsed = urlparse(url)

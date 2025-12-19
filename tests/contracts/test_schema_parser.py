@@ -1,18 +1,17 @@
 """Tests for schema parser utilities."""
 
 import json
+
 import pytest
-from pathlib import Path
 
 from src.contracts.exceptions import SchemaLoadError
 from src.contracts.schema_parser import (
-    load_schema,
+    SCHEMAS_BASE_PATH,
     extract_field_paths,
     generate_example_json,
     generate_fields_markdown,
     inject_agent_response_content,
-    AGENT_RESPONSE_CONTENT_FIELD,
-    SCHEMAS_BASE_PATH,
+    load_schema,
 )
 
 
@@ -21,12 +20,7 @@ class TestLoadSchema:
 
     def test_load_schema_valid(self, tmp_path):
         """Load a valid JSON schema file."""
-        schema = {
-            "type": "object",
-            "properties": {
-                "name": {"type": "string"}
-            }
-        }
+        schema = {"type": "object", "properties": {"name": {"type": "string"}}}
         schema_file = tmp_path / "test.schema.json"
         schema_file.write_text(json.dumps(schema))
 
@@ -81,12 +75,7 @@ class TestExtractFieldPaths:
 
     def test_extract_simple_fields(self):
         """Extract paths from flat schema."""
-        schema = {
-            "properties": {
-                "name": {"type": "string"},
-                "age": {"type": "integer"}
-            }
-        }
+        schema = {"properties": {"name": {"type": "string"}, "age": {"type": "integer"}}}
 
         paths = extract_field_paths(schema)
 
@@ -102,13 +91,8 @@ class TestExtractFieldPaths:
                     "type": "object",
                     "properties": {
                         "name": {"type": "string"},
-                        "address": {
-                            "type": "object",
-                            "properties": {
-                                "city": {"type": "string"}
-                            }
-                        }
-                    }
+                        "address": {"type": "object", "properties": {"city": {"type": "string"}}},
+                    },
                 }
             }
         }
@@ -122,14 +106,7 @@ class TestExtractFieldPaths:
 
     def test_extract_array_fields(self):
         """Extract paths with array bracket notation."""
-        schema = {
-            "properties": {
-                "items": {
-                    "type": "array",
-                    "items": {"type": "string"}
-                }
-            }
-        }
+        schema = {"properties": {"items": {"type": "array", "items": {"type": "string"}}}}
 
         paths = extract_field_paths(schema)
 
@@ -145,11 +122,7 @@ class TestExtractFieldPaths:
 
     def test_extract_with_prefix(self):
         """Extract with custom prefix."""
-        schema = {
-            "properties": {
-                "field": {"type": "string"}
-            }
-        }
+        schema = {"properties": {"field": {"type": "string"}}}
 
         paths = extract_field_paths(schema, prefix="root")
 
@@ -161,11 +134,7 @@ class TestGenerateExampleJson:
 
     def test_generate_string_field(self):
         """Generate example for string field."""
-        schema = {
-            "properties": {
-                "name": {"type": "string"}
-            }
-        }
+        schema = {"properties": {"name": {"type": "string"}}}
 
         example = generate_example_json(schema)
 
@@ -174,11 +143,7 @@ class TestGenerateExampleJson:
 
     def test_generate_integer_field(self):
         """Generate example for integer field."""
-        schema = {
-            "properties": {
-                "count": {"type": "integer"}
-            }
-        }
+        schema = {"properties": {"count": {"type": "integer"}}}
 
         example = generate_example_json(schema)
 
@@ -187,11 +152,7 @@ class TestGenerateExampleJson:
 
     def test_generate_number_field(self):
         """Generate example for number field."""
-        schema = {
-            "properties": {
-                "price": {"type": "number"}
-            }
-        }
+        schema = {"properties": {"price": {"type": "number"}}}
 
         example = generate_example_json(schema)
 
@@ -200,11 +161,7 @@ class TestGenerateExampleJson:
 
     def test_generate_boolean_field(self):
         """Generate example for boolean field."""
-        schema = {
-            "properties": {
-                "active": {"type": "boolean"}
-            }
-        }
+        schema = {"properties": {"active": {"type": "boolean"}}}
 
         example = generate_example_json(schema)
 
@@ -213,11 +170,7 @@ class TestGenerateExampleJson:
 
     def test_generate_array_field(self):
         """Generate example for array field."""
-        schema = {
-            "properties": {
-                "tags": {"type": "array", "items": {"type": "string"}}
-            }
-        }
+        schema = {"properties": {"tags": {"type": "array", "items": {"type": "string"}}}}
 
         example = generate_example_json(schema)
 
@@ -227,14 +180,7 @@ class TestGenerateExampleJson:
     def test_generate_nested_object(self):
         """Generate example for nested object."""
         schema = {
-            "properties": {
-                "user": {
-                    "type": "object",
-                    "properties": {
-                        "name": {"type": "string"}
-                    }
-                }
-            }
+            "properties": {"user": {"type": "object", "properties": {"name": {"type": "string"}}}}
         }
 
         example = generate_example_json(schema)
@@ -245,14 +191,7 @@ class TestGenerateExampleJson:
 
     def test_generate_with_examples(self):
         """Use examples from schema when available."""
-        schema = {
-            "properties": {
-                "status": {
-                    "type": "string",
-                    "examples": ["active", "inactive"]
-                }
-            }
-        }
+        schema = {"properties": {"status": {"type": "string", "examples": ["active", "inactive"]}}}
 
         example = generate_example_json(schema)
 
@@ -277,8 +216,8 @@ class TestGenerateFieldsMarkdown:
             "properties": {
                 "name": {"type": "string", "description": "User name"},
                 "email": {"type": "string", "description": "User email"},
-                "age": {"type": "integer", "description": "User age"}
-            }
+                "age": {"type": "integer", "description": "User age"},
+            },
         }
 
         markdown = generate_fields_markdown(schema)
@@ -294,8 +233,8 @@ class TestGenerateFieldsMarkdown:
             "required": ["name"],
             "properties": {
                 "name": {"type": "string", "description": "User name"},
-                "nickname": {"type": "string", "description": "Optional nickname"}
-            }
+                "nickname": {"type": "string", "description": "Optional nickname"},
+            },
         }
 
         markdown = generate_fields_markdown(schema)
@@ -306,12 +245,7 @@ class TestGenerateFieldsMarkdown:
 
     def test_generate_with_no_description(self):
         """Handle fields without description."""
-        schema = {
-            "required": ["name"],
-            "properties": {
-                "name": {"type": "string"}
-            }
-        }
+        schema = {"required": ["name"], "properties": {"name": {"type": "string"}}}
 
         markdown = generate_fields_markdown(schema)
 
@@ -320,11 +254,7 @@ class TestGenerateFieldsMarkdown:
 
     def test_generate_empty_required(self):
         """Handle schema with no required fields."""
-        schema = {
-            "properties": {
-                "optional_field": {"type": "string", "description": "Optional"}
-            }
-        }
+        schema = {"properties": {"optional_field": {"type": "string", "description": "Optional"}}}
 
         markdown = generate_fields_markdown(schema)
 
@@ -367,12 +297,7 @@ class TestInjectAgentResponseContent:
 
     def test_injects_field_when_missing(self):
         """Field is added when not present in schema."""
-        schema = {
-            "type": "object",
-            "properties": {
-                "name": {"type": "string"}
-            }
-        }
+        schema = {"type": "object", "properties": {"name": {"type": "string"}}}
 
         result = inject_agent_response_content(schema)
 
@@ -384,10 +309,7 @@ class TestInjectAgentResponseContent:
         existing_field = {"type": "string", "description": "Custom description"}
         schema = {
             "type": "object",
-            "properties": {
-                "agent_response_content": existing_field,
-                "name": {"type": "string"}
-            }
+            "properties": {"agent_response_content": existing_field, "name": {"type": "string"}},
         }
 
         result = inject_agent_response_content(schema)
@@ -398,12 +320,7 @@ class TestInjectAgentResponseContent:
 
     def test_does_not_mutate_original(self):
         """Original schema is not modified."""
-        schema = {
-            "type": "object",
-            "properties": {
-                "name": {"type": "string"}
-            }
-        }
+        schema = {"type": "object", "properties": {"name": {"type": "string"}}}
         original_keys = set(schema["properties"].keys())
 
         inject_agent_response_content(schema)
@@ -443,12 +360,7 @@ class TestLoadSchemaWithInjection:
 
     def test_load_with_injection_true(self, tmp_path):
         """load_schema injects field when inject_response_content=True."""
-        schema = {
-            "type": "object",
-            "properties": {
-                "name": {"type": "string"}
-            }
-        }
+        schema = {"type": "object", "properties": {"name": {"type": "string"}}}
         schema_file = tmp_path / "test.schema.json"
         schema_file.write_text(json.dumps(schema))
 
@@ -458,12 +370,7 @@ class TestLoadSchemaWithInjection:
 
     def test_load_with_injection_false(self, tmp_path):
         """load_schema does not inject when inject_response_content=False."""
-        schema = {
-            "type": "object",
-            "properties": {
-                "name": {"type": "string"}
-            }
-        }
+        schema = {"type": "object", "properties": {"name": {"type": "string"}}}
         schema_file = tmp_path / "test.schema.json"
         schema_file.write_text(json.dumps(schema))
 
@@ -473,12 +380,7 @@ class TestLoadSchemaWithInjection:
 
     def test_load_default_no_injection(self, tmp_path):
         """load_schema defaults to not injecting field."""
-        schema = {
-            "type": "object",
-            "properties": {
-                "name": {"type": "string"}
-            }
-        }
+        schema = {"type": "object", "properties": {"name": {"type": "string"}}}
         schema_file = tmp_path / "test.schema.json"
         schema_file.write_text(json.dumps(schema))
 

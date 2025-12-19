@@ -20,6 +20,9 @@ from .base import BaseTool
 if TYPE_CHECKING:
     from ..services.memory_service import MemoryService
 
+# Type alias for extraction field values: simple string, list of strings, or list of dicts
+FieldValue = str | list[str] | list[dict[str, str]]
+
 
 class FetchAndStoreHTMLTool(BaseTool):
     """Fetch a URL and store HTML in memory without returning to LLM."""
@@ -203,13 +206,14 @@ class RunExtractionAgentTool(BaseTool):
     def _build_extraction_prompt(self, detail_selectors: dict) -> str:
         """Build dynamic extraction prompt based on discovered selectors."""
         # Default fields if no selectors discovered
-        default_fields = {
+        default_fields: dict[str, FieldValue] = {
             "title": "article title",
             "date": "publication date or null",
             "authors": ["author1", "author2"],
             "content": "first 500 characters of main content",
         }
 
+        fields: dict[str, FieldValue]
         if not detail_selectors:
             fields = default_fields
         else:

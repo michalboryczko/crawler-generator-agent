@@ -36,7 +36,7 @@ class TestDirectJsonParsing:
         assert result == {"items": [1, 2, 3], "name": "test"}
 
     def test_simple_array(self):
-        content = '[1, 2, 3]'
+        content = "[1, 2, 3]"
         result = parse_json_response(content)
         assert result == [1, 2, 3]
 
@@ -46,7 +46,7 @@ class TestDirectJsonParsing:
         assert result == [{"id": 1}, {"id": 2}]
 
     def test_array_not_allowed(self):
-        content = '[1, 2, 3]'
+        content = "[1, 2, 3]"
         result = parse_json_response(content, allow_array=False)
         assert result is None
 
@@ -56,7 +56,7 @@ class TestDirectJsonParsing:
         assert result == {"key": "value"}
 
     def test_complex_nested_structure(self):
-        content = '''
+        content = """
         {
             "selectors": {
                 "title": {"selector": "h1.title", "found": true},
@@ -67,7 +67,7 @@ class TestDirectJsonParsing:
             "active": true,
             "metadata": null
         }
-        '''
+        """
         result = parse_json_response(content)
         assert result["selectors"]["title"]["found"] is True
         assert result["count"] == 42
@@ -80,65 +80,65 @@ class TestMarkdownCodeBlocks:
     """Test extraction from markdown code blocks."""
 
     def test_json_code_block(self):
-        content = '''Here is the response:
+        content = """Here is the response:
 
 ```json
 {"key": "value", "number": 123}
 ```
 
-That's the result.'''
+That's the result."""
         result = parse_json_response(content)
         assert result == {"key": "value", "number": 123}
 
     def test_json_code_block_uppercase(self):
-        content = '''```JSON
+        content = """```JSON
 {"key": "value"}
-```'''
+```"""
         result = parse_json_response(content)
         assert result == {"key": "value"}
 
     def test_json_code_block_mixed_case(self):
-        content = '''```Json
+        content = """```Json
 {"key": "value"}
-```'''
+```"""
         result = parse_json_response(content)
         assert result == {"key": "value"}
 
     def test_generic_code_block(self):
-        content = '''Here's the data:
+        content = """Here's the data:
 
 ```
 {"items": [1, 2, 3]}
-```'''
+```"""
         result = parse_json_response(content)
         assert result == {"items": [1, 2, 3]}
 
     def test_code_block_with_newlines(self):
-        content = '''```json
+        content = """```json
 {
     "multiline": true,
     "data": {
         "nested": "value"
     }
 }
-```'''
+```"""
         result = parse_json_response(content)
         assert result["multiline"] is True
         assert result["data"]["nested"] == "value"
 
     def test_multiple_code_blocks_returns_first_valid(self):
-        content = '''```
+        content = """```
 not json
 ```
 
 ```json
 {"valid": true}
-```'''
+```"""
         result = parse_json_response(content)
         assert result == {"valid": True}
 
     def test_code_block_with_surrounding_text(self):
-        content = '''I analyzed the page and found the following selectors:
+        content = """I analyzed the page and found the following selectors:
 
 ```json
 {
@@ -147,7 +147,7 @@ not json
 }
 ```
 
-These selectors should work for the main content area.'''
+These selectors should work for the main content area."""
         result = parse_json_response(content)
         assert result["article_link"] == "a.article-title"
         assert result["pagination"] == ".pagination a"
@@ -172,11 +172,11 @@ class TestEmbeddedJson:
         assert result == {"data": [1, 2, 3]}
 
     def test_json_in_paragraph(self):
-        content = '''After analyzing the HTML, I found these selectors.
+        content = """After analyzing the HTML, I found these selectors.
 
 {"listing_container": ".main-content", "article_link": "h2 a"}
 
-These should capture all articles on the page.'''
+These should capture all articles on the page."""
         result = parse_json_response(content)
         assert result["listing_container"] == ".main-content"
 
@@ -282,12 +282,12 @@ class TestEdgeCases:
         assert abs(result["float"] - 3.14159265359) < 0.0001
 
     def test_empty_object(self):
-        content = '{}'
+        content = "{}"
         result = parse_json_response(content)
         assert result == {}
 
     def test_empty_array(self):
-        content = '[]'
+        content = "[]"
         result = parse_json_response(content)
         assert result == []
 
@@ -301,7 +301,7 @@ class TestExtractJsonConvenience:
         assert result == {"key": "value"}
 
     def test_returns_none_for_array(self):
-        content = '[1, 2, 3]'
+        content = "[1, 2, 3]"
         result = extract_json(content)
         assert result is None
 
@@ -315,7 +315,7 @@ class TestRealWorldLLMResponses:
     """Test with realistic LLM response patterns."""
 
     def test_chatgpt_style_response(self):
-        content = '''Based on my analysis of the HTML, here are the selectors I found:
+        content = """Based on my analysis of the HTML, here are the selectors I found:
 
 ```json
 {
@@ -336,7 +336,7 @@ class TestRealWorldLLMResponses:
 }
 ```
 
-These selectors should reliably extract article links from the page.'''
+These selectors should reliably extract article links from the page."""
 
         result = parse_json_response(content)
         assert len(result["article_urls"]) == 3
@@ -344,18 +344,18 @@ These selectors should reliably extract article links from the page.'''
         assert result["selectors"]["article_category"] is None
 
     def test_claude_style_response(self):
-        content = '''I'll analyze the page structure and provide the selectors.
+        content = """I'll analyze the page structure and provide the selectors.
 
 {"selectors": {"title": "h1.article-title", "content": "div.article-body", "date": "time.published"}, "confidence": 0.95}
 
-The selectors above should work for extracting the article content.'''
+The selectors above should work for extracting the article content."""
 
         result = parse_json_response(content)
         assert result["selectors"]["title"] == "h1.article-title"
         assert result["confidence"] == 0.95
 
     def test_response_with_explanation_before_json(self):
-        content = '''After examining the HTML structure, I identified the following patterns:
+        content = """After examining the HTML structure, I identified the following patterns:
 
 1. Articles are contained in <article> tags
 2. Each article has a title link
@@ -369,7 +369,7 @@ Here's my analysis:
   "pagination": ".pagination .page-link",
   "total_found": 25
 }
-```'''
+```"""
 
         result = parse_json_response(content)
         assert result["article_link"] == "article h2 a"
@@ -378,13 +378,13 @@ Here's my analysis:
     def test_kimi_style_malformed_response(self):
         """Test handling of potentially malformed responses from non-OpenAI models."""
         # Simpler trailing comma case
-        content = '''```json
+        content = """```json
 {
     "result": "success",
     "selectors": ["a.link", "div.item a"],
     "count": 10,
 }
-```'''
+```"""
         result = parse_json_response(content)
         # Should handle trailing comma
         assert result is not None
@@ -393,10 +393,10 @@ Here's my analysis:
 
     def test_response_with_comments_stripped(self):
         """JSON with inline comments should try to parse."""
-        content = '''{
+        content = """{
     "selector": "div.main",  // main content area
     "items": 5
-}'''
+}"""
         # Standard JSON doesn't support comments, so this might fail
         # But the brace matching should still extract something
         parse_json_response(content)
