@@ -10,6 +10,7 @@ from src.prompts import get_prompt_provider
 
 from ..core.browser import BrowserSession
 from ..core.llm import LLMClient
+from ..tools.agent_tools import ValidateResponseTool
 from ..tools.extraction import (
     BatchExtractArticlesTool,
     BatchExtractListingsTool,
@@ -32,6 +33,7 @@ class DataPrepAgent(BaseAgent):
     """Agent for preparing contract test datasets."""
 
     name = "data_prep_agent"
+    description = "Prepares test datasets with sample pages for validation"
     system_prompt = get_prompt_provider().get_agent_prompt("data_prep")
 
     def __init__(
@@ -56,6 +58,8 @@ class DataPrepAgent(BaseAgent):
             MemoryReadTool(memory_service),
             MemoryWriteTool(memory_service),
             MemorySearchTool(memory_service),
+            # Contract validation
+            ValidateResponseTool(),
         ]
 
         # Add dump tool if output_dir provided

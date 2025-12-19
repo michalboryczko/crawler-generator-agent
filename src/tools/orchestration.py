@@ -64,7 +64,7 @@ def create_agent_runner_tool(
     Reduces boilerplate by generating tools with consistent structure.
 
     Args:
-        tool_name: Name of the tool (e.g., "run_browser_agent")
+        tool_name: Name of the tool (e.g., "run_discovery_agent")
         agent: The agent instance to run
         description: Tool description for LLM
         task_description: Description for the task parameter
@@ -76,9 +76,9 @@ def create_agent_runner_tool(
 
     Example:
         tool = create_agent_runner_tool(
-            tool_name="run_browser_agent",
-            agent=browser_agent,
-            description="Run browser agent",
+            tool_name="run_discovery_agent",
+            agent=discovery_agent,
+            description="Run discovery agent",
             orchestrator_memory=shared_store,
             store_keys=["extracted_articles", "pagination_type"]
         )
@@ -133,14 +133,14 @@ def create_agent_runner_tool(
 
 
 # Pre-defined tool creators for backward compatibility
-def create_browser_agent_tool(browser_agent: RunnableAgent) -> BaseTool:
-    """Create a tool to run the Browser Agent."""
+def create_discovery_agent_tool(discovery_agent: RunnableAgent) -> BaseTool:
+    """Create a tool to run the Discovery Agent."""
     return create_agent_runner_tool(
-        tool_name="run_browser_agent",
-        agent=browser_agent,
-        description="""Run the Browser Agent to navigate to a URL and extract article links.
+        tool_name="run_discovery_agent",
+        agent=discovery_agent,
+        description="""Run the Discovery Agent to navigate to a URL and extract article links.
     The agent will return results in its AgentResult.""",
-        task_description="Task description for the browser agent"
+        task_description="Task description for the discovery agent"
     )
 
 
@@ -178,26 +178,26 @@ def create_data_prep_agent_tool(data_prep_agent: RunnableAgent) -> BaseTool:
 
 
 # Backward-compatible class aliases that use the factory
-class RunBrowserAgentTool(BaseTool):
-    """Run the Browser Agent to analyze a webpage."""
+class RunDiscoveryAgentTool(BaseTool):
+    """Run the Discovery Agent to analyze a webpage."""
 
-    name = "run_browser_agent"
-    description = """Run the Browser Agent to navigate to a URL and extract article links.
+    name = "run_discovery_agent"
+    description = """Run the Discovery Agent to navigate to a URL and extract article links.
     Returns structured data including extracted_articles, pagination_type, and selectors."""
 
     def __init__(
         self,
-        browser_agent: RunnableAgent,
+        discovery_agent: RunnableAgent,
         orchestrator_memory: "MemoryService | None" = None,
         store_keys: list[str] | None = None,
     ) -> None:
-        self.agent = browser_agent
+        self.agent = discovery_agent
         self.orchestrator_memory = orchestrator_memory
         self.store_keys = store_keys or []
 
-    @traced_tool(name="run_browser_agent")
+    @traced_tool(name="run_discovery_agent")
     def execute(self, task: str, context: dict[str, Any] | None = None) -> dict[str, Any]:
-        """Run browser agent. Instrumented by @traced_tool."""
+        """Run discovery agent. Instrumented by @traced_tool."""
         result = self.agent.run(task, context=context)
         response = _extract_result_info(result)
 
@@ -215,7 +215,7 @@ class RunBrowserAgentTool(BaseTool):
             "properties": {
                 "task": {
                     "type": "string",
-                    "description": "Task description for the browser agent"
+                    "description": "Task description for the discovery agent"
                 },
                 "context": {
                     "type": "object",

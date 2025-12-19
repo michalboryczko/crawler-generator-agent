@@ -184,10 +184,10 @@ class TestPromptProvider:
         prompt = provider.get_agent_prompt("main")
         assert "Orchestrator" in prompt
 
-    def test_get_agent_prompt_browser(self):
-        """Get browser agent prompt."""
+    def test_get_agent_prompt_discovery(self):
+        """Get discovery agent prompt."""
         provider = get_prompt_provider()
-        prompt = provider.get_agent_prompt("browser")
+        prompt = provider.get_agent_prompt("discovery")
         assert len(prompt) > 0
 
     def test_get_agent_prompt_unknown_raises(self):

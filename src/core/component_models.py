@@ -24,7 +24,7 @@ class ComponentModelConfig:
     Attributes:
         # Agents
         main_agent: Main orchestrator agent
-        browser_agent: Browser navigation agent
+        discovery_agent: Site discovery and navigation agent
         selector_agent: CSS selector discovery agent
         accessibility_agent: HTTP accessibility check agent
         data_prep_agent: Test data preparation agent
@@ -42,7 +42,7 @@ class ComponentModelConfig:
 
     # Agent model assignments
     main_agent: str = GLOBAL_DEFAULT_MODEL
-    browser_agent: str = GLOBAL_DEFAULT_MODEL
+    discovery_agent: str = GLOBAL_DEFAULT_MODEL
     selector_agent: str = GLOBAL_DEFAULT_MODEL
     accessibility_agent: str = GLOBAL_DEFAULT_MODEL
     data_prep_agent: str = GLOBAL_DEFAULT_MODEL
@@ -81,7 +81,7 @@ class ComponentModelConfig:
         config = cls(
             # Agents
             main_agent=os.getenv("MAIN_AGENT_MODEL", global_default),
-            browser_agent=os.getenv("BROWSER_AGENT_MODEL", global_default),
+            discovery_agent=os.getenv("DISCOVERY_AGENT_MODEL", global_default),
             selector_agent=os.getenv("SELECTOR_AGENT_MODEL", global_default),
             accessibility_agent=os.getenv("ACCESSIBILITY_AGENT_MODEL", global_default),
             data_prep_agent=os.getenv("DATA_PREP_AGENT_MODEL", global_default),

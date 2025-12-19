@@ -1,11 +1,13 @@
 """Configuration management."""
 import os
 import re
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
 from typing import TYPE_CHECKING
 from urllib.parse import urlparse
+
+import yaml
 
 if TYPE_CHECKING:
     pass
@@ -159,22 +161,96 @@ def get_agent_version() -> str:
 
 
 @dataclass
+class AgentSchemaConfig:
+    """Schema paths for a single agent."""
+
+    output_contract_schema_path: str
+    input_contract_schema_path: str = ""
+
+
+@dataclass
+class AgentsConfig:
+    """Configuration for all agents' schema paths."""
+
+    agents: dict[str, AgentSchemaConfig] = field(default_factory=dict)
+
+    @classmethod
+    def from_yaml(cls, config_path: Path | None = None) -> "AgentsConfig":
+        """Load agents configuration from YAML file.
+
+        Args:
+            config_path: Path to agents.yaml. If None, uses default location
+                         relative to project root (config/agents.yaml).
+
+        Returns:
+            AgentsConfig instance with loaded schema paths.
+
+        Raises:
+            FileNotFoundError: If config file doesn't exist.
+            yaml.YAMLError: If YAML parsing fails.
+        """
+        if config_path is None:
+            # Default: project_root/config/agents.yaml
+            config_path = Path(__file__).parent.parent.parent / "config" / "agents.yaml"
+
+        with open(config_path) as f:
+            data = yaml.safe_load(f)
+
+        agents = {}
+        for name, paths in data.get("agents", {}).items():
+            agents[name] = AgentSchemaConfig(
+                output_contract_schema_path=paths.get("output_contract_schema_path", ""),
+                input_contract_schema_path=paths.get("input_contract_schema_path", ""),
+            )
+        return cls(agents=agents)
+
+    def get_schema_paths(self, agent_name: str) -> AgentSchemaConfig:
+        """Get schema paths for a specific agent.
+
+        Args:
+            agent_name: Name of the agent (e.g., 'discovery', 'selector').
+
+        Returns:
+            AgentSchemaConfig with output and input schema paths.
+
+        Raises:
+            KeyError: If agent_name is not found in configuration.
+        """
+        if agent_name not in self.agents:
+            available = list(self.agents.keys())
+            raise KeyError(f"Unknown agent: {agent_name}. Available: {available}")
+        return self.agents[agent_name]
+
+    def get_all_agent_names(self) -> list[str]:
+        """Get list of all configured agent names."""
+        return list(self.agents.keys())
+
+
+@dataclass
 class AppConfig:
     """Main application configuration."""
     openai: OpenAIConfig
     browser: BrowserConfig
     output: OutputConfig
     storage: StorageConfig
+    agents: AgentsConfig | None = None
     log_level: str = "INFO"
     agent_version: str = "unknown"
 
     @classmethod
     def from_env(cls) -> "AppConfig":
+        # Load agents config, with graceful fallback if file doesn't exist
+        try:
+            agents_config = AgentsConfig.from_yaml()
+        except FileNotFoundError:
+            agents_config = None
+
         return cls(
             openai=OpenAIConfig.from_env(),
             browser=BrowserConfig.from_env(),
             output=OutputConfig.from_env(),
             storage=StorageConfig.from_env(),
+            agents=agents_config,
             log_level=os.environ.get("LOG_LEVEL", "INFO"),
             agent_version=get_agent_version(),
         )

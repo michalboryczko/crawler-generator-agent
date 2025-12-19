@@ -1,7 +1,29 @@
 """Prompt registry for storing and managing prompt definitions."""
 
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Any
+
+# Base path for template files
+TEMPLATES_DIR = Path(__file__).parent / "templates"
+
+
+def load_agent_template(name: str) -> str:
+    """Load agent prompt template from file.
+
+    Args:
+        name: Template name (without extension), e.g., 'main_agent'
+
+    Returns:
+        The template content as a string
+
+    Raises:
+        FileNotFoundError: If template file doesn't exist
+    """
+    template_path = TEMPLATES_DIR / "agents" / f"{name}.md.j2"
+    if not template_path.exists():
+        raise FileNotFoundError(f"Agent template not found: {template_path}")
+    return template_path.read_text()
 
 
 @dataclass

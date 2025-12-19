@@ -9,6 +9,7 @@ from src.prompts import get_prompt_provider
 
 from ..core.browser import BrowserSession
 from ..core.llm import LLMClient
+from ..tools.agent_tools import ValidateResponseTool
 from ..tools.memory import (
     MemoryReadTool,
     MemorySearchTool,
@@ -33,6 +34,7 @@ class SelectorAgent(BaseAgent):
     """Agent for finding and verifying CSS selectors."""
 
     name = "selector_agent"
+    description = "Finds and verifies CSS selectors for listings and article pages"
     system_prompt = get_prompt_provider().get_agent_prompt("selector")
 
     def __init__(
@@ -56,6 +58,8 @@ class SelectorAgent(BaseAgent):
             MemoryReadTool(memory_service),
             MemoryWriteTool(memory_service),
             MemorySearchTool(memory_service),
+            # Contract validation
+            ValidateResponseTool(),
         ]
 
         super().__init__(llm, tools, memory_service=memory_service)

@@ -10,8 +10,10 @@ from typing import TYPE_CHECKING
 from src.prompts import get_prompt_provider
 
 from ..core.browser import BrowserSession
+from ..core.config import AgentsConfig
 from ..core.llm import LLMClient
 from ..observability.decorators import traced_agent
+from ..tools.agent_tools import AgentTool, GenerateUuidTool, PrepareAgentOutputValidationTool
 from ..tools.file import (
     FileCreateTool,
     FileReplaceTool,
@@ -21,20 +23,14 @@ from ..tools.memory import (
     MemoryReadTool,
     MemoryWriteTool,
 )
-from ..tools.orchestration import (
-    RunAccessibilityAgentTool,
-    RunBrowserAgentTool,
-    RunDataPrepAgentTool,
-    RunSelectorAgentTool,
-)
 from ..tools.plan_generator import (
     GeneratePlanTool,
     GenerateTestPlanTool,
 )
 from .accessibility_agent import AccessibilityAgent
 from .base import BaseAgent
-from .browser_agent import BrowserAgent
 from .data_prep_agent import DataPrepAgent
+from .discovery_agent import DiscoveryAgent
 from .result import AgentResult
 from .selector_agent import SelectorAgent
 
@@ -62,6 +58,7 @@ class MainAgent(BaseAgent):
         output_dir: Path,
         memory_service: "MemoryService",
         container: "Container | None" = None,
+        agents_config: AgentsConfig | None = None,
     ):
         """Initialize the main agent.
 
@@ -71,6 +68,8 @@ class MainAgent(BaseAgent):
             output_dir: Directory for output files
             memory_service: Memory service for this agent
             container: DI container for creating sub-agent services
+            agents_config: Configuration for agent schema paths. If None,
+                          loads from default config/agents.yaml.
         """
         self._memory_service = memory_service
         self.browser_session = browser_session
@@ -83,10 +82,15 @@ class MainAgent(BaseAgent):
             from ..infrastructure import Container
             self._container = Container.create_inmemory()
 
+        # Load agents config if not provided
+        if agents_config is None:
+            agents_config = AgentsConfig.from_yaml()
+        self._agents_config = agents_config
+
         # Create sub-agents with isolated memory services
-        self.browser_agent = BrowserAgent(
+        self.discovery_agent = DiscoveryAgent(
             llm, browser_session,
-            memory_service=self._container.memory_service("browser")
+            memory_service=self._container.memory_service("discovery")
         )
         self.selector_agent = SelectorAgent(
             llm, browser_session,
@@ -102,6 +106,55 @@ class MainAgent(BaseAgent):
             output_dir=output_dir,
         )
 
+        # Mapping from internal agent name to config key
+        agent_to_config = {
+            "discovery_agent": "discovery",
+            "selector_agent": "selector",
+            "accessibility_agent": "accessibility",
+            "data_prep_agent": "data_prep",
+        }
+
+        # Build schema paths from config for PrepareAgentOutputValidationTool
+        schema_paths = {}
+        for agent_name, config_key in agent_to_config.items():
+            paths = agents_config.get_schema_paths(config_key)
+            schema_paths[agent_name] = paths.output_contract_schema_path
+
+        # Get schema paths from config for AgentTools
+        discovery_paths = agents_config.get_schema_paths("discovery")
+        selector_paths = agents_config.get_schema_paths("selector")
+        accessibility_paths = agents_config.get_schema_paths("accessibility")
+        data_prep_paths = agents_config.get_schema_paths("data_prep")
+
+        # Create AgentTools for sub-agents with contract schemas from config
+        agent_tools = [
+            AgentTool(
+                agent=self.discovery_agent,
+                output_schema_path=discovery_paths.output_contract_schema_path,
+                input_schema_path=discovery_paths.input_contract_schema_path,
+                description="Discover site structure, article URLs, pagination, and content fields",
+            ),
+            AgentTool(
+                agent=self.selector_agent,
+                output_schema_path=selector_paths.output_contract_schema_path,
+                input_schema_path=selector_paths.input_contract_schema_path,
+                description="Find and verify CSS selectors for listings and article pages",
+            ),
+            AgentTool(
+                agent=self.accessibility_agent,
+                output_schema_path=accessibility_paths.output_contract_schema_path,
+                input_schema_path=accessibility_paths.input_contract_schema_path,
+                description="Check if site content is accessible via HTTP without JavaScript",
+            ),
+            AgentTool(
+                agent=self.data_prep_agent,
+                output_schema_path=data_prep_paths.output_contract_schema_path,
+                input_schema_path=data_prep_paths.input_contract_schema_path,
+                description="Prepare test datasets with sample pages for validation",
+            ),
+        ]
+
+        # Unified tools list - AgentTools are auto-detected by BaseAgent
         tools = [
             # Memory tools
             MemoryReadTool(memory_service),
@@ -113,11 +166,11 @@ class MainAgent(BaseAgent):
             # File tools
             FileCreateTool(output_dir),
             FileReplaceTool(output_dir),
-            # Agent orchestration tools
-            RunBrowserAgentTool(self.browser_agent),
-            RunSelectorAgentTool(self.selector_agent),
-            RunAccessibilityAgentTool(self.accessibility_agent),
-            RunDataPrepAgentTool(self.data_prep_agent),
+            # Contract orchestration tools
+            GenerateUuidTool(),
+            PrepareAgentOutputValidationTool(schema_paths),
+            # Agent tools (auto-detected by BaseAgent.agent_tools property)
+            *agent_tools,
         ]
 
         super().__init__(llm, tools, memory_service=memory_service)

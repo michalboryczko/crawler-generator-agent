@@ -1,7 +1,7 @@
 """Self-creating web crawler agent."""
 from .agents.accessibility_agent import AccessibilityAgent
-from .agents.browser_agent import BrowserAgent
 from .agents.data_prep_agent import DataPrepAgent
+from .agents.discovery_agent import DiscoveryAgent
 from .agents.main_agent import MainAgent
 from .agents.selector_agent import SelectorAgent
 from .core.browser import BrowserSession, CDPClient
@@ -14,12 +14,12 @@ from .services.memory_service import MemoryService
 __all__ = [
     "AccessibilityAgent",
     "AppConfig",
-    "BrowserAgent",
     "BrowserConfig",
     "BrowserSession",
     "CDPClient",
     "Container",
     "DataPrepAgent",
+    "DiscoveryAgent",
     "LLMClient",
     "MainAgent",
     "MemoryService",

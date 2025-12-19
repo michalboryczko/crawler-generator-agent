@@ -281,7 +281,7 @@ class LLMClientFactory:
     Example:
         factory = LLMClientFactory.from_env()
         main_llm = factory.get_client("main_agent")
-        browser_llm = factory.get_client("browser_agent")
+        discovery_llm = factory.get_client("discovery_agent")
     """
 
     def __init__(

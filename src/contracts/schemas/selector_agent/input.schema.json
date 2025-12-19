@@ -1,0 +1,61 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "selector_agent_input",
+  "title": "SelectorAgent Input Contract",
+  "description": "Input requirements for the Selector Agent",
+  "type": "object",
+  "required": ["target_url"],
+  "properties": {
+    "target_url": {
+      "type": "string",
+      "format": "uri",
+      "description": "Base URL of the site to analyze (listing page URL)"
+    },
+    "pagination_max_pages": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "Maximum number of pagination pages (from Discovery Agent)"
+    },
+    "pagination_links": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "format": "uri"
+      },
+      "description": "Sample pagination URLs visited by Discovery Agent (used for URL pattern detection)"
+    },
+    "article_urls": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "format": "uri"
+      },
+      "description": "Pre-discovered article URLs from Discovery Agent (optional, agent can discover its own)"
+    },
+    "content_availability": {
+      "type": "object",
+      "description": "Content fields discovered by Discovery Agent (guides which selectors to find)",
+      "properties": {
+        "listing_content": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "object",
+            "properties": {
+              "available": {"type": "boolean"}
+            }
+          }
+        },
+        "detail_content": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "object",
+            "properties": {
+              "available": {"type": "boolean"}
+            }
+          }
+        }
+      }
+    }
+  },
+  "additionalProperties": false
+}

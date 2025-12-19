@@ -1,0 +1,13 @@
+### {{ agent_name }}
+**Tool:** `{{ tool_name }}`
+**Description:** {{ description }}
+
+#### Output Contract
+{{ fields_markdown }}
+
+{% if example_json %}
+#### Example Output
+```json
+{{ example_json | tojson }}
+```
+{% endif %}

@@ -7,7 +7,7 @@ from src.repositories.inmemory import InMemoryRepository
 from src.services.memory_service import MemoryService
 from src.tools.orchestration import (
     RunAccessibilityAgentTool,
-    RunBrowserAgentTool,
+    RunDiscoveryAgentTool,
     RunDataPrepAgentTool,
     RunSelectorAgentTool,
     _extract_result_info,
@@ -225,15 +225,15 @@ class TestCreateAgentRunnerTool:
         assert schema["required"] == ["task"]
 
 
-class TestRunBrowserAgentTool:
-    """Tests for RunBrowserAgentTool class."""
+class TestRunDiscoveryAgentTool:
+    """Tests for RunDiscoveryAgentTool class."""
 
     def test_basic_execution(self):
         """Tool executes agent and returns structured result."""
         result = AgentResult.ok(extracted_articles=[], result="done")
         result.iterations = 2
         agent = MockAgent(result)
-        tool = RunBrowserAgentTool(agent)
+        tool = RunDiscoveryAgentTool(agent)
 
         response = tool.execute(task="extract articles")
 
@@ -244,11 +244,11 @@ class TestRunBrowserAgentTool:
     def test_with_orchestrator_memory(self):
         """Tool stores specified keys to orchestrator memory."""
         repo = InMemoryRepository()
-        memory = MemoryService(repo, "test-session", "browser")
+        memory = MemoryService(repo, "test-session", "discovery")
         result = AgentResult.ok(pagination_type="infinite_scroll")
         result.iterations = 1
         agent = MockAgent(result)
-        tool = RunBrowserAgentTool(
+        tool = RunDiscoveryAgentTool(
             agent,
             orchestrator_memory=memory,
             store_keys=["pagination_type"]

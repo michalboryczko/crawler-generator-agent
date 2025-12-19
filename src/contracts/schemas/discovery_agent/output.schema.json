@@ -1,0 +1,260 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "discovery_agent.schema.json",
+  "title": "DiscoveryAgentContract",
+  "description": "Contract for DiscoveryAgent output - site structure discovery including articles, pagination, and available content fields",
+  "type": "object",
+  "required": [
+    "article_urls",
+    "pagination",
+    "listing_content",
+    "detail_content"
+  ],
+  "properties": {
+    "article_urls": {
+      "type": "array",
+      "description": "List of article URLs discovered on listing pages",
+      "minItems": 1,
+      "items": {
+        "type": "string",
+        "format": "uri"
+      }
+    },
+    "pagination": {
+      "type": "object",
+      "description": "Pagination discovery results",
+      "required": [
+        "type"
+      ],
+      "properties": {
+        "type": {
+          "type": "string",
+          "enum": [
+            "numbered",
+            "url_parameter",
+            "next_button",
+            "infinite_scroll",
+            "none"
+          ],
+          "description": "Pagination type. url_parameter for query params (?page=2), numbered for path patterns (/page/2)"
+        },
+        "max_pages": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "minimum": 1,
+          "description": "Maximum page number if determinable"
+        },
+        "links_visited": {
+          "type": "array",
+          "description": "Actual URLs visited during pagination discovery (minimum 3)",
+          "minItems": 1,
+          "items": {
+            "type": "string",
+            "format": "uri"
+          }
+        },
+        "pattern": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "URL pattern detected (e.g., '?page={n}', '/page/{n}')",
+          "examples": [
+            "?page={n}",
+            "?offset={n}",
+            "/page/{n}",
+            "/page-{n}"
+          ]
+        },
+        "selector": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "CSS selector for pagination control (for next_button/infinite_scroll types)"
+        }
+      }
+    },
+    "listing_content": {
+      "type": "object",
+      "description": "Content fields available on listing pages (per article preview)",
+      "properties": {
+        "article_link": {
+          "$ref": "#/$defs/contentField"
+        },
+        "article_title": {
+          "$ref": "#/$defs/contentField"
+        },
+        "article_summary": {
+          "$ref": "#/$defs/contentField"
+        },
+        "article_date": {
+          "$ref": "#/$defs/contentField"
+        },
+        "article_author": {
+          "$ref": "#/$defs/contentField"
+        },
+        "article_thumbnail": {
+          "$ref": "#/$defs/contentField"
+        },
+        "article_category": {
+          "$ref": "#/$defs/contentField"
+        }
+      },
+      "additionalProperties": {
+        "$ref": "#/$defs/contentField"
+      }
+    },
+    "detail_content": {
+      "type": "object",
+      "description": "Content fields available on article detail pages",
+      "properties": {
+        "title": {
+          "$ref": "#/$defs/contentFieldWithSample"
+        },
+        "date": {
+          "$ref": "#/$defs/contentFieldWithSample"
+        },
+        "authors": {
+          "type": "object",
+          "properties": {
+            "available": {
+              "type": "boolean"
+            },
+            "sample": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            }
+          },
+          "required": [
+            "available"
+          ]
+        },
+        "lead": {
+          "$ref": "#/$defs/contentFieldWithSample"
+        },
+        "content": {
+          "$ref": "#/$defs/contentField"
+        },
+        "category": {
+          "$ref": "#/$defs/contentFieldWithSample"
+        },
+        "tags": {
+          "type": "object",
+          "properties": {
+            "available": {
+              "type": "boolean"
+            },
+            "sample": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            }
+          },
+          "required": [
+            "available"
+          ]
+        },
+        "breadcrumbs": {
+          "$ref": "#/$defs/contentField"
+        },
+        "files": {
+          "type": "object",
+          "description": "Downloadable files (PDF, DOC, etc.)",
+          "properties": {
+            "available": {
+              "type": "boolean"
+            },
+            "sample": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "url": {
+                    "type": "string"
+                  },
+                  "title": {
+                    "type": "string"
+                  },
+                  "type": {
+                    "type": "string",
+                    "description": "File type (pdf, doc, xls, etc.)"
+                  }
+                },
+                "required": [
+                  "url"
+                ]
+              }
+            }
+          },
+          "required": [
+            "available"
+          ]
+        },
+        "images": {
+          "$ref": "#/$defs/contentField"
+        },
+        "related_articles": {
+          "$ref": "#/$defs/contentField"
+        }
+      },
+      "additionalProperties": {
+        "$ref": "#/$defs/contentFieldWithSample"
+      }
+    },
+    "detail_pages_visited": {
+      "type": "array",
+      "description": "Detail page URLs visited during content discovery",
+      "items": {
+        "type": "string",
+        "format": "uri"
+      }
+    },
+    "discovery_notes": {
+      "type": "string",
+      "description": "Observations about site structure, technology, special features"
+    },
+    "agent_response_content": {
+      "type": "string",
+      "description": "Natural language summary of the agent's response, explaining key findings and decisions in human-readable form"
+    }
+  },
+  "$defs": {
+    "contentField": {
+      "type": "object",
+      "description": "Discovery result for a content field",
+      "required": [
+        "available"
+      ],
+      "properties": {
+        "available": {
+          "type": "boolean",
+          "description": "Whether this content field was found on the page"
+        }
+      }
+    },
+    "contentFieldWithSample": {
+      "type": "object",
+      "description": "Discovery result with sample value",
+      "required": [
+        "available"
+      ],
+      "properties": {
+        "available": {
+          "type": "boolean",
+          "description": "Whether this content field was found on the page"
+        },
+        "sample": {
+          "type": "string",
+          "description": "Sample value extracted to confirm field works"
+        }
+      }
+    }
+  },
+  "additionalProperties": false
+}

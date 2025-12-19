@@ -34,7 +34,7 @@ class Container:
 
         # Create service for each agent
         main_service = container.memory_service("main_agent")
-        browser_service = container.memory_service("browser_agent")
+        discovery_service = container.memory_service("discovery_agent")
 
         # Access session service for tracking crawler runs
         session_service = container.session_service

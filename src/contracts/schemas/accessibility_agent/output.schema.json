@@ -1,0 +1,87 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "accessibility_agent_output",
+  "title": "AccessibilityAgent Output Contract",
+  "description": "Output from the Accessibility Agent - HTTP vs browser requirement assessment",
+  "type": "object",
+  "required": [
+    "accessibility_result"
+  ],
+  "properties": {
+    "accessibility_result": {
+      "type": "object",
+      "description": "Assessment of whether site content is accessible via HTTP requests",
+      "required": [
+        "requires_browser",
+        "listing_accessible",
+        "articles_accessible"
+      ],
+      "properties": {
+        "requires_browser": {
+          "type": "boolean",
+          "description": "True if JavaScript rendering is needed to access content. False means simple HTTP requests are sufficient."
+        },
+        "listing_accessible": {
+          "type": "boolean",
+          "description": "True if listing pages can be fetched via simple HTTP requests and contain expected article links"
+        },
+        "articles_accessible": {
+          "type": "boolean",
+          "description": "True if article pages can be fetched via simple HTTP requests and contain main content"
+        },
+        "notes": {
+          "type": "string",
+          "description": "Human-readable explanation of findings and reasoning behind the assessment"
+        },
+        "listing_test": {
+          "type": "object",
+          "description": "Details of listing page accessibility test",
+          "properties": {
+            "url_tested": {
+              "type": "string",
+              "format": "uri",
+              "description": "URL that was tested"
+            },
+            "status_code": {
+              "type": "integer",
+              "description": "HTTP status code received"
+            },
+            "links_found": {
+              "type": "integer",
+              "description": "Number of article links found matching selector"
+            },
+            "content_present": {
+              "type": "boolean",
+              "description": "Whether expected content structure was found"
+            }
+          }
+        },
+        "article_test": {
+          "type": "object",
+          "description": "Details of article page accessibility test",
+          "properties": {
+            "url_tested": {
+              "type": "string",
+              "format": "uri",
+              "description": "Article URL that was tested"
+            },
+            "status_code": {
+              "type": "integer",
+              "description": "HTTP status code received"
+            },
+            "content_present": {
+              "type": "boolean",
+              "description": "Whether main article content was found in raw HTML"
+            }
+          }
+        }
+      },
+      "additionalProperties": false
+    },
+    "agent_response_content": {
+      "type": "string",
+      "description": "Natural language summary of the agent's response, explaining key findings and decisions in human-readable form"
+    }
+  },
+  "additionalProperties": false
+}

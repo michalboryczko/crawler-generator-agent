@@ -2,7 +2,7 @@
 
 from unittest.mock import MagicMock
 
-from src.agents.browser_agent import BrowserAgent
+from src.agents.discovery_agent import DiscoveryAgent
 from src.agents.selector_agent import SelectorAgent
 from src.core.config import StorageConfig
 from src.infrastructure import init_container
@@ -33,17 +33,17 @@ class TestAgentIsolatedMemory:
         config = StorageConfig(backend_type="memory")
         container = init_container(config)
 
-        browser_service = container.memory_service("browser")
+        discovery_service = container.memory_service("discovery")
         selector_service = container.memory_service("selector")
 
-        _browser_agent = BrowserAgent(mock_llm, mock_browser, memory_service=browser_service)
+        _discovery_agent = DiscoveryAgent(mock_llm, mock_browser, memory_service=discovery_service)
         _selector_agent = SelectorAgent(mock_llm, mock_browser, memory_service=selector_service)
 
         # Different agent names provide isolation
-        browser_service.write("key", "browser_value")
+        discovery_service.write("key", "discovery_value")
         selector_service.write("key", "selector_value")
 
-        assert browser_service.read("key") == "browser_value"
+        assert discovery_service.read("key") == "discovery_value"
         assert selector_service.read("key") == "selector_value"
 
     def test_agents_use_provided_memory_service(self):
@@ -54,7 +54,7 @@ class TestAgentIsolatedMemory:
         repo = InMemoryRepository()
         custom_service = MemoryService(repo, "test-session", "custom")
 
-        agent = BrowserAgent(mock_llm, mock_browser, memory_service=custom_service)
+        agent = DiscoveryAgent(mock_llm, mock_browser, memory_service=custom_service)
 
         assert agent.memory_service is custom_service
 
@@ -64,11 +64,11 @@ class TestAgentIsolatedMemory:
         mock_browser = create_mock_browser_session()
 
         repo = InMemoryRepository()
-        service1 = MemoryService(repo, "session1", "browser")
-        service2 = MemoryService(repo, "session2", "browser")
+        service1 = MemoryService(repo, "session1", "discovery")
+        service2 = MemoryService(repo, "session2", "discovery")
 
-        _agent1 = BrowserAgent(mock_llm, mock_browser, memory_service=service1)
-        _agent2 = BrowserAgent(mock_llm, mock_browser, memory_service=service2)
+        _agent1 = DiscoveryAgent(mock_llm, mock_browser, memory_service=service1)
+        _agent2 = DiscoveryAgent(mock_llm, mock_browser, memory_service=service2)
 
         service1.write("key", "value1")
         service2.write("key", "value2")
@@ -88,8 +88,8 @@ class TestAgentResultDataFlow:
         mock_browser = create_mock_browser_session()
 
         repo = InMemoryRepository()
-        service = MemoryService(repo, "session", "browser")
-        agent = BrowserAgent(mock_llm, mock_browser, memory_service=service)
+        service = MemoryService(repo, "session", "discovery")
+        agent = DiscoveryAgent(mock_llm, mock_browser, memory_service=service)
         result = agent.run("Test task")
 
         assert isinstance(result, AgentResult)
@@ -118,8 +118,8 @@ class TestAgentResultDataFlow:
         mock_browser = create_mock_browser_session()
 
         repo = InMemoryRepository()
-        service = MemoryService(repo, "session", "browser")
-        agent = BrowserAgent(mock_llm, mock_browser, memory_service=service)
+        service = MemoryService(repo, "session", "discovery")
+        agent = DiscoveryAgent(mock_llm, mock_browser, memory_service=service)
         result = agent.run("Test task")
 
         assert result.memory_snapshot is not None
@@ -131,8 +131,8 @@ class TestAgentResultDataFlow:
         mock_browser = create_mock_browser_session()
 
         repo = InMemoryRepository()
-        service = MemoryService(repo, "session", "browser")
-        agent = BrowserAgent(mock_llm, mock_browser, memory_service=service)
+        service = MemoryService(repo, "session", "discovery")
+        agent = DiscoveryAgent(mock_llm, mock_browser, memory_service=service)
         context = {"target_url": "https://example.com", "max_pages": 5}
 
         agent.run("Test task", context=context)
@@ -142,7 +142,7 @@ class TestAgentResultDataFlow:
         messages = call_args[0][0]
         system_message = messages[0]
 
-        assert "Context from orchestrator" in system_message["content"]
+        assert "Context from Orchestrator" in system_message["content"]
         assert "https://example.com" in system_message["content"]
         assert "max_pages" in system_message["content"]
 
@@ -155,7 +155,7 @@ class TestMemoryServiceMergeWorkflow:
         repo = InMemoryRepository()
 
         # Simulate sub-agent completing with some data
-        sub_agent_service = MemoryService(repo, "session", "browser")
+        sub_agent_service = MemoryService(repo, "session", "discovery")
         sub_agent_service.write("extracted_links", ["link1", "link2"])
         sub_agent_service.write("page_title", "Test Page")
 
@@ -170,13 +170,13 @@ class TestMemoryServiceMergeWorkflow:
     def test_export_keys_for_context_passing(self):
         """Test exporting keys to pass as context to next agent."""
         repo = InMemoryRepository()
-        browser_service = MemoryService(repo, "session", "browser")
-        browser_service.write("url", "https://example.com")
-        browser_service.write("links", ["l1", "l2", "l3"])
-        browser_service.write("internal_state", "should not export")
+        discovery_service = MemoryService(repo, "session", "discovery")
+        discovery_service.write("url", "https://example.com")
+        discovery_service.write("links", ["l1", "l2", "l3"])
+        discovery_service.write("internal_state", "should not export")
 
         # Export only relevant keys for selector agent
-        context = browser_service.export_keys(["url", "links"])
+        context = discovery_service.export_keys(["url", "links"])
 
         assert context == {
             "url": "https://example.com",

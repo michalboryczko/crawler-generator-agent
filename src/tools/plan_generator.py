@@ -281,6 +281,10 @@ Recommended approach:
 Selectors below are discovered from analyzing multiple article pages.
 Each field has a **selector chain** - an ordered list of selectors to try until one matches.
 
+> **Implementation Guidelines:**
+> 1. **Try all selectors:** Always attempt extraction with every selector in the chain, even if test data doesn't contain values for some selectors. Different pages may have different HTML structures.
+> 2. **Multi-value fields:** For fields that can have multiple values (files, attachments, images, authors, tags, related_articles), try ALL selectors in the chain and combine/deduplicate results - don't stop at the first successful match.
+
 """
 
         # Default selectors if none provided
@@ -517,7 +521,7 @@ This site requires JavaScript rendering for full functionality.
 - Listing pages accessible via HTTP: {"Yes" if listing_ok else "No"}
 - Article pages accessible via HTTP: {"Yes" if articles_ok else "No"}
 
-**Recommendation:** We have own headfull browser accessible via api. While implementation you should check `docs/headfull-chrome.md`.
+**Recommendation:** We have own headfull browser accessible via api. While implementation you should check `headfull-chrome.md`.
 That is our internal documentation for headfull browser usage you will find docs in repo.
 
 """
@@ -566,6 +570,8 @@ This site can be crawled with simple HTTP requests (no JavaScript needed).
 
         section += """- **Selector Validation:** Detail page selectors are inferred; validate on sample pages before production crawl.
 - **Pagination Bounds:** Verify max pages dynamically if content is frequently updated.
+- **Selector Chain Usage:** Try all selectors in each chain, not just until first match. Test data may not cover all page variations.
+- **Multi-value Fields:** For array fields (files, attachments, images, authors, tags), combine results from all successful selectors, then deduplicate.
 
 This plan provides the foundation for implementing a complete site crawler.
 """

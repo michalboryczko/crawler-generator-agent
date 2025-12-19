@@ -95,7 +95,7 @@ class TestBaseAgentContextInjection:
 
         system_message = messages[0]
         assert system_message["role"] == "system"
-        assert "Context from orchestrator" in system_message["content"]
+        assert "Context from Orchestrator" in system_message["content"]
         assert "https://example.com" in system_message["content"]
         assert "max_pages" in system_message["content"]
 

@@ -17,6 +17,7 @@ from .result import AgentResult
 if TYPE_CHECKING:
     from ..core.llm import LLMClientFactory
     from ..services.memory_service import MemoryService
+    from ..tools.agent_tools import AgentTool
 
 logger = logging.getLogger(__name__)
 
@@ -32,7 +33,16 @@ class BaseAgent:
     """
 
     name: str = "base_agent"
+    description: str = "Base agent"
     system_prompt: str = "You are a helpful assistant."
+
+    def get_description(self) -> str:
+        """Return formatted agent description.
+
+        Returns:
+            String in format "{name} - {description}"
+        """
+        return f"{self.name} - {self.description}"
 
     def __init__(
         self,
@@ -45,7 +55,9 @@ class BaseAgent:
 
         Args:
             llm: Either an LLMClient (legacy) or LLMClientFactory (multi-model)
-            tools: Optional list of tools available to the agent
+            tools: Optional list of tools available to the agent.
+                   AgentTool instances are auto-detected and accessible
+                   via the agent_tools property.
             component_name: Override the component name for factory lookup
                            (defaults to agent's name attribute)
             memory_service: MemoryService for agent memory
@@ -63,8 +75,29 @@ class BaseAgent:
             self.llm = llm
 
         self.tools = tools or []
-        self._tool_map = {t.name: t for t in self.tools}
         self._memory_service = memory_service
+
+        # Auto-detect AgentTools from tools list
+        from ..tools.agent_tools import AgentTool
+        self._agent_tools = [t for t in self.tools if isinstance(t, AgentTool)]
+
+        # Auto-attach DescribeOutputContractTool if AgentTools present
+        if self._agent_tools:
+            from ..tools.agent_tools import DescribeOutputContractTool
+            # Build schema paths from AgentTools
+            schema_paths = {
+                at.get_agent_name(): at._output_schema_path
+                for at in self._agent_tools
+            }
+            describe_tool = DescribeOutputContractTool(schema_paths)
+            self.tools = list(self.tools) + [describe_tool]
+
+        self._tool_map = {t.name: t for t in self.tools}
+
+    @property
+    def agent_tools(self) -> "list[AgentTool]":
+        """Return auto-detected AgentTools from tools list."""
+        return self._agent_tools
 
     @property
     def memory_service(self) -> "MemoryService | None":
@@ -72,7 +105,14 @@ class BaseAgent:
         return self._memory_service
 
     @traced_agent()  # Uses self.name dynamically
-    def run(self, task: str, context: dict[str, Any] | None = None) -> AgentResult:
+    def run(
+        self,
+        task: str,
+        context: dict[str, Any] | None = None,
+        expected_outputs: list[str] | None = None,
+        run_identifier: str | None = None,
+        output_contract_schema: dict | None = None,
+    ) -> AgentResult:
         """Execute agent task with tool loop.
 
         Instrumented by @traced_agent - logs agent lifecycle, iterations, and results.
@@ -80,15 +120,20 @@ class BaseAgent:
         Args:
             task: The task description to complete
             context: Optional explicit data from parent agent/orchestrator
+            expected_outputs: Optional list of expected output fields for validation
+            run_identifier: Optional UUID for validation context tracking
+            output_contract_schema: Optional JSON schema for the expected response
 
         Returns:
             AgentResult with success, data, errors, and optional memory snapshot
         """
-        # Build system message with optional context injection
-        system_content = self.system_prompt
-        if context:
-            context_str = json.dumps(context, indent=2)
-            system_content += f"\n\n## Context from orchestrator:\n```json\n{context_str}\n```"
+        # Build system message with contract sections
+        system_content = self._build_final_prompt(
+            expected_outputs=expected_outputs,
+            run_identifier=run_identifier,
+            context=context,
+            output_contract_schema=output_contract_schema,
+        )
 
         messages = [
             {"role": "system", "content": system_content},
@@ -154,6 +199,102 @@ class BaseAgent:
             memory_snapshot=self._get_memory_snapshot(),
             iterations=MAX_ITERATIONS
         )
+
+    def _build_final_prompt(
+        self,
+        expected_outputs: list[str] | None = None,
+        run_identifier: str | None = None,
+        context: dict[str, Any] | None = None,
+        output_contract_schema: dict | None = None,
+    ) -> str:
+        """Build final system prompt with contract sections.
+
+        Template method: Override in subclasses for custom prompt building.
+
+        Args:
+            expected_outputs: List of expected output fields for validation
+            run_identifier: UUID for validation context tracking
+            context: Context data from orchestrator
+            output_contract_schema: Full JSON schema for expected response
+
+        Returns:
+            Complete system prompt with all sections
+        """
+        prompt_parts = [self.system_prompt]
+
+        # Add sub-agents section if agent_tools exist
+        sub_agents_section = self._build_sub_agents_section()
+        if sub_agents_section:
+            prompt_parts.append(sub_agents_section)
+
+        # Add response rules if validation context provided
+        if run_identifier and expected_outputs:
+            prompt_parts.append(
+                self._build_response_rules(
+                    expected_outputs, run_identifier, output_contract_schema
+                )
+            )
+
+        # Inject context
+        if context:
+            prompt_parts.append(self._inject_context(context))
+
+        return "\n\n".join(prompt_parts)
+
+    def _build_sub_agents_section(self) -> str:
+        """Build prompt section describing available sub-agents.
+
+        Returns:
+            Formatted sub-agents section, or empty string if no agent_tools
+        """
+        if not self.agent_tools:
+            return ""
+
+        from ..prompts.template_renderer import render_template
+
+        return render_template(
+            "sub_agents_section.md.j2",
+            agent_tools=self.agent_tools,
+        )
+
+    def _build_response_rules(
+        self,
+        expected_outputs: list[str],
+        run_identifier: str,
+        output_contract_schema: dict | None = None,
+    ) -> str:
+        """Build response validation rules section.
+
+        Args:
+            expected_outputs: List of expected output fields
+            run_identifier: UUID for validation context
+            output_contract_schema: Full JSON schema for expected response.
+                                   If None, an empty dict is used.
+
+        Returns:
+            Formatted response rules section
+        """
+        from ..prompts.template_renderer import render_template
+
+        return render_template(
+            "response_rules.md.j2",
+            run_identifier=run_identifier,
+            expected_outputs=expected_outputs,
+            required_fields=expected_outputs,
+            output_contract_schema=output_contract_schema or {},
+        )
+
+    def _inject_context(self, context: dict[str, Any]) -> str:
+        """Format context for injection into prompt.
+
+        Args:
+            context: Context data from orchestrator
+
+        Returns:
+            Formatted context section
+        """
+        context_str = json.dumps(context, indent=2)
+        return f"## Context from Orchestrator\n```json\n{context_str}\n```"
 
     def _execute_tool(self, name: str, arguments: dict[str, Any]) -> dict[str, Any]:
         """Execute a tool by name with arguments.

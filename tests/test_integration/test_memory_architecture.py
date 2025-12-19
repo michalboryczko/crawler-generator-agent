@@ -15,7 +15,7 @@ from src.repositories.inmemory import InMemoryRepository
 from src.services.memory_service import MemoryService
 from src.tools.orchestration import (
     RunAccessibilityAgentTool,
-    RunBrowserAgentTool,
+    RunDiscoveryAgentTool,
     RunSelectorAgentTool,
     create_agent_runner_tool,
 )
@@ -146,7 +146,7 @@ class TestExplicitDataFlow:
         result.iterations = 3
 
         agent = MockRunnableAgent(result)
-        tool = RunBrowserAgentTool(agent)
+        tool = RunDiscoveryAgentTool(agent)
 
         response = tool.execute(task="Extract articles")
 
@@ -173,7 +173,7 @@ class TestOrchestratorMemorySharing:
         result.iterations = 1
 
         agent = MockRunnableAgent(result)
-        tool = RunBrowserAgentTool(
+        tool = RunDiscoveryAgentTool(
             agent,
             orchestrator_memory=orchestrator_memory,
             store_keys=["pagination_type", "extracted_count"],
@@ -192,16 +192,16 @@ class TestOrchestratorMemorySharing:
         repo = InMemoryRepository()
         shared_memory = MemoryService(repo, "session", "orchestrator")
 
-        # Browser agent stores pagination type
-        browser_result = AgentResult.ok(pagination_type="numbered", total_pages=10)
-        browser_result.iterations = 1
-        browser_agent = MockRunnableAgent(browser_result)
-        browser_tool = RunBrowserAgentTool(
-            browser_agent,
+        # Discovery agent stores pagination type
+        discovery_result = AgentResult.ok(pagination_type="numbered", total_pages=10)
+        discovery_result.iterations = 1
+        discovery_agent = MockRunnableAgent(discovery_result)
+        discovery_tool = RunDiscoveryAgentTool(
+            discovery_agent,
             orchestrator_memory=shared_memory,
             store_keys=["pagination_type", "total_pages"],
         )
-        browser_tool.execute(task="Analyze site")
+        discovery_tool.execute(task="Analyze site")
 
         # Selector agent stores selectors
         selector_result = AgentResult.ok(article_selector="div.article")
@@ -223,10 +223,10 @@ class TestOrchestratorMemorySharing:
 class TestDataFlowWorkflow:
     """End-to-end workflow tests for data passing."""
 
-    def test_browser_to_selector_workflow(self):
-        """Simulate browser agent results flowing to selector agent."""
-        # Step 1: Browser agent extracts article links
-        browser_result = AgentResult.ok(
+    def test_discovery_to_selector_workflow(self):
+        """Simulate discovery agent results flowing to selector agent."""
+        # Step 1: Discovery agent extracts article links
+        discovery_result = AgentResult.ok(
             extracted_articles=[
                 {"href": "/article/1", "text": "Article 1"},
                 {"href": "/article/2", "text": "Article 2"},
@@ -234,17 +234,17 @@ class TestDataFlowWorkflow:
             pagination_type="numbered",
             base_url="http://example.com",
         )
-        browser_result.iterations = 2
-        browser_agent = MockRunnableAgent(browser_result)
+        discovery_result.iterations = 2
+        discovery_agent = MockRunnableAgent(discovery_result)
 
-        # Step 2: Execute browser tool and get result
-        browser_tool = RunBrowserAgentTool(browser_agent)
-        browser_response = browser_tool.execute(task="Extract articles from page")
+        # Step 2: Execute discovery tool and get result
+        discovery_tool = RunDiscoveryAgentTool(discovery_agent)
+        discovery_response = discovery_tool.execute(task="Extract articles from page")
 
         # Step 3: Extract data to pass to selector agent
         context_for_selector = {
-            "article_links": browser_response["data"]["extracted_articles"],
-            "pagination_info": browser_response["data"]["pagination_type"],
+            "article_links": discovery_response["data"]["extracted_articles"],
+            "pagination_info": discovery_response["data"]["pagination_type"],
         }
 
         # Step 4: Selector agent runs with context
@@ -261,24 +261,24 @@ class TestDataFlowWorkflow:
         )
 
         # Verify data flowed correctly
-        assert selector_agent.last_context["article_links"] == browser_response["data"]["extracted_articles"]
+        assert selector_agent.last_context["article_links"] == discovery_response["data"]["extracted_articles"]
         assert selector_response["data"]["article_link_selector"] == "a.article-link"
 
     def test_full_agent_chain_with_shared_memory(self):
-        """Test complete workflow: browser -> selector -> accessibility."""
+        """Test complete workflow: discovery -> selector -> accessibility."""
         repo = InMemoryRepository()
         shared_memory = MemoryService(repo, "session", "main")
 
-        # Browser agent
-        browser_result = AgentResult.ok(
+        # Discovery agent
+        discovery_result = AgentResult.ok(
             url="http://example.com",
             link_count=25,
             pagination_type="next_button",
         )
-        browser_result.iterations = 1
-        browser_agent = MockRunnableAgent(browser_result)
-        browser_tool = RunBrowserAgentTool(
-            browser_agent,
+        discovery_result.iterations = 1
+        discovery_agent = MockRunnableAgent(discovery_result)
+        discovery_tool = RunDiscoveryAgentTool(
+            discovery_agent,
             orchestrator_memory=shared_memory,
             store_keys=["url", "pagination_type"],
         )
@@ -310,7 +310,7 @@ class TestDataFlowWorkflow:
         )
 
         # Execute chain
-        browser_tool.execute(task="Analyze site")
+        discovery_tool.execute(task="Analyze site")
         selector_tool.execute(
             task="Find selectors", context={"url": shared_memory.read("url")}
         )
