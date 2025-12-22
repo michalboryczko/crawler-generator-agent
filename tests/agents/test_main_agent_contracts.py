@@ -66,7 +66,7 @@ def test_agents_config(tmp_path):
 
     # Create schema files for each agent
     agents = {}
-    for agent_name in ["discovery", "selector", "accessibility", "data_prep"]:
+    for agent_name in ["discovery", "selector", "accessibility", "data_prep", "plan_generator"]:
         agent_dir = tmp_path / f"{agent_name}_agent"
         agent_dir.mkdir()
 
@@ -156,6 +156,11 @@ class TestMainAgentHasAgentTools:
         tool_names = [t.name for t in main_agent.agent_tools]
         assert "run_data_prep_agent" in tool_names
 
+    def test_has_plan_generator_agent_tool(self, main_agent):
+        """MainAgent should have an AgentTool for plan generator agent."""
+        tool_names = [t.name for t in main_agent.agent_tools]
+        assert "run_plan_generator_agent" in tool_names
+
 
 class TestPromptIncludesSubAgents:
     """Tests that prompt building includes sub-agent information."""
@@ -175,6 +180,7 @@ class TestPromptIncludesSubAgents:
         assert "selector_agent" in section
         assert "accessibility_agent" in section
         assert "data_prep_agent" in section
+        assert "plan_generator_agent" in section
 
     def test_sub_agents_section_includes_workflow_rules(self, main_agent):
         """Sub-agents section should include workflow rules."""
@@ -200,6 +206,7 @@ class TestAgentToolsInToolMap:
         assert "run_selector_agent" in main_agent._tool_map
         assert "run_accessibility_agent" in main_agent._tool_map
         assert "run_data_prep_agent" in main_agent._tool_map
+        assert "run_plan_generator_agent" in main_agent._tool_map
 
     def test_tool_map_entries_are_agent_tools(self, main_agent):
         """Tool map entries for agent runners should be AgentTool instances."""
@@ -207,3 +214,4 @@ class TestAgentToolsInToolMap:
         assert isinstance(main_agent._tool_map["run_selector_agent"], AgentTool)
         assert isinstance(main_agent._tool_map["run_accessibility_agent"], AgentTool)
         assert isinstance(main_agent._tool_map["run_data_prep_agent"], AgentTool)
+        assert isinstance(main_agent._tool_map["run_plan_generator_agent"], AgentTool)

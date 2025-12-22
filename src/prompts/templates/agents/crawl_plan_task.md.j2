@@ -1,13 +1,75 @@
 Create a complete crawl plan for: {{ url }}
 
 Execute the full workflow:
-1. Store '{{ url }}' in memory as 'target_url'
-2. Run browser agent to extract article links, pagination info, and max pages
-3. Run selector agent to find CSS selectors for listings and detail pages
-4. Run accessibility agent to check HTTP accessibility
-5. Run data prep agent to create test dataset with 5+ listing pages and 20+ article pages
-   (The data prep agent will also dump test data to data/test_set.jsonl)
-6. Use generate_plan_md to create comprehensive plan, then file_create for plan.md
-7. Use generate_test_md to create test documentation, then file_create for test.md
 
-Return summary with counts when complete.
+## Phase 1: Information Gathering
+Run each sub-agent and STORE their full results:
+
+1. **Discovery Agent**: Extract article links, pagination info, and max pages
+   - Input: target_url="{{ url }}"
+   - STORE the full result (discovery_result)
+
+2. **Selector Agent**: Find CSS selectors for listings and detail pages
+   - Input: target_url="{{ url }}", discovered_urls from discovery agent
+   - STORE the full result (selector_result)
+
+3. **Accessibility Agent**: Check HTTP accessibility
+   - Input: target_url="{{ url }}"
+   - STORE the full result (accessibility_result)
+
+4. **Data Prep Agent**: Create test dataset
+   - Input: target_url="{{ url }}", selectors from selector agent
+   - Should create 5+ listing pages and 20+ article pages
+   - Dumps test data to data/test_set.jsonl
+   - STORE the full result (data_prep_result)
+
+## Phase 2: Plan Generation
+After ALL sub-agents have completed, call plan_generator_agent with ALL collected data:
+
+5. **Plan Generator Agent**: Generate comprehensive plan from collected information
+
+   **CRITICAL**: Pass ALL sub-agent outputs via the `context` parameter:
+   ```
+   run_plan_generator_agent(
+     task: "Generate comprehensive crawl plan for {{ url }}",
+     context: {
+       "target_url": "{{ url }}",
+       "task_name": "Crawl Plan Generation",
+       "collected_information": [
+         {
+           "agent_name": "discovery_agent",
+           "output": <discovery_result>,
+           "description": "Site structure, pagination info, article URLs"
+         },
+         {
+           "agent_name": "selector_agent",
+           "output": <selector_result>,
+           "description": "CSS selectors for listing and detail pages with success rates"
+         },
+         {
+           "agent_name": "accessibility_agent",
+           "output": <accessibility_result>,
+           "description": "HTTP accessibility check results, browser requirements"
+         },
+         {
+           "agent_name": "data_prep_agent",
+           "output": <data_prep_result>,
+           "description": "Test dataset samples"
+         }
+       ]
+     }
+   )
+   ```
+
+   The plan generator will:
+   - Get plan template structure
+   - Generate crawler configuration
+   - Validate output with supervisor
+   - Create plan.md file
+
+6. Optionally use generate_test_md for test documentation if needed
+
+Return summary with:
+- Plan file path (from plan_generator_agent response)
+- Status
+- Counts from each agent

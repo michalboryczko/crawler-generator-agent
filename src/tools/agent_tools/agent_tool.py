@@ -61,8 +61,16 @@ class AgentTool(BaseTool):
 
     @property
     def description(self) -> str:
-        """Human-readable description for LLM."""
-        return self._description
+        """Human-readable description for LLM, including input requirements."""
+        desc = self._description
+
+        # Add input contract info if available
+        if self._input_schema:
+            required = self._input_schema.get("required", [])
+            if required:
+                desc += f"\n\nREQUIRED INPUT (pass via 'context' parameter): {', '.join(required)}"
+
+        return desc
 
     # --- Template-accessed methods (used in sub_agents_section.md.j2) ---
 

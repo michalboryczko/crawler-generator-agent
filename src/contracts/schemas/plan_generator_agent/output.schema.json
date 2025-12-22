@@ -1,0 +1,24 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "plan_generator_agent_output",
+  "title": "PlanGeneratorAgent Output Contract",
+  "description": "Output from the Plan Generator Agent - status and path to generated plan file",
+  "type": "object",
+  "required": ["plan_file_path", "status", "agent_response_content"],
+  "properties": {
+    "plan_file_path": {
+      "type": "string",
+      "description": "Path to the generated plan.md file (e.g., 'plan.md')"
+    },
+    "status": {
+      "type": "string",
+      "enum": ["complete", "needs_revision", "failed"],
+      "description": "Status of the plan generation"
+    },
+    "agent_response_content": {
+      "type": "string",
+      "description": "Natural language summary of the plan generation process and key decisions made"
+    }
+  },
+  "additionalProperties": false
+}

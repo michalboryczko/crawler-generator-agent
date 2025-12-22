@@ -24,14 +24,12 @@ from ..tools.memory import (
     MemoryReadTool,
     MemoryWriteTool,
 )
-from ..tools.plan_generator import (
-    GeneratePlanTool,
-    GenerateTestPlanTool,
-)
+from ..tools.plan_generator import GenerateTestPlanTool
 from .accessibility_agent import AccessibilityAgent
 from .base import BaseAgent
 from .data_prep_agent import DataPrepAgent
 from .discovery_agent import DiscoveryAgent
+from .plan_generator_agent import PlanGeneratorAgent
 from .result import AgentResult
 from .selector_agent import SelectorAgent
 
@@ -105,6 +103,11 @@ class MainAgent(BaseAgent):
             memory_service=self._container.memory_service("data_prep"),
             output_dir=output_dir,
         )
+        self.plan_generator_agent = PlanGeneratorAgent(
+            llm,
+            output_dir=output_dir,
+            memory_service=self._container.memory_service("plan_generator"),
+        )
 
         # Mapping from internal agent name to config key
         agent_to_config = {
@@ -112,6 +115,7 @@ class MainAgent(BaseAgent):
             "selector_agent": "selector",
             "accessibility_agent": "accessibility",
             "data_prep_agent": "data_prep",
+            "plan_generator_agent": "plan_generator",
         }
 
         # Build schema paths from config for PrepareAgentOutputValidationTool
@@ -125,6 +129,7 @@ class MainAgent(BaseAgent):
         selector_paths = agents_config.get_schema_paths("selector")
         accessibility_paths = agents_config.get_schema_paths("accessibility")
         data_prep_paths = agents_config.get_schema_paths("data_prep")
+        plan_generator_paths = agents_config.get_schema_paths("plan_generator")
 
         # Create AgentTools for sub-agents with contract schemas from config
         agent_tools = [
@@ -152,6 +157,12 @@ class MainAgent(BaseAgent):
                 input_schema_path=data_prep_paths.input_contract_schema_path,
                 description="Prepare test datasets with sample pages for validation",
             ),
+            AgentTool(
+                agent=self.plan_generator_agent,
+                output_schema_path=plan_generator_paths.output_contract_schema_path,
+                input_schema_path=plan_generator_paths.input_contract_schema_path,
+                description="Generate comprehensive crawl plan from collected sub-agent information",
+            ),
         ]
 
         # Unified tools list - AgentTools are auto-detected by BaseAgent
@@ -161,7 +172,6 @@ class MainAgent(BaseAgent):
             MemoryWriteTool(memory_service),
             MemoryListTool(memory_service),
             # Plan generators (structured output from memory)
-            GeneratePlanTool(memory_service),
             GenerateTestPlanTool(memory_service),
             # File tools
             FileCreateTool(output_dir),

@@ -1,0 +1,80 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "type": "object",
+  "description": "Parameters for prepare_crawler_configuration tool",
+  "required": ["target_url"],
+  "properties": {
+    "target_url": {
+      "type": "string",
+      "format": "uri",
+      "description": "Starting URL for the crawler (e.g., the main listing page)"
+    },
+    "listing_selectors": {
+      "type": "object",
+      "description": "Listing page selectors from Selector Agent output. Expected structure: {listing_container: [...], article_link: [...]}",
+      "properties": {
+        "listing_container": {
+          "description": "Selector chain for listing container (array of {selector, success_rate} or strings)"
+        },
+        "article_link": {
+          "description": "Selector chain for article links (array of {selector, success_rate} or strings)"
+        }
+      },
+      "additionalProperties": true
+    },
+    "detail_selectors": {
+      "type": "object",
+      "description": "Detail page selectors from Selector Agent output. Expected structure: {title: [...], content: [...], date: [...], ...}",
+      "additionalProperties": {
+        "description": "Selector chain for this field - array of {selector, success_rate} objects or strings"
+      }
+    },
+    "pagination_config": {
+      "type": "object",
+      "description": "Pagination configuration from Discovery Agent",
+      "properties": {
+        "type": {
+          "type": "string",
+          "enum": ["next_link", "numbered", "load_more", "infinite_scroll", "none"],
+          "description": "Type of pagination mechanism"
+        },
+        "selector": {
+          "type": ["string", "null"],
+          "description": "CSS selector for pagination element"
+        },
+        "max_pages": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "Maximum number of pages to crawl"
+        }
+      }
+    },
+    "requires_browser": {
+      "type": "boolean",
+      "default": true,
+      "description": "Whether JavaScript rendering is required for this site"
+    },
+    "request_config": {
+      "type": "object",
+      "description": "Custom request configuration (overrides defaults)",
+      "properties": {
+        "wait_between_requests": {
+          "type": "number",
+          "minimum": 0,
+          "description": "Delay between requests in seconds"
+        },
+        "max_concurrent_requests": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "Maximum parallel requests"
+        },
+        "timeout_seconds": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "Request timeout in seconds"
+        }
+      }
+    }
+  },
+  "additionalProperties": false
+}

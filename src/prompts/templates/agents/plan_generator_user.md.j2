@@ -1,0 +1,60 @@
+# Collected Information for {{ target_url }}
+
+**Task:** {{ task_name | default('Generate Crawl Plan') }}
+**Target URL:** {{ target_url }}
+
+---
+
+{% if collected_information %}
+{% for item in collected_information %}
+## From {{ item.agent_name }}
+
+### Description
+{{ item.description | default('Output from ' + item.agent_name) }}
+
+### Output
+{% if item.output is mapping %}
+{% for key, value in item.output.items() %}
+- **{{ key }}**: {% if value is mapping or value is iterable and value is not string %}
+```json
+{{ value | tojson(indent=2) }}
+```
+{% else %}{{ value }}{% endif %}
+{% endfor %}
+{% elif item.output is iterable and item.output is not string %}
+```json
+{{ item.output | tojson(indent=2) }}
+```
+{% else %}
+{{ item.output }}
+{% endif %}
+
+---
+
+{% endfor %}
+{% else %}
+No collected information provided. Please ensure sub-agents have completed their work.
+{% endif %}
+
+## Your Task
+
+Using the collected information above:
+
+1. **Call `plan_draft_provider`** to get the plan template structure
+2. **Extract relevant data** from each agent's output:
+   - Discovery Agent: pagination type, selector, max_pages, article URLs
+   - Selector Agent: listing_selectors, detail_selectors with success rates
+   - Accessibility Agent: requires_browser, accessibility notes
+   - Data Prep Agent: sample articles for validation
+3. **Call `prepare_crawler_configuration`** with the extracted selector data
+4. **Create plan.md** with all 10 sections filled from collected data
+5. **Call `supervisor_tool`** to validate the generated plan
+6. **Save with `file_create`** and return the result
+
+## Expected Output
+
+Return JSON with:
+- `crawler_config`: The generated configuration
+- `plan_file_path`: Where plan.md was saved
+- `status`: "complete", "needs_revision", or "failed"
+- `validation_result`: Summary from supervisor validation

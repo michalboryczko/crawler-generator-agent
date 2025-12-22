@@ -3,11 +3,12 @@
   "properties": {
     "task": {
       "type": "string",
-      "description": "Task for the agent"
+      "description": "Task description for the agent"
     },
     "context": {
       "type": "object",
-      "description": "Optional context data to pass to agent"
+      "description": "REQUIRED data for the agent's input contract. Check the tool description for required fields. For plan_generator_agent, must include: target_url, task_name, collected_information (array of sub-agent outputs).",
+      "additionalProperties": true
     },
     "run_identifier": {
       "type": "string",
