@@ -10,7 +10,7 @@ from typing import TYPE_CHECKING
 from src.prompts import get_prompt_provider
 
 from ..core.browser import BrowserSession
-from ..core.llm import LLMClient
+from ..core.llm import LLMClient, LLMClientFactory
 from ..tools.agent_tools import ValidateResponseTool
 from ..tools.extraction import (
     BatchExtractArticlesTool,
@@ -39,7 +39,7 @@ class DataPrepAgent(BaseAgent):
 
     def __init__(
         self,
-        llm: LLMClient,
+        llm: LLMClient | LLMClientFactory,
         browser_session: BrowserSession,
         memory_service: "MemoryService",
         output_dir: Path | None = None,

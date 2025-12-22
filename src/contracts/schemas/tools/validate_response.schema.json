@@ -1,0 +1,14 @@
+{
+  "type": "object",
+  "properties": {
+    "run_identifier": {
+      "type": "string",
+      "description": "UUID linking to validation context from parent"
+    },
+    "response_json": {
+      "type": ["object", "string"],
+      "description": "The JSON response to validate (object or JSON string)"
+    }
+  },
+  "required": ["run_identifier", "response_json"]
+}

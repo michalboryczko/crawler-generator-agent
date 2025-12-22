@@ -402,5 +402,40 @@ class LLMClientFactory:
 
         return cls(registry, component_config)
 
+    @classmethod
+    def from_single_config(cls, config: OpenAIConfig) -> "LLMClientFactory":
+        """Create factory from a single OpenAI config (legacy mode).
+
+        All components will use the same model. This allows legacy code
+        to work with the factory pattern while still giving each agent
+        its own properly-named client.
+
+        Args:
+            config: OpenAI configuration to use for all components
+
+        Returns:
+            LLMClientFactory that creates clients from this config
+
+        Example:
+            factory = LLMClientFactory.from_single_config(openai_config)
+            main_llm = factory.get_client("main_agent")  # component_name="main_agent"
+            discovery_llm = factory.get_client("discovery_agent")  # component_name="discovery_agent"
+        """
+        # Create a minimal registry with just the one model
+        model_config = ModelConfig(
+            model_id=config.model,
+            api_key_env="OPENAI_API_KEY",
+            temperature=config.temperature,
+        )
+        registry = ModelRegistry()
+        registry.register(model_config)
+
+        # Create component config that maps everything to this model
+        component_config = ComponentModelConfig.with_default(config.model)
+
+        logger.info(f"Created LLMClientFactory from single config: {config.model}")
+
+        return cls(registry, component_config)
+
     def __repr__(self) -> str:
         return f"LLMClientFactory(models={len(self.registry)}, cached_clients={len(self._clients)})"

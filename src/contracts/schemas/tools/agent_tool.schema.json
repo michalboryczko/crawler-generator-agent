@@ -1,0 +1,23 @@
+{
+  "type": "object",
+  "properties": {
+    "task": {
+      "type": "string",
+      "description": "Task for the agent"
+    },
+    "context": {
+      "type": "object",
+      "description": "Optional context data to pass to agent"
+    },
+    "run_identifier": {
+      "type": "string",
+      "description": "UUID from generate_uuid for validation tracking"
+    },
+    "expected_outputs": {
+      "type": "array",
+      "items": {"type": "string"},
+      "description": "List of expected output fields from the agent"
+    }
+  },
+  "required": ["task"]
+}

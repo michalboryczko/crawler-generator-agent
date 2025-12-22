@@ -1,0 +1,18 @@
+{
+  "type": "object",
+  "properties": {
+    "html_key_prefix": {
+      "type": "string",
+      "description": "Prefix to find listing HTML keys"
+    },
+    "output_key_prefix": {
+      "type": "string",
+      "description": "Prefix for output keys (default: test-data-listing)"
+    },
+    "article_selector": {
+      "type": "string",
+      "description": "Optional CSS selector hint for articles"
+    }
+  },
+  "required": ["html_key_prefix"]
+}

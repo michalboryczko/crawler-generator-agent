@@ -23,6 +23,7 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 MAX_ITERATIONS = 100
+MAX_VALIDATION_RETRIES = 3
 
 
 class BaseAgent:
@@ -96,6 +97,11 @@ class BaseAgent:
             self.tools = [*list(self.tools), describe_tool]
 
         self._tool_map = {t.name: t for t in self.tools}
+        self._validation_retries = 0
+
+    def _can_retry_validation(self) -> bool:
+        """Check if more validation retries are allowed."""
+        return self._validation_retries < MAX_VALIDATION_RETRIES
 
     @property
     def agent_tools(self) -> "list[AgentTool]":
@@ -143,6 +149,9 @@ class BaseAgent:
             {"role": "user", "content": task},
         ]
 
+        # Reset validation retry counter for this run
+        self._validation_retries = 0
+
         for iteration in range(MAX_ITERATIONS):
             logger.info(f"Agent {self.name} iteration {iteration + 1}")
 
@@ -183,11 +192,56 @@ class BaseAgent:
                         {"role": "tool", "tool_call_id": tool_call["id"], "content": str(result)}
                     )
             else:
-                # No tool calls - agent is done
+                # No tool calls - agent wants to finish
                 result_data = self._extract_result_data(response["content"])
+
+                # Guard: no validation needed
+                validate_tool = self._tool_map.get("validate_response")
+                if not run_identifier or not validate_tool:
+                    return AgentResult(
+                        success=True,
+                        data=result_data,
+                        memory_snapshot=self._get_memory_snapshot(),
+                        iterations=iteration + 1,
+                    )
+
+                # Run validation
+                validation_result = validate_tool.execute(
+                    run_identifier=run_identifier,
+                    response_json=response["content"],
+                )
+
+                # Guard: validation failed - retry if possible
+                if not validation_result.get("valid", False):
+                    if self._can_retry_validation():
+                        self._validation_retries += 1
+                        if validation_result.get("extraction_failed"):
+                            error_msg = self._build_json_extraction_error(
+                                self._validation_retries
+                            )
+                        else:
+                            errors = validation_result.get("validation_errors", [])
+                            error_msg = self._build_validation_error_message_from_tool(
+                                errors, self._validation_retries
+                            )
+                        messages.append({"role": "assistant", "content": response["content"]})
+                        messages.append({"role": "user", "content": error_msg})
+                        continue
+
+                    logger.error(
+                        f"[{self.name}] Validation failed after "
+                        f"{MAX_VALIDATION_RETRIES} retries."
+                    )
+
+                # Validation passed - extract JSON
+                from ..core.json_parser import extract_json
+
+                extracted = extract_json(response["content"])
+                final_data = extracted if extracted is not None else result_data
+
                 return AgentResult(
                     success=True,
-                    data=result_data,
+                    data=final_data,
                     memory_snapshot=self._get_memory_snapshot(),
                     iterations=iteration + 1,
                 )
@@ -211,6 +265,9 @@ class BaseAgent:
 
         Template method: Override in subclasses for custom prompt building.
 
+        Order: response_rules (critical) → system_prompt → sub_agents → context
+        Response rules come FIRST so they're most prominent to the model.
+
         Args:
             expected_outputs: List of expected output fields for validation
             run_identifier: UUID for validation context tracking
@@ -220,20 +277,23 @@ class BaseAgent:
         Returns:
             Complete system prompt with all sections
         """
-        prompt_parts = [self.system_prompt]
+        prompt_parts = []
+
+        # Add response rules FIRST if validation context provided (most critical)
+        if run_identifier and expected_outputs:
+            prompt_parts.append(
+                self._build_response_rules(expected_outputs, run_identifier, output_contract_schema)
+            )
+
+        # Add base system prompt
+        prompt_parts.append(self.system_prompt)
 
         # Add sub-agents section if agent_tools exist
         sub_agents_section = self._build_sub_agents_section()
         if sub_agents_section:
             prompt_parts.append(sub_agents_section)
 
-        # Add response rules if validation context provided
-        if run_identifier and expected_outputs:
-            prompt_parts.append(
-                self._build_response_rules(expected_outputs, run_identifier, output_contract_schema)
-            )
-
-        # Inject context
+        # Inject context last
         if context:
             prompt_parts.append(self._inject_context(context))
 
@@ -274,12 +334,16 @@ class BaseAgent:
         """
         from ..prompts.template_renderer import render_template
 
+        # Build example JSON with placeholder values
+        example_json = {field: "<value>" for field in expected_outputs}
+
         return render_template(
             "response_rules.md.j2",
             run_identifier=run_identifier,
             expected_outputs=expected_outputs,
             required_fields=expected_outputs,
             output_contract_schema=output_contract_schema or {},
+            example_json=example_json,
         )
 
     def _inject_context(self, context: dict[str, Any]) -> str:
@@ -341,3 +405,41 @@ class BaseAgent:
         if self._memory_service:
             return self._memory_service.get_snapshot()
         return None
+
+    def _build_json_extraction_error(self, attempt: int) -> str:
+        """Build error message for JSON extraction failure.
+
+        Args:
+            attempt: Current retry attempt number
+
+        Returns:
+            Formatted error message for the agent
+        """
+        from ..prompts.template_renderer import render_template
+
+        return render_template(
+            "json_extraction_error.md.j2",
+            error_message="Could not parse response as valid JSON",
+            retries_remaining=MAX_VALIDATION_RETRIES - attempt,
+        )
+
+    def _build_validation_error_message_from_tool(
+        self, errors: list[dict[str, str]], attempt: int
+    ) -> str:
+        """Build error message from validate_response tool errors.
+
+        Args:
+            errors: List of error dicts with 'path' and 'message'
+            attempt: Current retry attempt number
+
+        Returns:
+            Formatted error message for the agent
+        """
+        from ..prompts.template_renderer import render_template
+
+        error_messages = [e.get("message", str(e)) for e in errors]
+        return render_template(
+            "validation_error.md.j2",
+            errors=error_messages,
+            retries_remaining=MAX_VALIDATION_RETRIES - attempt,
+        )

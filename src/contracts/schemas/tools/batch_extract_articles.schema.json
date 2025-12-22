@@ -1,0 +1,14 @@
+{
+  "type": "object",
+  "properties": {
+    "html_key_prefix": {
+      "type": "string",
+      "description": "Prefix to find article HTML keys"
+    },
+    "output_key_prefix": {
+      "type": "string",
+      "description": "Prefix for output keys (default: test-data-article)"
+    }
+  },
+  "required": ["html_key_prefix"]
+}

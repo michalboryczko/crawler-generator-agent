@@ -420,3 +420,132 @@ class TestRunWithValidationParams:
         system_msg = llm.chat_calls[0]["messages"][0]
         assert system_msg["role"] == "system"
         assert "Available agents" in system_msg["content"]
+
+
+class MockValidateResponseTool(BaseTool):
+    """Mock validate_response tool for testing code-level validation."""
+
+    def __init__(self, validation_results: list[dict[str, Any]] | None = None):
+        """Initialize with canned validation results.
+
+        Args:
+            validation_results: List of results to return on each execute() call.
+                               Each result should have 'valid' (bool) and optionally
+                               'validation_errors' (list of dicts with 'message').
+        """
+        self._results = validation_results or []
+        self._call_count = 0
+        self.execute_calls: list[dict[str, Any]] = []
+
+    @property
+    def name(self) -> str:
+        return "validate_response"
+
+    @property
+    def description(self) -> str:
+        return "Validate response JSON"
+
+    def get_parameters_schema(self) -> dict[str, Any]:
+        return {
+            "type": "object",
+            "properties": {
+                "run_identifier": {"type": "string"},
+                "response_json": {"type": "object"},
+            },
+            "required": ["run_identifier", "response_json"],
+        }
+
+    def execute(self, **kwargs) -> dict[str, Any]:
+        self.execute_calls.append(kwargs)
+        if self._call_count < len(self._results):
+            result = self._results[self._call_count]
+            self._call_count += 1
+            return result
+        # Default: valid
+        return {"success": True, "valid": True}
+
+
+class TestCodeLevelValidationRetry:
+    """Tests for code-level validation with retry in run()."""
+
+    def test_run_validates_output_when_run_identifier_provided(self):
+        """run() validates output when run_identifier provided."""
+        # First response: invalid (missing required field)
+        # Second response: valid
+        responses = [
+            {"content": '{"wrong_field": "value"}', "tool_calls": []},
+            {"content": '{"name": "correct"}', "tool_calls": []},
+        ]
+        llm = MockLLMClient(responses=responses)
+
+        # Mock validate_response tool that fails first, then passes
+        validate_tool = MockValidateResponseTool([
+            {"success": True, "valid": False, "validation_errors": [{"message": "Missing required field: name"}]},
+            {"success": True, "valid": True},
+        ])
+        agent = BaseAgent(llm=llm, tools=[validate_tool])
+
+        result = agent.run(task="test", run_identifier="test-uuid-123")
+
+        # Should have retried and succeeded
+        assert result.success is True
+        # Should have been called twice (first invalid, then valid)
+        assert len(llm.chat_calls) == 2
+        # Validate tool should have been called twice
+        assert len(validate_tool.execute_calls) == 2
+        assert validate_tool.execute_calls[0]["run_identifier"] == "test-uuid-123"
+
+    def test_run_skips_validation_when_no_run_identifier(self):
+        """run() skips validation when no run_identifier provided."""
+        responses = [{"content": "any content", "tool_calls": []}]
+        llm = MockLLMClient(responses=responses)
+
+        validate_tool = MockValidateResponseTool([
+            {"success": True, "valid": False, "validation_errors": [{"message": "Error"}]},
+        ])
+        agent = BaseAgent(llm=llm, tools=[validate_tool])
+
+        result = agent.run(task="test")  # No run_identifier
+
+        assert result.success is True
+        # Should only be called once
+        assert len(llm.chat_calls) == 1
+        # Validate tool should NOT have been called (no run_identifier)
+        assert len(validate_tool.execute_calls) == 0
+
+    def test_run_injects_error_message_on_validation_failure(self):
+        """run() injects error message when validation fails."""
+        responses = [
+            {"content": '{"wrong": "value"}', "tool_calls": []},
+            {"content": '{"name": "fixed"}', "tool_calls": []},
+        ]
+        llm = MockLLMClient(responses=responses)
+
+        validate_tool = MockValidateResponseTool([
+            {"success": True, "valid": False, "validation_errors": [{"message": "Missing required field: name"}]},
+            {"success": True, "valid": True},
+        ])
+        agent = BaseAgent(llm=llm, tools=[validate_tool])
+
+        agent.run(task="test", run_identifier="test-uuid-456")
+
+        # Second call should have validation error message in messages
+        second_call_messages = llm.chat_calls[1]["messages"]
+        user_messages = [m for m in second_call_messages if m.get("role") == "user"]
+
+        # Should have original task + validation error
+        assert len(user_messages) >= 2
+        assert "VALIDATION FAILED" in user_messages[-1]["content"]
+
+    def test_run_skips_validation_when_tool_not_available(self):
+        """run() skips validation when validate_response tool not available."""
+        responses = [{"content": '{"any": "content"}', "tool_calls": []}]
+        llm = MockLLMClient(responses=responses)
+        # No validate_response tool provided
+        agent = BaseAgent(llm=llm, tools=[])
+
+        result = agent.run(task="test", run_identifier="test-uuid-789")
+
+        assert result.success is True
+        # Should only be called once (no retry since tool not available)
+        assert len(llm.chat_calls) == 1

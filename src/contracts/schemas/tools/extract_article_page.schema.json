@@ -1,0 +1,14 @@
+{
+  "type": "object",
+  "properties": {
+    "url": {
+      "type": "string",
+      "description": "URL of the article page to analyze"
+    },
+    "wait_seconds": {
+      "type": "integer",
+      "description": "Time to wait for page load (default: 5)"
+    }
+  },
+  "required": ["url"]
+}

@@ -1,0 +1,14 @@
+{
+  "type": "object",
+  "properties": {
+    "html_memory_key": {
+      "type": "string",
+      "description": "Key containing stored HTML"
+    },
+    "output_memory_key": {
+      "type": "string",
+      "description": "Key to store result"
+    }
+  },
+  "required": ["html_memory_key", "output_memory_key"]
+}

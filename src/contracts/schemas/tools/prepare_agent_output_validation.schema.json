@@ -1,0 +1,19 @@
+{
+  "type": "object",
+  "properties": {
+    "run_identifier": {
+      "type": "string",
+      "description": "UUID from generate_uuid tool"
+    },
+    "agent_name": {
+      "type": "string",
+      "description": "Name of the agent to validate"
+    },
+    "expected_outputs": {
+      "type": "array",
+      "items": {"type": "string"},
+      "description": "Optional specific fields to validate"
+    }
+  },
+  "required": ["run_identifier", "agent_name"]
+}

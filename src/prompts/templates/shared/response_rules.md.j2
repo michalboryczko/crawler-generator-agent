@@ -1,33 +1,28 @@
-## Response Rules
-If anything is marked as `REQUIRED` you MUST do it.
+## ⚠️ CRITICAL: Output Requirements
 
-### Your Contract
-This is the schema your response must conform to:
+### Required JSON Schema
+Your final response MUST be valid JSON conforming to this schema:
 ```json
 {{ output_contract_schema | tojson(indent=2) }}
 ```
-Your response MUST be valid against this schema.
 
-### User Expectations
-**Run Identifier:** `{{ run_identifier }}`
+### Required Fields
+You MUST provide values for: **{{ expected_outputs | join(', ') }}**
 
-User requested these specific fields: {{ expected_outputs | join(', ') }}
+Run Identifier: `{{ run_identifier }}`
 
-You MUST provide values for these fields in your response - REQUIRED
+### Output Rules
+1. **Return ONLY valid JSON** - no explanatory text outside the JSON
+2. **Include ALL required fields** from the schema above
+3. **Validation is automatic** - if your output doesn't match the schema, you'll be asked to fix it and retry (up to 3 times)
 
-You may also include `agent_response_content` as an additional field for a summary.
+### Required: Validate Before Returning
+You MUST call `validate_response("{{ run_identifier }}", your_json_response)` before returning your final response.
+- `your_json_response` must be the complete JSON object (dict), not a string
+- Check for `valid: true` in the result - `success: true` only means the tool ran
+- If validation fails, fix the errors and try again
 
-### Ensure Correctness
-
-`your_json_response` = that what you want to return to the user!
-
-1. Return only a valid JSON response - REQUIRED
-2. Before returning, you MUST validate your response using `validate_response("{{ run_identifier }}", your_json_response)` - REQUIRED
-3. If validation fails, regenerate your response (up to 3 attempts) - REQUIRED
-    - REQUIRED - If validation tools return `success: true` that means only that the validation succeeded, not that the response is valid!!! - IMPORTANT
-    - REQUIRED - In that case you MUST check if `valid` is `true` in the response and if there are no `validation_errors`!!! - IMPORTANT
-4. Only return an error message to the user after exhausting retries - REQUIRED
-5. CRITICAL REQUIRED - You cannot return output when:
-    - you do not have `valid`: true in validate_response tool results
-    - critical is to check if tool has been executed successfully check if there is any error message or success false - REQUIRED
-6. REQUIRED CRITICAL - Remember you have to retry when validation fails at least 3 times!
+### Example Format
+```json
+{{ example_json | tojson }}
+```

@@ -1,0 +1,20 @@
+{
+  "type": "object",
+  "properties": {
+    "selectors": {
+      "type": "array",
+      "items": {"type": "string"},
+      "description": "List of CSS selectors to compare"
+    },
+    "expected_urls": {
+      "type": "array",
+      "items": {"type": "string"},
+      "description": "List of expected article URLs"
+    },
+    "base_url": {
+      "type": "string",
+      "description": "Base URL for resolving relative links"
+    }
+  },
+  "required": ["selectors", "expected_urls"]
+}

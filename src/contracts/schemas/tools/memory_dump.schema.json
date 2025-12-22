@@ -1,0 +1,15 @@
+{
+  "type": "object",
+  "properties": {
+    "keys": {
+      "type": "array",
+      "items": {"type": "string"},
+      "description": "List of memory keys to dump"
+    },
+    "filename": {
+      "type": "string",
+      "description": "Output filename (e.g., 'data/test_set.jsonl')"
+    }
+  },
+  "required": ["keys", "filename"]
+}

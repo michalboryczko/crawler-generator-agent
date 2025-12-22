@@ -8,7 +8,7 @@ from typing import TYPE_CHECKING
 
 from src.prompts import get_prompt_provider
 
-from ..core.llm import LLMClient
+from ..core.llm import LLMClient, LLMClientFactory
 from ..tools.agent_tools import ValidateResponseTool
 from ..tools.http import HTTPRequestTool
 from ..tools.memory import (
@@ -30,7 +30,7 @@ class AccessibilityAgent(BaseAgent):
 
     def __init__(
         self,
-        llm: LLMClient,
+        llm: LLMClient | LLMClientFactory,
         memory_service: "MemoryService",
     ):
         tools = [

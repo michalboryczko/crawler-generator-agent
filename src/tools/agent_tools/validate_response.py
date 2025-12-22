@@ -1,11 +1,11 @@
 """Tool for validating agent response against schema."""
 
-import json
 from typing import Any
 
 import jsonschema
 
 from ...contracts.validation_registry import ValidationRegistry
+from ...core.json_parser import extract_json
 from ...observability.decorators import traced_tool
 from ..base import BaseTool
 from ..validation import validated_tool
@@ -55,42 +55,19 @@ class ValidateResponseTool(BaseTool):
 
     @traced_tool()
     @validated_tool
-    def execute(
-        self,
-        run_identifier: str,
-        response_json: dict[str, Any] | str,
-    ) -> dict[str, Any]:
-        """Validate response against registered schema.
+    def execute(self, **kwargs: Any) -> dict[str, Any]:
+        """Validate response against registered schema. Instrumented by @traced_tool."""
+        run_identifier = kwargs["run_identifier"]
+        response_json = kwargs.get("response_json")
 
-        Supports both wrapped structure (with data key) and legacy flat structure.
-
-        Wrapped structure:
-            {
-                "agent_response_content": "summary",
-                "data": { ...actual schema properties... }
-            }
-
-        Legacy flat structure:
-            { ...schema properties... }
-
-        Args:
-            run_identifier: UUID linking to validation context
-            response_json: The JSON response to validate (dict or JSON string)
-
-        Returns:
-            Dict with:
-            - success=True, valid=True on successful validation
-            - success=True, valid=False with validation_errors on failure
-            - success=False with error if no context found or invalid JSON
-        """
-        # Handle string input (LLM may pass JSON as string)
+        # Handle string input - use extract_json to handle both pure JSON and embedded JSON
         if isinstance(response_json, str):
-            try:
-                response_json = json.loads(response_json)
-            except json.JSONDecodeError as e:
+            response_json = extract_json(response_json)
+            if response_json is None:
                 return {
                     "success": False,
-                    "error": f"Invalid JSON string: {e}",
+                    "extraction_failed": True,
+                    "error": "Could not extract valid JSON from response",
                 }
 
         context = self._registry.get(run_identifier)
@@ -107,47 +84,16 @@ class ValidateResponseTool(BaseTool):
                 "error": f"Expected JSON object, got {type(response_json).__name__}",
             }
 
-        # Extract data from wrapper if present
-        if "data" in response_json and isinstance(response_json.get("data"), dict):
-            validation_data = response_json["data"]
-            agent_content = response_json.get("agent_response_content")
-            is_wrapped = True
-        else:
-            # Support legacy flat structure
-            validation_data = response_json
-            agent_content = response_json.get("agent_response_content")
-            is_wrapped = False
-
-        errors: list[dict[str, str]] = []
-
-        # Validate agent_response_content if schema expects it
-        schema_requires_content = "agent_response_content" in context.schema.get("required", [])
-        if schema_requires_content and not agent_content:
-            errors.append(
-                {
-                    "path": "agent_response_content",
-                    "message": "Missing required field: agent_response_content",
-                }
-            )
-
-        # Validate data against schema (exclude agent_response_content from validation)
-        schema_for_data = self._get_data_schema(context.schema)
-
+        # Validate against schema (agent_response_content is auto-injected)
         try:
-            jsonschema.validate(validation_data, schema_for_data)
+            jsonschema.validate(response_json, context.schema)
         except jsonschema.ValidationError as e:
-            # Extract path as dot-separated string
             path = ".".join(str(p) for p in e.path) if e.path else ""
-            if is_wrapped and path:
-                path = f"data.{path}"
-            errors.append({"path": path, "message": e.message})
-
-        if errors:
             return {
                 "success": True,
                 "valid": False,
-                "validation_errors": errors,
-                "message": f"Validation failed: {errors[0]['message']}",
+                "validation_errors": [{"path": path, "message": e.message}],
+                "message": f"Validation failed: {e.message}",
             }
 
         return {
@@ -156,44 +102,3 @@ class ValidateResponseTool(BaseTool):
             "message": "Response validates against contract",
         }
 
-    def _get_data_schema(self, schema: dict[str, Any]) -> dict[str, Any]:
-        """Get schema for data validation, excluding agent_response_content.
-
-        Args:
-            schema: Original schema with possible agent_response_content
-
-        Returns:
-            Schema for validating data portion only
-        """
-        # Copy schema to avoid mutations
-        data_schema = schema.copy()
-        properties = data_schema.get("properties", {}).copy()
-        required = list(data_schema.get("required", []))
-
-        # Remove agent_response_content from validation
-        if "agent_response_content" in properties:
-            del properties["agent_response_content"]
-            data_schema["properties"] = properties
-
-        if "agent_response_content" in required:
-            required.remove("agent_response_content")
-            data_schema["required"] = required
-
-        return data_schema
-
-    def get_parameters_schema(self) -> dict[str, Any]:
-        """Return schema for parameters."""
-        return {
-            "type": "object",
-            "properties": {
-                "run_identifier": {
-                    "type": "string",
-                    "description": "UUID linking to validation context from parent",
-                },
-                "response_json": {
-                    "type": "object",
-                    "description": "The JSON response to validate",
-                },
-            },
-            "required": ["run_identifier", "response_json"],
-        }

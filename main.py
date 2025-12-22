@@ -148,13 +148,16 @@ def setup_observability() -> ObservabilityContext:
     return ctx
 
 
-def create_llm_client(
+def create_llm_factory(
     app_config: AppConfig, multi_model: bool, ctx: ObservabilityContext, logger: logging.Logger
-) -> tuple[LLMClient, LLMClientFactory | None]:
-    """Create LLM client (single or factory-based)."""
+) -> LLMClientFactory:
+    """Create LLM client factory.
+
+    Always returns a factory so each agent can get its own properly-named client.
+    In legacy mode, creates a factory from the single OpenAI config.
+    """
     if multi_model:
         llm_factory = LLMClientFactory.from_env()
-        llm = llm_factory.get_client("main_agent")
         logger.info(f"Multi-model mode: using factory with {len(llm_factory.registry)} models")
         emit_info(
             event="llm.factory.initialized",
@@ -165,21 +168,23 @@ def create_llm_client(
                 "main_agent_model": llm_factory.get_component_model("main_agent"),
             },
         )
-        return llm, llm_factory
+        return llm_factory
     else:
-        llm = LLMClient(app_config.openai)
+        # Create a factory from the single config so agents get proper component names
+        llm_factory = LLMClientFactory.from_single_config(app_config.openai)
+        logger.info(f"Legacy mode: using single model {app_config.openai.model}")
         emit_info(
-            event="llm.client.initialized",
+            event="llm.factory.initialized",
             ctx=ctx,
             data={"mode": "legacy", "model": app_config.openai.model},
         )
-        return llm, None
+        return llm_factory
 
 
 def run_crawler_workflow(
     url: str,
     app_config: AppConfig,
-    llm: LLMClient,
+    llm_factory: LLMClientFactory,
     ctx: ObservabilityContext,
     logger: logging.Logger,
 ) -> int:
@@ -218,7 +223,7 @@ def run_crawler_workflow(
             url=url,
             output_dir=output_dir,
             app_config=app_config,
-            llm=llm,
+            llm_factory=llm_factory,
             browser_session=browser_session,
             container=container,
             session_service=session_service,
@@ -238,7 +243,7 @@ def _execute_agent(
     url: str,
     output_dir: Path,
     app_config: AppConfig,
-    llm: LLMClient,
+    llm_factory: LLMClientFactory,
     browser_session: BrowserSession,
     container: Container,
     session_service: "SessionService",
@@ -247,7 +252,7 @@ def _execute_agent(
 ) -> int:
     """Execute the main agent and handle results."""
     memory_service = container.memory_service("main_agent")
-    agent = MainAgent(llm, browser_session, output_dir, memory_service, container=container)
+    agent = MainAgent(llm_factory, browser_session, output_dir, memory_service, container=container)
     logger.info(f"Creating crawl plan for: {url}")
 
     result = agent.create_crawl_plan(url)
@@ -351,10 +356,10 @@ def main() -> int:
         logger.info(f"Using model: {app_config.openai.model}")
         emit_info(event="config.loaded", ctx=ctx, data={"model": app_config.openai.model})
 
-        llm, _ = create_llm_client(app_config, args.multi_model, ctx, logger)
+        llm_factory = create_llm_factory(app_config, args.multi_model, ctx, logger)
 
         return run_crawler_workflow(
-            url=args.url, app_config=app_config, llm=llm, ctx=ctx, logger=logger
+            url=args.url, app_config=app_config, llm_factory=llm_factory, ctx=ctx, logger=logger
         )
 
     except KeyboardInterrupt:

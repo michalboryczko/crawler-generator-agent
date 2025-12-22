@@ -30,7 +30,7 @@ class GeneratePlanTool(BaseTool):
 
     @traced_tool(name="generate_plan_md")
     @validated_tool
-    def execute(self) -> dict[str, Any]:
+    def execute(self, **kwargs: Any) -> dict[str, Any]:
         """Generate plan markdown. Instrumented by @traced_tool."""
         # Read all data from memory
         target_url = self._service.read("target_url") or "Unknown"
@@ -652,9 +652,6 @@ This plan provides the foundation for implementing a complete site crawler.
 """
         return section
 
-    def get_parameters_schema(self) -> dict[str, Any]:
-        return {"type": "object", "properties": {}}
-
 
 class GenerateTestPlanTool(BaseTool):
     """Generate structured test.md from memory data."""
@@ -668,7 +665,7 @@ class GenerateTestPlanTool(BaseTool):
 
     @traced_tool(name="generate_test_md")
     @validated_tool
-    def execute(self) -> dict[str, Any]:
+    def execute(self, **kwargs: Any) -> dict[str, Any]:
         """Generate test plan markdown. Instrumented by @traced_tool."""
         target_url = self._service.read("target_url") or "Unknown"
         test_description = self._service.read("test-data-description") or ""
@@ -874,6 +871,3 @@ for test in articles:
             else '''        "title": "extracted title",
         "content": "article content"'''
         )
-
-    def get_parameters_schema(self) -> dict[str, Any]:
-        return {"type": "object", "properties": {}}

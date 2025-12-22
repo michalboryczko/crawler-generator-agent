@@ -153,12 +153,14 @@ class TestRenderResponseRules:
             },
             "required": ["article_urls"],
         }
+        expected_outputs = ["article_urls"]
         result = render_template(
             "response_rules.md.j2",
             run_identifier="uuid-123-456",
             required_fields=["article_urls", "pagination_type"],
-            expected_outputs=["article_urls"],
+            expected_outputs=expected_outputs,
             output_contract_schema=schema,
+            example_json={field: "<value>" for field in expected_outputs},
         )
 
         assert "uuid-123-456" in result
@@ -171,17 +173,20 @@ class TestRenderResponseRules:
     def test_render_response_rules_includes_instructions(self):
         """Rules include validation instructions."""
         schema = {"type": "object", "properties": {"name": {"type": "string"}}}
+        expected_outputs = ["name"]
         result = render_template(
             "response_rules.md.j2",
             run_identifier="test-uuid",
             required_fields=["name"],
-            expected_outputs=[],
+            expected_outputs=expected_outputs,
             output_contract_schema=schema,
+            example_json={field: "<value>" for field in expected_outputs},
         )
 
         assert "MUST" in result
         assert "JSON" in result
-        assert "REQUIRED" in result
+        assert "CRITICAL" in result  # Uses CRITICAL instead of REQUIRED
+        assert "automatic" in result  # Mentions automatic validation
 
     def test_render_response_rules_with_expected_outputs(self):
         """Expected outputs section rendered."""
@@ -193,27 +198,31 @@ class TestRenderResponseRules:
                 "metadata": {"type": "object"},
             },
         }
+        expected_outputs = ["name", "value", "metadata"]
         result = render_template(
             "response_rules.md.j2",
             run_identifier="test-uuid",
             required_fields=["name"],
-            expected_outputs=["name", "value", "metadata"],
+            expected_outputs=expected_outputs,
             output_contract_schema=schema,
+            example_json={field: "<value>" for field in expected_outputs},
         )
 
-        assert "User Expectations" in result
+        assert "Required Fields" in result
         assert "name" in result
         assert "value" in result
         assert "metadata" in result
 
     def test_render_response_rules_with_empty_schema(self):
         """Empty schema renders as empty object."""
+        expected_outputs = ["name"]
         result = render_template(
             "response_rules.md.j2",
             run_identifier="test-uuid",
             required_fields=["name"],
-            expected_outputs=["name"],
+            expected_outputs=expected_outputs,
             output_contract_schema={},
+            example_json={field: "<value>" for field in expected_outputs},
         )
 
         assert "test-uuid" in result

@@ -59,6 +59,22 @@ class ComponentModelConfig:
     extraction_agent: str = GLOBAL_DEFAULT_MODEL
 
     @classmethod
+    def with_default(cls, model_id: str) -> "ComponentModelConfig":
+        """Create config where all components use the same model.
+
+        Useful for legacy mode where a single model is used for everything.
+
+        Args:
+            model_id: The model ID to use for all components
+
+        Returns:
+            ComponentModelConfig with all fields set to the given model
+        """
+        # Build kwargs for all fields with the same model
+        field_values = {field: model_id for field in cls.__dataclass_fields__}
+        return cls(**field_values)
+
+    @classmethod
     def from_env(cls) -> "ComponentModelConfig":
         """Load component model assignments from environment variables.
 

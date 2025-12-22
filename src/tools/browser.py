@@ -25,17 +25,11 @@ class NavigateTool(BaseTool):
 
     @traced_tool(name="browser_navigate")
     @validated_tool
-    def execute(self, url: str) -> dict[str, Any]:
+    def execute(self, **kwargs: Any) -> dict[str, Any]:
         """Navigate to URL. Instrumented by @traced_tool."""
+        url = kwargs["url"]
         result = self.session.navigate(url)
         return {"success": True, "result": f"Navigated to {url}", "details": result}
-
-    def get_parameters_schema(self) -> dict[str, Any]:
-        return {
-            "type": "object",
-            "properties": {"url": {"type": "string", "description": "The URL to navigate to"}},
-            "required": ["url"],
-        }
 
 
 class GetHTMLTool(BaseTool):
@@ -51,8 +45,9 @@ class GetHTMLTool(BaseTool):
 
     @traced_tool(name="browser_get_html")
     @validated_tool
-    def execute(self, raw: bool = False) -> dict[str, Any]:
+    def execute(self, **kwargs: Any) -> dict[str, Any]:
         """Get page HTML. Instrumented by @traced_tool."""
+        raw = kwargs.get("raw", False)
         html = self.session.get_html()
         original_length = len(html)
 
@@ -75,17 +70,6 @@ class GetHTMLTool(BaseTool):
             "truncated": truncated,
         }
 
-    def get_parameters_schema(self) -> dict[str, Any]:
-        return {
-            "type": "object",
-            "properties": {
-                "raw": {
-                    "type": "boolean",
-                    "description": "If true, return raw HTML without cleaning. Default: false",
-                }
-            },
-        }
-
 
 class ClickTool(BaseTool):
     """Click element on page."""
@@ -98,23 +82,15 @@ class ClickTool(BaseTool):
 
     @traced_tool(name="browser_click")
     @validated_tool
-    def execute(self, selector: str) -> dict[str, Any]:
+    def execute(self, **kwargs: Any) -> dict[str, Any]:
         """Click element. Instrumented by @traced_tool."""
+        selector = kwargs["selector"]
         result = self.session.click(selector)
 
         if result.get("success"):
             return {"success": True, "result": f"Clicked element: {selector}"}
 
         return {"success": False, "error": result.get("error", "Click failed")}
-
-    def get_parameters_schema(self) -> dict[str, Any]:
-        return {
-            "type": "object",
-            "properties": {
-                "selector": {"type": "string", "description": "CSS selector for element to click"}
-            },
-            "required": ["selector"],
-        }
 
 
 class QuerySelectorTool(BaseTool):
@@ -128,17 +104,11 @@ class QuerySelectorTool(BaseTool):
 
     @traced_tool(name="browser_query")
     @validated_tool
-    def execute(self, selector: str) -> dict[str, Any]:
+    def execute(self, **kwargs: Any) -> dict[str, Any]:
         """Query DOM elements. Instrumented by @traced_tool."""
+        selector = kwargs["selector"]
         elements = self.session.query_selector_all(selector)
         return {"success": True, "result": elements, "count": len(elements)}
-
-    def get_parameters_schema(self) -> dict[str, Any]:
-        return {
-            "type": "object",
-            "properties": {"selector": {"type": "string", "description": "CSS selector to query"}},
-            "required": ["selector"],
-        }
 
 
 class WaitTool(BaseTool):
@@ -152,8 +122,10 @@ class WaitTool(BaseTool):
 
     @traced_tool(name="browser_wait")
     @validated_tool
-    def execute(self, selector: str | None = None, seconds: int | None = None) -> dict[str, Any]:
+    def execute(self, **kwargs: Any) -> dict[str, Any]:
         """Wait for selector or time. Instrumented by @traced_tool."""
+        selector = kwargs.get("selector")
+        seconds = kwargs.get("seconds")
         if seconds:
             time.sleep(seconds)
             return {"success": True, "result": f"Waited {seconds} seconds"}
@@ -164,15 +136,6 @@ class WaitTool(BaseTool):
             return {"success": False, "error": f"Timeout waiting for: {selector}"}
 
         return {"success": False, "error": "Must provide selector or seconds"}
-
-    def get_parameters_schema(self) -> dict[str, Any]:
-        return {
-            "type": "object",
-            "properties": {
-                "selector": {"type": "string", "description": "CSS selector to wait for"},
-                "seconds": {"type": "integer", "description": "Number of seconds to wait"},
-            },
-        }
 
 
 class ExtractLinksTool(BaseTool):
@@ -186,7 +149,7 @@ class ExtractLinksTool(BaseTool):
 
     @traced_tool(name="browser_extract_links")
     @validated_tool
-    def execute(self) -> dict[str, Any]:
+    def execute(self, **kwargs: Any) -> dict[str, Any]:
         """Extract links from page. Instrumented by @traced_tool."""
         elements = self.session.query_selector_all("a[href]")
         links = [
@@ -196,6 +159,3 @@ class ExtractLinksTool(BaseTool):
         ]
 
         return {"success": True, "result": links, "count": len(links)}
-
-    def get_parameters_schema(self) -> dict[str, Any]:
-        return {"type": "object", "properties": {}}

@@ -12,6 +12,9 @@ PROJECT_ROOT = Path(__file__).parent.parent.parent
 # Base path for schema files (used by tests)
 SCHEMAS_BASE_PATH = PROJECT_ROOT / "src" / "contracts" / "schemas"
 
+# Path for tool input parameter schemas
+TOOL_SCHEMAS_PATH = SCHEMAS_BASE_PATH / "tools"
+
 # Standard field injected into all output schemas
 AGENT_RESPONSE_CONTENT_FIELD = {
     "agent_response_content": {
@@ -141,7 +144,7 @@ def _generate_example_value(prop: dict[str, Any]) -> Any:
     elif prop_type == "array":
         return []
     elif prop_type == "object":
-        return generate_example_json(prop, wrap_in_data=False)
+        return generate_example_json(prop)
     else:
         # Handle union types like ["string", "null"]
         if isinstance(prop_type, list):
@@ -158,37 +161,19 @@ def _generate_example_value(prop: dict[str, Any]) -> Any:
         return None
 
 
-def generate_example_json(schema: dict[str, Any], wrap_in_data: bool = False) -> dict[str, Any]:
+def generate_example_json(schema: dict[str, Any]) -> dict[str, Any]:
     """Generate example JSON structure from schema.
 
     Args:
         schema: JSON schema dictionary
-        wrap_in_data: If True, wrap properties in 'data' object with
-                     agent_response_content at top level
 
     Returns:
         Example dictionary matching expected response structure
     """
     properties = schema.get("properties", {})
-
-    if wrap_in_data:
-        # Build data fields (excluding agent_response_content)
-        data_fields: dict[str, Any] = {}
-        for name, prop in properties.items():
-            if name == "agent_response_content":
-                continue  # Handle separately at top level
-            data_fields[name] = _generate_example_value(prop)
-
-        return {
-            "agent_response_content": "<summary of findings>",
-            "data": data_fields,
-        }
-
-    # Flat structure (original behavior)
     result: dict[str, Any] = {}
     for name, prop in properties.items():
         result[name] = _generate_example_value(prop)
-
     return result
 
 

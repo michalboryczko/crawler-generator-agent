@@ -55,17 +55,10 @@ class DescribeOutputContractTool(BaseTool):
 
     @traced_tool()
     @validated_tool
-    def execute(self, agent_name: str) -> dict[str, Any]:
-        """Get output contract description for an agent.
+    def execute(self, **kwargs: Any) -> dict[str, Any]:
+        """Get output contract description for an agent. Instrumented by @traced_tool."""
+        agent_name = kwargs["agent_name"]
 
-        Args:
-            agent_name: Name of the agent to describe
-
-        Returns:
-            Dict with success, agent_name, schema_json, fields_description,
-            available_fields, required_fields on success, or success=False
-            with error on failure
-        """
         if agent_name not in self._schema_paths:
             available = list(self._schema_paths.keys())
             return {
@@ -206,15 +199,3 @@ class DescribeOutputContractTool(BaseTool):
         else:
             return "null"
 
-    def get_parameters_schema(self) -> dict[str, Any]:
-        """Return schema with required agent_name parameter."""
-        return {
-            "type": "object",
-            "properties": {
-                "agent_name": {
-                    "type": "string",
-                    "description": "Name of the agent whose output contract to describe",
-                }
-            },
-            "required": ["agent_name"],
-        }

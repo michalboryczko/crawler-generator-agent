@@ -1,0 +1,14 @@
+{
+  "type": "object",
+  "properties": {
+    "filename": {
+      "type": "string",
+      "description": "Relative path to file within output directory"
+    },
+    "content": {
+      "type": "string",
+      "description": "Content to append to the file"
+    }
+  },
+  "required": ["filename", "content"]
+}

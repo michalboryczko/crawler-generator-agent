@@ -12,7 +12,7 @@ from src.prompts import get_prompt_provider
 
 from ..core.browser import BrowserSession
 from ..core.config import AgentsConfig
-from ..core.llm import LLMClient
+from ..core.llm import LLMClient, LLMClientFactory
 from ..observability.decorators import traced_agent
 from ..tools.agent_tools import AgentTool, GenerateUuidTool, PrepareAgentOutputValidationTool
 from ..tools.file import (
@@ -54,7 +54,7 @@ class MainAgent(BaseAgent):
 
     def __init__(
         self,
-        llm: LLMClient,
+        llm: LLMClient | LLMClientFactory,
         browser_session: BrowserSession,
         output_dir: Path,
         memory_service: "MemoryService",
@@ -64,7 +64,7 @@ class MainAgent(BaseAgent):
         """Initialize the main agent.
 
         Args:
-            llm: LLM client for API calls
+            llm: LLM client or factory for API calls
             browser_session: Browser session for web interactions
             output_dir: Directory for output files
             memory_service: Memory service for this agent
@@ -181,18 +181,7 @@ class MainAgent(BaseAgent):
 
         Instrumented by @traced_agent - logs workflow lifecycle and results.
         """
-        task = f"""Create a complete crawl plan for: {url}
+        from ..prompts.template_renderer import render_agent_template
 
-Execute the full workflow:
-1. Store '{url}' in memory as 'target_url'
-2. Run browser agent to extract article links, pagination info, and max pages
-3. Run selector agent to find CSS selectors for listings and detail pages
-4. Run accessibility agent to check HTTP accessibility
-5. Run data prep agent to create test dataset with 5+ listing pages and 20+ article pages
-   (The data prep agent will also dump test data to data/test_set.jsonl)
-6. Use generate_plan_md to create comprehensive plan, then file_create for plan.md
-7. Use generate_test_md to create test documentation, then file_create for test.md
-
-Return summary with counts when complete."""
-
+        task = render_agent_template("crawl_plan_task.md.j2", url=url)
         return self.run(task)

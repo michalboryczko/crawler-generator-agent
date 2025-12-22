@@ -53,10 +53,11 @@ class ListingPageExtractorTool(BaseTool):
 
     @traced_tool(name="extract_listing_page")
     @validated_tool
-    def execute(
-        self, url: str, wait_seconds: int = 5, listing_container_selector: str | None = None
-    ) -> dict[str, Any]:
+    def execute(self, **kwargs: Any) -> dict[str, Any]:
         """Extract selectors and URLs from a listing page. Instrumented by @traced_tool."""
+        url = kwargs["url"]
+        wait_seconds = kwargs.get("wait_seconds", 5)
+        # listing_container_selector is available but not currently used
         logger.info(f"Extracting listing page: {url}")
 
         # Navigate to page
@@ -114,23 +115,6 @@ class ListingPageExtractorTool(BaseTool):
         else:
             return {"success": False, "url": url, "error": "Failed to parse LLM response"}
 
-    def get_parameters_schema(self) -> dict[str, Any]:
-        return {
-            "type": "object",
-            "properties": {
-                "url": {"type": "string", "description": "URL of the listing page to analyze"},
-                "wait_seconds": {
-                    "type": "integer",
-                    "description": "Time to wait for page load (default: 5)",
-                },
-                "listing_container_selector": {
-                    "type": "string",
-                    "description": "Optional CSS selector to focus on main content container",
-                },
-            },
-            "required": ["url"],
-        }
-
 
 class ArticlePageExtractorTool(BaseTool):
     """Extract detail selectors from a single article page.
@@ -148,8 +132,10 @@ class ArticlePageExtractorTool(BaseTool):
 
     @traced_tool(name="extract_article_page")
     @validated_tool
-    def execute(self, url: str, wait_seconds: int = 5) -> dict[str, Any]:
+    def execute(self, **kwargs: Any) -> dict[str, Any]:
         """Extract detail selectors from an article page. Instrumented by @traced_tool."""
+        url = kwargs["url"]
+        wait_seconds = kwargs.get("wait_seconds", 5)
         logger.info(f"Extracting article page: {url}")
 
         # Navigate to page
@@ -194,19 +180,6 @@ class ArticlePageExtractorTool(BaseTool):
         else:
             return {"success": False, "url": url, "error": "Failed to parse LLM response"}
 
-    def get_parameters_schema(self) -> dict[str, Any]:
-        return {
-            "type": "object",
-            "properties": {
-                "url": {"type": "string", "description": "URL of the article page to analyze"},
-                "wait_seconds": {
-                    "type": "integer",
-                    "description": "Time to wait for page load (default: 5)",
-                },
-            },
-            "required": ["url"],
-        }
-
 
 class SelectorAggregatorTool(BaseTool):
     """Aggregate selectors from multiple page extractions into selector chains.
@@ -226,10 +199,10 @@ class SelectorAggregatorTool(BaseTool):
 
     @traced_tool(name="aggregate_selectors")
     @validated_tool
-    def execute(
-        self, listing_extractions: list[dict], article_extractions: list[dict]
-    ) -> dict[str, Any]:
+    def execute(self, **kwargs: Any) -> dict[str, Any]:
         """Aggregate selectors into ordered chains. Instrumented by @traced_tool."""
+        listing_extractions = kwargs["listing_extractions"]
+        article_extractions = kwargs["article_extractions"]
         # Aggregate listing selectors into chains
         listing_result = self._aggregate_listing_selectors(listing_extractions)
 
@@ -407,22 +380,4 @@ class SelectorAggregatorTool(BaseTool):
         return {
             "selectors": selectors,
             "notes": f"Fallback chain aggregation from {total_pages} pages",
-        }
-
-    def get_parameters_schema(self) -> dict[str, Any]:
-        return {
-            "type": "object",
-            "properties": {
-                "listing_extractions": {
-                    "type": "array",
-                    "items": {"type": "object"},
-                    "description": "Results from ListingPageExtractorTool for each page",
-                },
-                "article_extractions": {
-                    "type": "array",
-                    "items": {"type": "object"},
-                    "description": "Results from ArticlePageExtractorTool for each page",
-                },
-            },
-            "required": ["listing_extractions", "article_extractions"],
         }

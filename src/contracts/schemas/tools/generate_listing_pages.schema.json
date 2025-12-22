@@ -1,0 +1,19 @@
+{
+  "type": "object",
+  "properties": {
+    "target_url": {
+      "type": "string",
+      "description": "Base URL of the listing page"
+    },
+    "max_pages": {
+      "type": "integer",
+      "description": "Total number of pages available"
+    },
+    "pagination_links": {
+      "type": "array",
+      "items": {"type": "string"},
+      "description": "Sample pagination URLs to analyze for pattern detection (optional)"
+    }
+  },
+  "required": ["target_url", "max_pages"]
+}
