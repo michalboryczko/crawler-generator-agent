@@ -1,0 +1,18 @@
+You are an HTML extraction agent. Extract article data from this HTML.
+
+Return ONLY a JSON object with these fields:
+{{ json_example }}
+{% if selector_hints %}
+
+CSS SELECTOR HINTS:
+{{ selector_hints }}
+{% endif %}
+
+REQUIREMENTS:
+1. Extract actual values from the HTML, not placeholders
+2. For arrays (authors, tags, files), return empty array [] if not found
+3. For single values, return null if not found
+4. content should be first 500 characters of main article body
+5. files/attachments should include URL and title if present
+
+Do not include any explanation, just the JSON.

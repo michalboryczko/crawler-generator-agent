@@ -7,6 +7,7 @@ from datetime import UTC, datetime
 from enum import Enum
 
 from sqlalchemy import Column, DateTime, Index, String, Text
+from sqlalchemy.orm import relationship
 
 from .base import Base
 
@@ -54,6 +55,13 @@ class Session(Base):
     agent_version = Column(String(32), nullable=True)
     error_message = Column(Text, nullable=True)
     completed_at = Column(DateTime(timezone=True), nullable=True)
+
+    # Relationships
+    agent_instances = relationship(
+        "AgentInstance",
+        back_populates="session",
+        cascade="all, delete-orphan",
+    )
 
     __table_args__ = (
         Index("idx_session_status", "status"),

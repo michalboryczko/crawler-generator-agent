@@ -5,7 +5,7 @@ for automatic observability instrumentation.
 """
 
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from src.prompts import get_prompt_provider
 
@@ -24,6 +24,7 @@ from ..tools.supervisor import SupervisorTool
 from .base import BaseAgent
 
 if TYPE_CHECKING:
+    from ..services.context_service import ContextService
     from ..services.memory_service import MemoryService
 
 
@@ -47,6 +48,7 @@ class PlanGeneratorAgent(BaseAgent):
         llm: LLMClient | LLMClientFactory,
         output_dir: Path,
         memory_service: "MemoryService",
+        context_service: "ContextService | None" = None,
     ):
         """Initialize the Plan Generator Agent.
 
@@ -54,6 +56,7 @@ class PlanGeneratorAgent(BaseAgent):
             llm: LLM client or factory for agent operations and supervisor validation
             output_dir: Directory where plan.md will be created
             memory_service: Memory service for reading collected information
+            context_service: Optional ContextService for persisting context events
         """
         self.output_dir = output_dir
 
@@ -80,4 +83,34 @@ class PlanGeneratorAgent(BaseAgent):
             ValidateResponseTool(),
         ]
 
-        super().__init__(llm, tools, memory_service=memory_service)
+        super().__init__(llm, tools, memory_service=memory_service, context_service=context_service)
+
+    # Template for user prompt with collected information
+    user_prompt_template = "plan_generator_user.md.j2"
+
+    def _build_user_prompt(self, task: str, context: dict[str, Any] | None) -> str:
+        """Build user prompt with collected information formatted for plan generation.
+
+        Uses specialized template that renders collected_information from each
+        sub-agent in a structured, readable markdown format instead of raw JSON.
+
+        Args:
+            task: The task description
+            context: Context containing target_url, task_name, collected_information
+
+        Returns:
+            Formatted user prompt with collected information as markdown
+        """
+        if not context or "collected_information" not in context:
+            # Fall back to default behavior
+            return super()._build_user_prompt(task, context)
+
+        from ..prompts.template_renderer import render_agent_template
+
+        return render_agent_template(
+            self.user_prompt_template,
+            task=task,
+            target_url=context.get("target_url", ""),
+            task_name=context.get("task_name", "Generate Crawl Plan"),
+            collected_information=context.get("collected_information", []),
+        )

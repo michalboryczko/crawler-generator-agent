@@ -10,17 +10,19 @@ import json
 import logging
 import time
 from collections import Counter
-from typing import Any
+from typing import TYPE_CHECKING, Any
 from urllib.parse import urljoin
 
 from ..core.browser import BrowserSession
 from ..core.html_cleaner import clean_html_for_llm
 from ..core.json_parser import parse_json_response
-from ..core.llm import LLMClient
 from ..observability.decorators import traced_tool
 from ..prompts import get_prompt_provider
 from .base import BaseTool
 from .validation import validated_tool
+
+if TYPE_CHECKING:
+    from ..core.llm import LLMClientFactory
 
 logger = logging.getLogger(__name__)
 
@@ -47,8 +49,8 @@ class ListingPageExtractorTool(BaseTool):
     description = """Navigate to a listing page and extract CSS selectors for article
     elements plus all article URLs. Uses fresh LLM context for each page."""
 
-    def __init__(self, llm: LLMClient, browser: BrowserSession):
-        self.llm = llm
+    def __init__(self, llm_factory: "LLMClientFactory", browser: BrowserSession):
+        self._llm = llm_factory.get_client("listing_page_extractor")
         self.browser = browser
 
     @traced_tool(name="extract_listing_page")
@@ -80,7 +82,7 @@ class ListingPageExtractorTool(BaseTool):
             {"role": "user", "content": f"Analyze this listing page HTML:\n\n{cleaned_html}"},
         ]
 
-        response = self.llm.chat(messages)
+        response = self._llm.chat(messages)
         content = response.get("content", "")
 
         # Parse JSON response
@@ -126,8 +128,8 @@ class ArticlePageExtractorTool(BaseTool):
     description = """Navigate to an article page and extract CSS selectors for all
     content fields (title, date, author, content, etc). Uses fresh LLM context."""
 
-    def __init__(self, llm: LLMClient, browser: BrowserSession):
-        self.llm = llm
+    def __init__(self, llm_factory: "LLMClientFactory", browser: BrowserSession):
+        self._llm = llm_factory.get_client("article_page_extractor")
         self.browser = browser
 
     @traced_tool(name="extract_article_page")
@@ -158,7 +160,7 @@ class ArticlePageExtractorTool(BaseTool):
             {"role": "user", "content": f"Analyze this article page HTML:\n\n{cleaned_html}"},
         ]
 
-        response = self.llm.chat(messages)
+        response = self._llm.chat(messages)
         content = response.get("content", "")
 
         # Parse JSON response
@@ -194,8 +196,8 @@ class SelectorAggregatorTool(BaseTool):
     selector chains (ordered lists of all working selectors). Returns selector
     chains that the crawler can try in order until one matches."""
 
-    def __init__(self, llm: LLMClient):
-        self.llm = llm
+    def __init__(self, llm_factory: "LLMClientFactory"):
+        self._llm = llm_factory.get_client("selector_aggregator")
 
     @traced_tool(name="aggregate_selectors")
     @validated_tool
@@ -302,7 +304,7 @@ class SelectorAggregatorTool(BaseTool):
         ]
 
         try:
-            response = self.llm.chat(messages)
+            response = self._llm.chat(messages)
             content = response.get("content", "")
             result = parse_json_response(content)
 

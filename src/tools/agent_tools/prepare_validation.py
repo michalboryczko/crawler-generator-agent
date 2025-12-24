@@ -100,4 +100,3 @@ class PrepareAgentOutputValidationTool(BaseTool):
                 f"with run_identifier '{run_identifier}'"
             ),
         }
-

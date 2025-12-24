@@ -144,8 +144,8 @@ class RunExtractionAgentTool(BaseTool):
         url = stored.get("url", "")
 
         # Truncate for LLM
-        if len(html) > 40000:
-            html = html[:40000] + "\n... [TRUNCATED]"
+        if len(html) > 150000:
+            html = html[:150000] + "\n... [TRUNCATED]"
 
         # Get discovered selectors for dynamic field extraction
         detail_selectors = self._service.read("detail_selectors") or {}

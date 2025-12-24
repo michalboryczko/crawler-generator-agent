@@ -10,6 +10,13 @@ class MockLLMClient:
         return {"content": "Done", "tool_calls": []}
 
 
+class MockLLMClientFactory:
+    """Mock LLM client factory for testing."""
+
+    def get_client(self, component_name: str) -> MockLLMClient:
+        return MockLLMClient()
+
+
 class MockBrowserSession:
     """Mock browser session."""
 
@@ -60,11 +67,13 @@ class TestSelectorAgentHasValidateTool:
         """ValidateResponseTool is in SelectorAgent's tools list."""
         from src.agents.selector_agent import SelectorAgent
 
-        llm = MockLLMClient()
+        llm_factory = MockLLMClientFactory()
         browser = MockBrowserSession()
         memory = MockMemoryService()
 
-        agent = SelectorAgent(llm=llm, browser_session=browser, memory_service=memory)
+        agent = SelectorAgent(
+            llm_factory=llm_factory, browser_session=browser, memory_service=memory
+        )
 
         tool_names = [t.name for t in agent.tools]
         assert "validate_response" in tool_names

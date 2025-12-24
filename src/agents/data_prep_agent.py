@@ -27,6 +27,7 @@ from ..tools.random_choice import RandomChoiceTool
 from .base import BaseAgent
 
 if TYPE_CHECKING:
+    from ..services.context_service import ContextService
     from ..services.memory_service import MemoryService
 
 
@@ -43,16 +44,20 @@ class DataPrepAgent(BaseAgent):
         browser_session: BrowserSession,
         memory_service: "MemoryService",
         output_dir: Path | None = None,
+        context_service: "ContextService | None" = None,
     ):
         self.browser_session = browser_session
         self.output_dir = output_dir
+
+        # Extraction tools need an LLMClient, not a factory
+        extraction_llm = llm.get_client("extraction_agent") if hasattr(llm, "get_client") else llm
 
         tools = [
             # Batch fetch (uses browser)
             BatchFetchURLsTool(browser_session, memory_service),
             # Batch extraction (separate LLM contexts)
-            BatchExtractListingsTool(llm, memory_service),
-            BatchExtractArticlesTool(llm, memory_service),
+            BatchExtractListingsTool(extraction_llm, memory_service),
+            BatchExtractArticlesTool(extraction_llm, memory_service),
             # Random selection
             RandomChoiceTool(),
             # Memory tools
@@ -67,4 +72,4 @@ class DataPrepAgent(BaseAgent):
         if output_dir:
             tools.append(MemoryDumpTool(memory_service, output_dir))
 
-        super().__init__(llm, tools, memory_service=memory_service)
+        super().__init__(llm, tools, memory_service=memory_service, context_service=context_service)

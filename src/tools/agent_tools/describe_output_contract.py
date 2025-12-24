@@ -198,4 +198,3 @@ class DescribeOutputContractTool(BaseTool):
             return "{...}"
         else:
             return "null"
-

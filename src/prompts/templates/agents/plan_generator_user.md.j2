@@ -1,3 +1,25 @@
+{# Macro to render values as nested markdown lists #}
+{% macro render_value(value, indent=0) -%}
+{% set spaces = '  ' * indent -%}
+{% if value is mapping -%}
+{% for k, v in value.items() %}
+{{ spaces }}- **{{ k }}**: {{ render_value(v, indent + 1) }}
+{%- endfor %}
+{% elif value is iterable and value is not string -%}
+{% for item in value %}
+{{ spaces }}- {{ render_value(item, indent + 1) | trim }}
+{%- endfor %}
+{% elif value is none -%}
+null
+{%- elif value == true -%}
+true
+{%- elif value == false -%}
+false
+{%- else -%}
+{{ value }}
+{%- endif %}
+{%- endmacro %}
+
 # Collected Information for {{ target_url }}
 
 **Task:** {{ task_name | default('Generate Crawl Plan') }}
@@ -15,16 +37,12 @@
 ### Output
 {% if item.output is mapping %}
 {% for key, value in item.output.items() %}
-- **{{ key }}**: {% if value is mapping or value is iterable and value is not string %}
-```json
-{{ value | tojson(indent=2) }}
-```
-{% else %}{{ value }}{% endif %}
-{% endfor %}
+- **{{ key }}**: {{ render_value(value, 1) }}
+{%- endfor %}
 {% elif item.output is iterable and item.output is not string %}
-```json
-{{ item.output | tojson(indent=2) }}
-```
+{% for entry in item.output %}
+- {{ render_value(entry, 1) | trim }}
+{%- endfor %}
 {% else %}
 {{ item.output }}
 {% endif %}

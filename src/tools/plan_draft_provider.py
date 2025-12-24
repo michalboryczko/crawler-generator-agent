@@ -53,7 +53,7 @@ class PlanDraftProviderTool(BaseTool):
 
     def _get_plan_template(self) -> str:
         """Get the full plan template structure."""
-        return '''# Crawl Plan for {site_name}
+        return """# Crawl Plan for {site_name}
 
 ## 1. Scope & Objectives
 
@@ -198,7 +198,7 @@ class PlanDraftProviderTool(BaseTool):
 ### Recommendations
 - {recommendation_1}
 - {recommendation_2}
-'''
+"""
 
     def _get_section_descriptions(self) -> dict[str, str]:
         """Get descriptions for each plan section."""

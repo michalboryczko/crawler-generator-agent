@@ -439,3 +439,26 @@ class LLMClientFactory:
 
     def __repr__(self) -> str:
         return f"LLMClientFactory(models={len(self.registry)}, cached_clients={len(self._clients)})"
+
+
+def get_llm_client(
+    llm: "LLMClient | LLMClientFactory",
+    component_name: str,
+) -> LLMClient:
+    """Get an LLM client from either a client or factory.
+
+    This utility normalizes the dual LLMClient/LLMClientFactory pattern,
+    making it easy for tools to accept either type.
+
+    Args:
+        llm: Either an LLMClient instance or LLMClientFactory
+        component_name: Name to use when getting client from factory
+
+    Returns:
+        LLMClient instance ready to use
+    """
+    if hasattr(llm, "get_client"):
+        # It's a factory - get a client for this component
+        return llm.get_client(component_name)
+    # It's already a client
+    return llm

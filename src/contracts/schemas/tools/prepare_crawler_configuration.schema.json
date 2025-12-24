@@ -1,62 +1,94 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
   "type": "object",
-  "description": "Parameters for prepare_crawler_configuration tool",
-  "required": ["target_url"],
+  "description": "Parameters for prepare_crawler_configuration tool. This tool generates a complete crawler configuration JSON from collected selector data. CRITICAL: Both listing_selectors and detail_selectors are REQUIRED - you must pass the complete selector data from Selector Agent output.",
+  "required": ["target_url", "listing_selectors", "detail_selectors"],
   "properties": {
     "target_url": {
       "type": "string",
       "format": "uri",
-      "description": "Starting URL for the crawler (e.g., the main listing page)"
+      "description": "Starting URL for the crawler - the main listing page where crawling begins. This URL was analyzed by Discovery and Selector agents."
     },
     "listing_selectors": {
       "type": "object",
-      "description": "Listing page selectors from Selector Agent output. Expected structure: {listing_container: [...], article_link: [...]}",
+      "description": "REQUIRED: Complete listing page selectors from Selector Agent output. Contains CSS selectors for identifying article containers and links on listing pages. This is the PRIMARY data for listing page configuration - pass the entire listing_selectors object from Selector Agent, not individual fields.",
       "properties": {
         "listing_container": {
-          "description": "Selector chain for listing container (array of {selector, success_rate} or strings)"
+          "type": "array",
+          "description": "Selector chain for the container element holding all articles on listing page. Array of {selector, success_rate} objects ordered by reliability.",
+          "items": {
+            "type": "object",
+            "properties": {
+              "selector": { "type": "string" },
+              "success_rate": { "type": "number" }
+            }
+          }
         },
         "article_link": {
-          "description": "Selector chain for article links (array of {selector, success_rate} or strings)"
+          "type": "array",
+          "description": "Selector chain for article links within the container. Array of {selector, success_rate} objects - these selectors extract URLs to individual article pages.",
+          "items": {
+            "type": "object",
+            "properties": {
+              "selector": { "type": "string" },
+              "success_rate": { "type": "number" }
+            }
+          }
         }
       },
       "additionalProperties": true
     },
     "detail_selectors": {
       "type": "object",
-      "description": "Detail page selectors from Selector Agent output. Expected structure: {title: [...], content: [...], date: [...], ...}",
+      "description": "REQUIRED: Complete detail page selectors from Selector Agent output. Contains CSS selectors for extracting article content fields like title, date, authors, content body, etc. This is the PRIMARY data for article extraction - pass the entire detail_selectors object from Selector Agent. DO NOT omit this parameter.",
       "additionalProperties": {
-        "description": "Selector chain for this field - array of {selector, success_rate} objects or strings"
-      }
+        "type": "array",
+        "description": "Selector chain for this field - array of {selector, success_rate} objects ordered by reliability. Each field (title, content, date, authors, etc.) should have multiple fallback selectors.",
+        "items": {
+          "type": "object",
+          "properties": {
+            "selector": { "type": "string" },
+            "success_rate": { "type": "number" }
+          }
+        }
+      },
+      "examples": [
+        {
+          "title": [{"selector": "h1.article-title", "success_rate": 0.95}],
+          "content": [{"selector": "div.article-body", "success_rate": 0.92}],
+          "date": [{"selector": "time.published", "success_rate": 0.88}],
+          "authors": [{"selector": "span.author-name", "success_rate": 0.85}]
+        }
+      ]
     },
     "pagination_config": {
       "type": "object",
-      "description": "Pagination configuration from Discovery Agent",
+      "description": "Pagination configuration from Discovery Agent output. Describes how to navigate through listing pages.",
       "properties": {
         "type": {
           "type": "string",
           "enum": ["next_link", "numbered", "load_more", "infinite_scroll", "none"],
-          "description": "Type of pagination mechanism"
+          "description": "Type of pagination mechanism detected on the site"
         },
         "selector": {
           "type": ["string", "null"],
-          "description": "CSS selector for pagination element"
+          "description": "CSS selector for the pagination element (next button, page numbers, etc.)"
         },
         "max_pages": {
           "type": "integer",
           "minimum": 1,
-          "description": "Maximum number of pages to crawl"
+          "description": "Maximum number of listing pages to crawl"
         }
       }
     },
     "requires_browser": {
       "type": "boolean",
       "default": true,
-      "description": "Whether JavaScript rendering is required for this site"
+      "description": "Whether JavaScript rendering is required. From Accessibility Agent output - true if site uses JS for content loading."
     },
     "request_config": {
       "type": "object",
-      "description": "Custom request configuration (overrides defaults)",
+      "description": "Optional custom request configuration to override defaults",
       "properties": {
         "wait_between_requests": {
           "type": "number",

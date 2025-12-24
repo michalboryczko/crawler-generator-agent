@@ -17,6 +17,7 @@ from .result import AgentResult
 
 if TYPE_CHECKING:
     from ..core.llm import LLMClientFactory
+    from ..services.context_service import ContextService
     from ..services.memory_service import MemoryService
     from ..tools.agent_tools import AgentTool
 
@@ -52,6 +53,7 @@ class BaseAgent:
         tools: list[BaseTool] | None = None,
         component_name: str | None = None,
         memory_service: "MemoryService | None" = None,
+        context_service: "ContextService | None" = None,
     ):
         """Initialize the agent.
 
@@ -63,6 +65,8 @@ class BaseAgent:
             component_name: Override the component name for factory lookup
                            (defaults to agent's name attribute)
             memory_service: MemoryService for agent memory
+            context_service: Optional ContextService for persisting conversation
+                            context with event sourcing for session replay
         """
         # Handle both LLMClient and LLMClientFactory
         self.llm_factory: Any = None  # Type: LLMClientFactory when using factory mode
@@ -81,6 +85,7 @@ class BaseAgent:
 
         self.tools = tools or []
         self._memory_service = memory_service
+        self._context_service = context_service
 
         # Auto-detect AgentTools from tools list
         from ..tools.agent_tools import AgentTool
@@ -113,6 +118,11 @@ class BaseAgent:
         """Return the agent's memory service."""
         return self._memory_service
 
+    @property
+    def context_service(self) -> "ContextService | None":
+        """Return the agent's context service for persistence."""
+        return self._context_service
+
     @traced_agent()  # Uses self.name dynamically
     def run(
         self,
@@ -144,13 +154,58 @@ class BaseAgent:
             output_contract_schema=output_contract_schema,
         )
 
-        messages: list[dict[str, Any]] = [
-            {"role": "system", "content": system_content},
-            {"role": "user", "content": task},
-        ]
+        # Build user message with task and formatted context
+        user_content = self._build_user_prompt(task, context)
+
+        # Check if we should hydrate from existing context (resume/copy mode)
+        messages: list[dict[str, Any]] = []
+        if self._context_service:
+            # Try to load existing messages for this instance
+            messages = list(self._context_service.get_messages())
+            if messages:
+                # Resume mode: hydrate messages from persisted context
+                logger.info(f"Resumed context with {len(messages)} messages")
+            else:
+                # Fresh start: create initial messages and persist them
+                messages = [
+                    {"role": "system", "content": system_content},
+                    {"role": "user", "content": user_content},
+                ]
+                self._context_service.append_message("system", system_content)
+                self._context_service.append_message("user", user_content)
+        else:
+            # No context service - just use in-memory messages
+            messages = [
+                {"role": "system", "content": system_content},
+                {"role": "user", "content": user_content},
+            ]
 
         # Reset validation retry counter for this run
         self._validation_retries = 0
+
+        # Check if resuming with pending tool calls
+        # If last message is assistant with tool_calls, execute them first before calling LLM
+        pending_tool_calls = self._get_pending_tool_calls(messages)
+        if pending_tool_calls:
+            logger.info(f"Resuming with {len(pending_tool_calls)} pending tool call(s)")
+            for tool_call in pending_tool_calls:
+                result = self._execute_tool(tool_call["name"], tool_call["arguments"])
+                tool_result_content = (
+                    json.dumps(result) if isinstance(result, dict) else str(result)
+                )
+                messages.append(
+                    {
+                        "role": "tool",
+                        "tool_call_id": tool_call["id"],
+                        "content": tool_result_content,
+                    }
+                )
+                if self._context_service:
+                    self._context_service.append_message(
+                        role="tool",
+                        content=tool_result_content,
+                        tool_call_id=tool_call["id"],
+                    )
 
         for iteration in range(MAX_ITERATIONS):
             logger.info(f"Agent {self.name} iteration {iteration + 1}")
@@ -169,28 +224,59 @@ class BaseAgent:
                         f"but only processing first one to ensure sequential execution"
                     )
 
+                # Build tool calls structure for message
+                tool_calls_for_message = [
+                    {
+                        "id": tc["id"],
+                        "type": "function",
+                        "function": {
+                            "name": tc["name"],
+                            "arguments": json.dumps(tc["arguments"])
+                            if isinstance(tc["arguments"], dict)
+                            else tc["arguments"],
+                        },
+                    }
+                    for tc in tool_calls_to_process
+                ]
+
                 # Add assistant message with only the tool call we're processing
                 messages.append(
                     {
                         "role": "assistant",
                         "content": response["content"],
-                        "tool_calls": [
-                            {
-                                "id": tc["id"],
-                                "type": "function",
-                                "function": {"name": tc["name"], "arguments": str(tc["arguments"])},
-                            }
-                            for tc in tool_calls_to_process
-                        ],
+                        "tool_calls": tool_calls_for_message,
                     }
                 )
+
+                # Persist assistant message with tool calls to context service
+                if self._context_service:
+                    self._context_service.append_message(
+                        role="assistant",
+                        content=response["content"] or "",
+                        tool_calls=tool_calls_for_message,
+                    )
 
                 # Execute the single tool call
                 for tool_call in tool_calls_to_process:
                     result = self._execute_tool(tool_call["name"], tool_call["arguments"])
-                    messages.append(
-                        {"role": "tool", "tool_call_id": tool_call["id"], "content": str(result)}
+                    tool_result_content = (
+                        json.dumps(result) if isinstance(result, dict) else str(result)
                     )
+                    messages.append(
+                        {
+                            "role": "tool",
+                            "tool_call_id": tool_call["id"],
+                            "content": tool_result_content,
+                        }
+                    )
+
+                    # Persist tool result to context service
+                    if self._context_service:
+                        self._context_service.append_message(
+                            role="tool",
+                            content=tool_result_content,
+                            tool_call_id=tool_call["id"],
+                        )
             else:
                 # No tool calls - agent wants to finish
                 result_data = self._extract_result_data(response["content"])
@@ -198,6 +284,10 @@ class BaseAgent:
                 # Guard: no validation needed
                 validate_tool = self._tool_map.get("validate_response")
                 if not run_identifier or not validate_tool:
+                    # Persist final assistant response to context service
+                    if self._context_service:
+                        self._context_service.append_message("assistant", response["content"])
+
                     return AgentResult(
                         success=True,
                         data=result_data,
@@ -216,9 +306,7 @@ class BaseAgent:
                     if self._can_retry_validation():
                         self._validation_retries += 1
                         if validation_result.get("extraction_failed"):
-                            error_msg = self._build_json_extraction_error(
-                                self._validation_retries
-                            )
+                            error_msg = self._build_json_extraction_error(self._validation_retries)
                         else:
                             errors = validation_result.get("validation_errors", [])
                             error_msg = self._build_validation_error_message_from_tool(
@@ -226,11 +314,15 @@ class BaseAgent:
                             )
                         messages.append({"role": "assistant", "content": response["content"]})
                         messages.append({"role": "user", "content": error_msg})
+
+                        # Persist validation retry messages to context service
+                        if self._context_service:
+                            self._context_service.append_message("assistant", response["content"])
+                            self._context_service.append_message("user", error_msg)
                         continue
 
                     logger.error(
-                        f"[{self.name}] Validation failed after "
-                        f"{MAX_VALIDATION_RETRIES} retries."
+                        f"[{self.name}] Validation failed after {MAX_VALIDATION_RETRIES} retries."
                     )
 
                 # Validation passed - extract JSON
@@ -238,6 +330,10 @@ class BaseAgent:
 
                 extracted = extract_json(response["content"])
                 final_data = extracted if extracted is not None else result_data
+
+                # Persist final validated assistant response to context service
+                if self._context_service:
+                    self._context_service.append_message("assistant", response["content"])
 
                 return AgentResult(
                     success=True,
@@ -265,7 +361,7 @@ class BaseAgent:
 
         Template method: Override in subclasses for custom prompt building.
 
-        Order: response_rules (critical) → system_prompt → sub_agents → context
+        Order: response_rules (critical) → system_prompt → language_rules → sub_agents → context
         Response rules come FIRST so they're most prominent to the model.
 
         Args:
@@ -288,6 +384,9 @@ class BaseAgent:
         # Add base system prompt
         prompt_parts.append(self.system_prompt)
 
+        # Add language rules (shared across all agents)
+        prompt_parts.append(self._build_language_rules())
+
         # Add sub-agents section if agent_tools exist
         sub_agents_section = self._build_sub_agents_section()
         if sub_agents_section:
@@ -298,6 +397,16 @@ class BaseAgent:
             prompt_parts.append(self._inject_context(context))
 
         return "\n\n".join(prompt_parts)
+
+    def _build_language_rules(self) -> str:
+        """Build language and output rules section.
+
+        Returns:
+            Rendered language_rules template content
+        """
+        from ..prompts.template_renderer import render_template
+
+        return render_template("language_rules.md.j2")
 
     def _build_sub_agents_section(self) -> str:
         """Build prompt section describing available sub-agents.
@@ -357,6 +466,79 @@ class BaseAgent:
         """
         context_str = json.dumps(context, indent=2)
         return f"## Context from Orchestrator\n```json\n{context_str}\n```"
+
+    def _build_user_prompt(self, task: str, context: dict[str, Any] | None) -> str:
+        """Build user prompt with task and context.
+
+        Template method: Override in subclasses for custom formatting.
+        Default behavior: Renders task with context as JSON if provided.
+
+        Args:
+            task: The task description
+            context: Optional context data from orchestrator
+
+        Returns:
+            Formatted user prompt string
+        """
+        if not context:
+            return task
+
+        from ..prompts.template_renderer import render_template
+
+        return render_template(
+            "default_user_prompt.md.j2",
+            task=task,
+            context=context,
+        )
+
+    def _get_pending_tool_calls(self, messages: list[dict[str, Any]]) -> list[dict[str, Any]]:
+        """Check if there are pending tool calls that need to be executed.
+
+        When resuming from persisted context, the last message might be an
+        assistant message with tool_calls that haven't been executed yet.
+        This method detects that case and returns the pending tool calls.
+
+        Args:
+            messages: The current message history
+
+        Returns:
+            List of pending tool calls to execute, or empty list if none
+        """
+        if not messages:
+            return []
+
+        last_message = messages[-1]
+
+        # Check if last message is assistant with tool_calls
+        if last_message.get("role") != "assistant":
+            return []
+
+        tool_calls = last_message.get("tool_calls", [])
+        if not tool_calls:
+            return []
+
+        # Extract tool call info in format expected by _execute_tool
+        pending = []
+        for tc in tool_calls:
+            func = tc.get("function", {})
+            name = func.get("name", "")
+            # Arguments might be string (JSON) or dict
+            args = func.get("arguments", {})
+            if isinstance(args, str):
+                try:
+                    args = json.loads(args)
+                except json.JSONDecodeError:
+                    args = {}
+
+            pending.append(
+                {
+                    "id": tc.get("id", ""),
+                    "name": name,
+                    "arguments": args,
+                }
+            )
+
+        return pending
 
     def _execute_tool(self, name: str, arguments: dict[str, Any]) -> dict[str, Any]:
         """Execute a tool by name with arguments.

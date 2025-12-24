@@ -2,22 +2,22 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "plan_generator_agent_input",
   "title": "PlanGeneratorAgent Input Contract",
-  "description": "Input requirements for the Plan Generator Agent - aggregates collected information from sub-agents",
+  "description": "Input requirements for the Plan Generator Agent. This agent receives collected information from all sub-agents (discovery, selector, accessibility, data_prep) and generates a comprehensive crawl plan.",
   "type": "object",
   "required": ["target_url", "task_name", "collected_information"],
   "properties": {
     "target_url": {
       "type": "string",
       "format": "uri",
-      "description": "Target URL for which the crawl plan is being generated"
+      "description": "The target website URL for which the crawl plan is being generated. This URL was analyzed by sub-agents and will be the entry point for the crawler."
     },
     "task_name": {
       "type": "string",
-      "description": "Name/identifier for this crawl plan task"
+      "description": "Unique identifier/name for this crawl plan task. Used for file naming and tracking."
     },
     "collected_information": {
       "type": "array",
-      "description": "Aggregated outputs from sub-agents (Discovery, Selector, Accessibility, DataPrep)",
+      "description": "CRITICAL: Array of complete outputs from sub-agents that executed before plan generation. This is the PRIMARY data source for generating the crawl plan - it contains selectors, pagination info, accessibility requirements, and sample articles. Must include at least discovery_agent and selector_agent outputs for a valid plan. Each item is the complete, unfiltered response from one sub-agent.",
       "items": {
         "$ref": "#/$defs/agentOutput"
       },
@@ -28,22 +28,22 @@
   "$defs": {
     "agentOutput": {
       "type": "object",
-      "description": "Output collected from a sub-agent",
+      "description": "Complete output from a sub-agent execution. Contains the full response including all data fields, selectors, URLs, and metadata discovered by that agent.",
       "required": ["agent_name", "output", "description"],
       "properties": {
         "agent_name": {
           "type": "string",
-          "description": "Name of the source agent (e.g., 'discovery_agent', 'selector_agent')",
+          "description": "Identifier of the source agent that produced this output",
           "enum": ["discovery_agent", "selector_agent", "accessibility_agent", "data_prep_agent"]
         },
         "output": {
           "type": "object",
-          "description": "Complete output from the agent including all response fields",
+          "description": "The COMPLETE response object from the agent. Do not filter or summarize - include all fields such as selectors, URLs, pagination info, success rates, etc. This raw data is used to generate the crawl configuration.",
           "additionalProperties": true
         },
         "description": {
           "type": "string",
-          "description": "Human-readable description of what this agent output contains and how it should be used in plan generation"
+          "description": "Brief summary of what this agent discovered and how it contributes to plan generation. Example: 'Selector Agent found 5 listing selectors and 8 detail page selectors with 95%+ success rate'"
         }
       },
       "additionalProperties": false

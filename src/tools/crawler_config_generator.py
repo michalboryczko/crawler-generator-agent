@@ -107,29 +107,35 @@ class PrepareCrawlerConfigurationTool(BaseTool):
         container_data = listing_selectors.get("listing_container", [])
         container_selectors = self._extract_selector_list(container_data)
         if container_selectors:
-            listing_config.append({
-                "property": "container_selector",
-                "selectors": container_selectors,
-            })
+            listing_config.append(
+                {
+                    "property": "container_selector",
+                    "selectors": container_selectors,
+                }
+            )
 
         # Extract article_link
         link_data = listing_selectors.get("article_link", [])
         link_selectors = self._extract_selector_list(link_data)
         if link_selectors:
-            listing_config.append({
-                "property": "article_link_selector",
-                "selectors": link_selectors,
-            })
+            listing_config.append(
+                {
+                    "property": "article_link_selector",
+                    "selectors": link_selectors,
+                }
+            )
 
         # Include any additional listing properties discovered
         for prop, data in listing_selectors.items():
             if prop not in ("listing_container", "article_link"):
                 selectors = self._extract_selector_list(data)
                 if selectors:
-                    listing_config.append({
-                        "property": prop,
-                        "selectors": selectors,
-                    })
+                    listing_config.append(
+                        {
+                            "property": prop,
+                            "selectors": selectors,
+                        }
+                    )
 
         return listing_config
 
@@ -162,20 +168,24 @@ class PrepareCrawlerConfigurationTool(BaseTool):
             if field in detail_selectors:
                 selectors = self._extract_selector_list(detail_selectors[field])
                 if selectors:
-                    detail_config.append({
-                        "property": field,
-                        "selectors": selectors,
-                    })
+                    detail_config.append(
+                        {
+                            "property": field,
+                            "selectors": selectors,
+                        }
+                    )
 
         # Then any additional discovered fields
         for field, data in detail_selectors.items():
             if field not in standard_fields:
                 selectors = self._extract_selector_list(data)
                 if selectors:
-                    detail_config.append({
-                        "property": field,
-                        "selectors": selectors,
-                    })
+                    detail_config.append(
+                        {
+                            "property": field,
+                            "selectors": selectors,
+                        }
+                    )
 
         return detail_config
 
@@ -255,9 +265,7 @@ class PrepareCrawlerConfigurationTool(BaseTool):
             "max_pages": max_pages,
         }
 
-    def _build_request_config(
-        self, requires_browser: bool, custom_config: dict
-    ) -> dict[str, Any]:
+    def _build_request_config(self, requires_browser: bool, custom_config: dict) -> dict[str, Any]:
         """Build request configuration with defaults."""
         defaults = {
             "requires_browser": requires_browser,

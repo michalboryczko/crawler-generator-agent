@@ -18,6 +18,7 @@ from ..tools.memory import (
 from .base import BaseAgent
 
 if TYPE_CHECKING:
+    from ..services.context_service import ContextService
     from ..services.memory_service import MemoryService
 
 
@@ -32,6 +33,7 @@ class AccessibilityAgent(BaseAgent):
         self,
         llm: LLMClient | LLMClientFactory,
         memory_service: "MemoryService",
+        context_service: "ContextService | None" = None,
     ):
         tools = [
             HTTPRequestTool(),
@@ -41,4 +43,4 @@ class AccessibilityAgent(BaseAgent):
             ValidateResponseTool(),
         ]
 
-        super().__init__(llm, tools, memory_service=memory_service)
+        super().__init__(llm, tools, memory_service=memory_service, context_service=context_service)

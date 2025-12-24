@@ -35,6 +35,7 @@ from .selector_agent import SelectorAgent
 
 if TYPE_CHECKING:
     from ..infrastructure import Container
+    from ..services.context_service import ContextService
     from ..services.memory_service import MemoryService
 
 logger = logging.getLogger(__name__)
@@ -58,6 +59,7 @@ class MainAgent(BaseAgent):
         memory_service: "MemoryService",
         container: "Container | None" = None,
         agents_config: AgentsConfig | None = None,
+        context_service: "ContextService | None" = None,
     ):
         """Initialize the main agent.
 
@@ -69,7 +71,10 @@ class MainAgent(BaseAgent):
             container: DI container for creating sub-agent services
             agents_config: Configuration for agent schema paths. If None,
                           loads from default config/agents.yaml.
+            context_service: Optional ContextService for persisting conversation
+                            context with event sourcing for session replay
         """
+        self._context_service = context_service
         self._memory_service = memory_service
         self.browser_session = browser_session
         self.output_dir = output_dir
@@ -87,26 +92,45 @@ class MainAgent(BaseAgent):
             agents_config = AgentsConfig.from_yaml()
         self._agents_config = agents_config
 
-        # Create sub-agents with isolated memory services
+        # Helper to create sub-agent context service with parent linking
+        def _get_subagent_context_service(agent_name: str) -> "ContextService | None":
+            if not context_service or not self._container.context_persistence_enabled:
+                return None
+            # Create context service for sub-agent with parent_instance_id
+            return self._container.context_service(
+                agent_name, parent_instance_id=context_service.instance_id
+            )
+
+        # Create sub-agents with isolated memory services and context services
         self.discovery_agent = DiscoveryAgent(
-            llm, browser_session, memory_service=self._container.memory_service("discovery")
+            llm,
+            browser_session,
+            memory_service=self._container.memory_service("discovery"),
+            context_service=_get_subagent_context_service("discovery_agent"),
         )
         self.selector_agent = SelectorAgent(
-            llm, browser_session, memory_service=self._container.memory_service("selector")
+            llm,
+            browser_session,
+            memory_service=self._container.memory_service("selector"),
+            context_service=_get_subagent_context_service("selector_agent"),
         )
         self.accessibility_agent = AccessibilityAgent(
-            llm, memory_service=self._container.memory_service("accessibility")
+            llm,
+            memory_service=self._container.memory_service("accessibility"),
+            context_service=_get_subagent_context_service("accessibility_agent"),
         )
         self.data_prep_agent = DataPrepAgent(
             llm,
             browser_session,
             memory_service=self._container.memory_service("data_prep"),
             output_dir=output_dir,
+            context_service=_get_subagent_context_service("data_prep_agent"),
         )
         self.plan_generator_agent = PlanGeneratorAgent(
             llm,
             output_dir=output_dir,
             memory_service=self._container.memory_service("plan_generator"),
+            context_service=_get_subagent_context_service("plan_generator_agent"),
         )
 
         # Mapping from internal agent name to config key
@@ -183,7 +207,7 @@ class MainAgent(BaseAgent):
             *agent_tools,
         ]
 
-        super().__init__(llm, tools, memory_service=memory_service)
+        super().__init__(llm, tools, memory_service=memory_service, context_service=context_service)
 
     @traced_agent(name="main_agent.create_crawl_plan")
     def create_crawl_plan(self, url: str) -> AgentResult:

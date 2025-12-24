@@ -9,7 +9,6 @@ from typing import TYPE_CHECKING
 from src.prompts import get_prompt_provider
 
 from ..core.browser import BrowserSession
-from ..core.llm import LLMClient, LLMClientFactory
 from ..tools.agent_tools import ValidateResponseTool
 from ..tools.memory import (
     MemoryReadTool,
@@ -28,6 +27,8 @@ from ..tools.selector_sampling import (
 from .base import BaseAgent
 
 if TYPE_CHECKING:
+    from ..core.llm import LLMClientFactory
+    from ..services.context_service import ContextService
     from ..services.memory_service import MemoryService
 
 
@@ -40,21 +41,22 @@ class SelectorAgent(BaseAgent):
 
     def __init__(
         self,
-        llm: LLMClient | LLMClientFactory,
+        llm_factory: "LLMClientFactory",
         browser_session: BrowserSession,
         memory_service: "MemoryService",
+        context_service: "ContextService | None" = None,
     ):
         self.browser_session = browser_session
 
         tools = [
             # Sampling tools (URL generation with LLM for pattern detection)
-            ListingPagesGeneratorTool(llm),
-            ArticlePagesGeneratorTool(llm),
+            ListingPagesGeneratorTool(llm_factory),
+            ArticlePagesGeneratorTool(llm_factory),
             # Extraction tools (isolated context per page)
-            ListingPageExtractorTool(llm, browser_session),
-            ArticlePageExtractorTool(llm, browser_session),
+            ListingPageExtractorTool(llm_factory, browser_session),
+            ArticlePageExtractorTool(llm_factory, browser_session),
             # Aggregation tool (creates selector chains, not single selectors)
-            SelectorAggregatorTool(llm),
+            SelectorAggregatorTool(llm_factory),
             # Memory tools
             MemoryReadTool(memory_service),
             MemoryWriteTool(memory_service),
@@ -63,4 +65,6 @@ class SelectorAgent(BaseAgent):
             ValidateResponseTool(),
         ]
 
-        super().__init__(llm, tools, memory_service=memory_service)
+        super().__init__(
+            llm_factory, tools, memory_service=memory_service, context_service=context_service
+        )

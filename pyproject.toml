@@ -19,6 +19,8 @@ dependencies = [
     "opentelemetry-exporter-otlp-proto-grpc>=1.21.0",
     # SQLAlchemy ORM (used for model objects)
     "sqlalchemy>=2.0.0",
+    # Alembic for database migrations
+    "alembic>=1.13.0",
 ]
 
 [project.optional-dependencies]

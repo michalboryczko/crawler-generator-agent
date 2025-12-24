@@ -95,21 +95,87 @@ class AgentTool(BaseTool):
         """
         return self.name
 
+    def _validate_input(self, context: dict[str, Any] | None) -> dict[str, Any] | None:
+        """Validate context against input schema.
+
+        Returns error dict if validation fails, None if valid.
+        Error dict is designed to help calling agent retry with correct input.
+
+        Args:
+            context: Context dict to validate against input schema
+
+        Returns:
+            None if valid, error dict with helpful hints if invalid
+        """
+        if not self._input_schema:
+            return None  # No schema, no validation
+
+        from jsonschema import ValidationError, validate
+
+        if context is None:
+            context = {}
+
+        try:
+            validate(instance=context, schema=self._input_schema)
+            return None  # Valid
+        except ValidationError as e:
+            required = self._input_schema.get("required", [])
+            missing = [f for f in required if f not in context]
+
+            return {
+                "success": False,
+                "error": "Input contract validation failed",
+                "validation_message": e.message,
+                "path": list(e.path),
+                "required_fields": required,
+                "missing_fields": missing,
+                "provided_fields": list(context.keys()) if context else [],
+                "hint": f"Please provide all required fields: {', '.join(missing)}"
+                if missing
+                else e.message,
+            }
+
     @traced_tool()  # Uses self.name dynamically (run_{agent.name})
     @validated_tool
     def execute(self, **kwargs: Any) -> dict[str, Any]:
-        """Execute the wrapped agent. Instrumented by @traced_tool."""
-        task = kwargs["task"]
-        context = kwargs.get("context")
-        run_identifier = kwargs.get("run_identifier")
-        expected_outputs = kwargs.get("expected_outputs")
+        """Execute the wrapped agent with merged context.
+
+        Extra kwargs beyond reserved keys (task, context, run_identifier,
+        expected_outputs, output_contract_schema) are automatically merged
+        into the context dict. This allows parent agents to pass data like
+        target_url, collected_information at the same level as task.
+
+        Input validation is performed before calling the agent. If validation
+        fails, returns an error dict with helpful hints for the calling agent
+        to retry with correct input (similar to output validation retry flow).
+
+        Instrumented by @traced_tool.
+        """
+        # Extract reserved keys
+        task = kwargs.pop("task")
+        run_identifier = kwargs.pop("run_identifier", None)
+        expected_outputs = kwargs.pop("expected_outputs", None)
+        output_contract_schema_override = kwargs.pop("output_contract_schema", None)
+        explicit_context = kwargs.pop("context", None)
+
+        # Merge remaining kwargs into context
+        # This allows parent agent to pass target_url, collected_information, etc.
+        # at the same level as task, and have them merged into context
+        context = explicit_context.copy() if explicit_context else {}
+        context.update(kwargs)  # target_url, collected_information, etc.
+
+        # Validate input contract BEFORE calling agent
+        # Returns actionable error so calling agent can retry with correct input
+        validation_error = self._validate_input(context if context else None)
+        if validation_error:
+            return validation_error
 
         result = self._agent.run(
             task,
-            context=context,
+            context=context if context else None,
             expected_outputs=expected_outputs,
             run_identifier=run_identifier,
-            output_contract_schema=self._output_schema,
+            output_contract_schema=output_contract_schema_override or self._output_schema,
         )
         return {
             "success": result.success,

@@ -108,7 +108,8 @@ class TestBaseAgentContextInjection:
         messages = call_args[0][0]
         system_message = messages[0]
 
-        assert system_message["content"] == original_prompt
+        assert original_prompt in system_message["content"]
+        assert "Language and Output Rules" in system_message["content"]
         assert "Context from orchestrator" not in system_message["content"]
 
 

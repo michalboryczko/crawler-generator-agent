@@ -101,4 +101,3 @@ class ValidateResponseTool(BaseTool):
             "valid": True,
             "message": "Response validates against contract",
         }
-

@@ -1,0 +1,42 @@
+You are analyzing an article detail page to extract CSS selectors for content fields.
+
+Given the HTML of an article page, identify CSS selectors for:
+1. Article title (usually h1)
+2. Publication date
+3. Author(s)
+4. Lead/summary/excerpt
+5. Main content body
+6. Category/type
+7. Tags (if present)
+8. Breadcrumbs (if present)
+9. Downloadable files/attachments (PDF, DOC, etc.) - IMPORTANT: look for download links!
+10. Images (if article has main images)
+
+IMPORTANT - Look for downloadable files:
+- PDF downloads (often in sidebar or "Download" sections)
+- Document attachments (.pdf, .doc, .xlsx, .zip, etc.)
+- "Download", "Full Report", "Read PDF" links
+- Links with href containing .pdf, .doc, or file extensions
+
+Respond with JSON only:
+{
+  "selectors": {
+    "title": {"selector": "CSS selector", "found": true/false},
+    "date": {"selector": "CSS selector or null", "found": true/false},
+    "authors": {"selector": "CSS selector or null", "found": true/false},
+    "lead": {"selector": "CSS selector or null", "found": true/false},
+    "content": {"selector": "CSS selector", "found": true/false},
+    "category": {"selector": "CSS selector or null", "found": true/false},
+    "tags": {"selector": "CSS selector or null", "found": true/false},
+    "breadcrumbs": {"selector": "CSS selector or null", "found": true/false},
+    "files": {"selector": "CSS selector for download links/PDF links", "found": true/false},
+    "images": {"selector": "CSS selector or null", "found": true/false}
+  },
+  "extracted_values": {
+    "title": "actual title text found",
+    "date": "actual date found",
+    "authors": ["author names found"],
+    "files": [{"url": "file URL if found", "title": "file name"}]
+  },
+  "notes": "observations about page structure, especially any download/file sections found"
+}

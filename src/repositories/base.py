@@ -5,6 +5,7 @@ must follow, enabling dependency injection and storage backend swapping.
 """
 
 from abc import ABC, abstractmethod
+from datetime import datetime
 from typing import Any
 
 from ..models.memory import MemoryEntry
@@ -127,5 +128,29 @@ class AbstractMemoryRepository(ABC):
 
         Returns:
             Number of entries saved
+        """
+        pass
+
+    @abstractmethod
+    def copy_session_memory(
+        self,
+        source_session_id: str,
+        target_session_id: str,
+        up_to_timestamp: datetime | None = None,
+    ) -> int:
+        """Copy memory entries from one session to another.
+
+        Copies all memory entries from source session to target session,
+        optionally filtering by creation timestamp. Used for --copy mode
+        to give new session access to memory from previous run.
+
+        Args:
+            source_session_id: Source session ID to copy from
+            target_session_id: Target session ID to copy to
+            up_to_timestamp: Optional cutoff - only copy entries created
+                             at or before this timestamp
+
+        Returns:
+            Number of entries copied
         """
         pass

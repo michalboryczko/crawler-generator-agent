@@ -15,7 +15,7 @@ You MUST follow the workflow in EXACT order. DO NOT skip steps.
 
 ### Plan Generation Tools
 - **plan_draft_provider**: Get the plan.md template structure with all 10 required sections. Call this FIRST to understand the expected plan format.
-- **prepare_crawler_configuration**: Generate crawler config JSON from collected selectors. Pass the selectors from collected_information, not hardcoded values.
+- **prepare_crawler_configuration**: Generate crawler config JSON from collected selectors. CRITICAL: You MUST pass BOTH `listing_selectors` AND `detail_selectors` from Selector Agent output. These are REQUIRED parameters - the tool will fail without them. Extract the complete selector objects from collected_information.
 - **supervisor_tool**: Validate generated output quality. Call this AFTER creating the plan content, BEFORE saving to file. This tool validates - it needs something to validate!
 
 ### File Tools
@@ -42,12 +42,19 @@ Review the `collected_information` provided in your input:
 Extract the key data needed for the plan from each agent's output.
 
 ### Step 3: Generate crawler configuration
-Call `prepare_crawler_configuration` with data extracted from collected_information:
+Call `prepare_crawler_configuration` with data extracted from collected_information.
+
+**REQUIRED parameters - you MUST pass all three:**
+- `target_url`: The starting URL from input
+- `listing_selectors`: The COMPLETE listing_selectors object from Selector Agent output
+- `detail_selectors`: The COMPLETE detail_selectors object from Selector Agent output
+
+**Example call:**
 ```
 prepare_crawler_configuration(
   target_url: <from input>,
-  listing_selectors: <from Selector Agent output>,
-  detail_selectors: <from Selector Agent output>,
+  listing_selectors: <COMPLETE object from Selector Agent - contains listing_container, article_link, etc.>,
+  detail_selectors: <COMPLETE object from Selector Agent - contains title, content, date, authors, etc.>,
   pagination_config: {
     type: <from Discovery Agent>,
     selector: <from Discovery Agent>,
@@ -57,7 +64,9 @@ prepare_crawler_configuration(
 )
 ```
 
-IMPORTANT: Pass the actual selector data from collected_information. The tool generates dynamic arrays like:
+**CRITICAL: DO NOT omit detail_selectors!** Both listing and detail selectors are required for a complete crawler configuration.
+
+The tool generates dynamic arrays like:
 ```json
 {
   "listing": [
@@ -109,7 +118,6 @@ Review the validation result:
 Your FINAL response must be JSON with these fields:
 ```json
 {
-  "crawler_config": { ... },  // The config from prepare_crawler_configuration
   "plan_file_path": "plan.md",  // Path where plan was saved
   "status": "complete",  // One of: complete, needs_revision, failed
   "validation_result": {
@@ -126,12 +134,14 @@ DO NOT return the entire plan content in the response - just the path and status
 
 1. **Use collected_information from input** - Do NOT rely on specific memory keys
 2. **Call plan_draft_provider FIRST** - Your very first tool call must be this
-3. **Pass actual data to prepare_crawler_configuration** - Extract from collected_information
-4. **supervisor_tool is LAST validation step** - Only call AFTER you have generated plan content to validate
-5. **Dynamic selectors** - Use the {property, selectors} array format, not hardcoded fields
-6. **Return path, not content** - Output should have plan_file_path, not the full plan text
+3. **Pass BOTH listing_selectors AND detail_selectors** - These are REQUIRED. Extract complete objects from Selector Agent output in collected_information
+4. **NEVER omit detail_selectors** - The crawler needs both listing AND detail selectors to function
+5. **supervisor_tool is LAST validation step** - Only call AFTER you have generated plan content to validate
+6. **Dynamic selectors** - Use the {property, selectors} array format, not hardcoded fields
+7. **Return path, not content** - Output should have plan_file_path, not the full plan text
 
 ## FORBIDDEN
 - DO NOT call supervisor_tool as your first action
 - DO NOT skip plan_draft_provider
 - DO NOT call supervisor_tool before you have plan content to validate
+- DO NOT call prepare_crawler_configuration without BOTH listing_selectors AND detail_selectors
