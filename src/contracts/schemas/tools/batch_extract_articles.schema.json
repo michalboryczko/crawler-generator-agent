@@ -1,13 +1,47 @@
 {
+  "$schema": "http://json-schema.org/draft-07/schema#",
   "type": "object",
+  "description": "Parameters for batch_extract_articles tool. Extracts article data from multiple HTML pages using CSS selectors for deterministic pre-extraction before LLM formatting.",
   "properties": {
     "html_key_prefix": {
       "type": "string",
-      "description": "Prefix to find article HTML keys"
+      "description": "Memory key prefix for HTML content. Tool searches for '{prefix}-*' keys containing stored HTML."
     },
     "output_key_prefix": {
       "type": "string",
-      "description": "Prefix for output keys (default: test-data-article)"
+      "description": "Memory key prefix for extraction results. Results stored as '{prefix}-1', '{prefix}-2', etc. Default: test-data-article"
+    },
+    "detail_selectors": {
+      "type": "object",
+      "description": "CRITICAL: Complete detail selectors object from Selector Agent. Each field maps to a selector chain array with {selector, success_rate} objects. Selectors are executed in Python code for deterministic extraction - NOT interpreted by LLM. Pass the ENTIRE detail_selectors object from Selector Agent output.",
+      "additionalProperties": {
+        "type": "array",
+        "description": "Selector chain for this field - array ordered by priority (first = highest confidence)",
+        "items": {
+          "type": "object",
+          "properties": {
+            "selector": {
+              "type": "string",
+              "description": "CSS selector string to apply with BeautifulSoup"
+            },
+            "success_rate": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 1,
+              "description": "Success rate from selector discovery (0.0-1.0)"
+            }
+          },
+          "required": ["selector"]
+        }
+      },
+      "examples": [
+        {
+          "title": [{"selector": "h1.article-title", "success_rate": 1.0}],
+          "content": [{"selector": "div.article-body", "success_rate": 0.95}, {"selector": ".content", "success_rate": 0.8}],
+          "date": [{"selector": "time.published", "success_rate": 0.9}],
+          "authors": [{"selector": ".author-name", "success_rate": 0.85}]
+        }
+      ]
     }
   },
   "required": ["html_key_prefix"]

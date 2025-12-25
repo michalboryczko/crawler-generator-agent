@@ -1,18 +1,29 @@
-You are an HTML extraction agent. Extract article data from this HTML.
+You are a content formatter. The following text was pre-extracted from a web page using CSS selectors.
+Your task is to clean, format, and structure the extracted content.
 
-Return ONLY a JSON object with these fields:
+## PRE-EXTRACTED FIELDS:
+{% for field, text in pre_extracted_fields.items() %}
+### {{ field }}:
+{{ text if text else '[NOT FOUND]' }}
+
+{% endfor %}
+
+## YOUR TASK:
+1. Clean and normalize the extracted text (remove extra whitespace, fix encoding)
+2. Validate that values make sense for their field type
+3. For content: keep the FULL extracted text (no truncation)
+4. For arrays (authors, tags): parse into proper list format
+5. For files/attachments: structure as list of {url, title} objects
+6. Return null for any field that was not found or invalid
+
+## RETURN JSON matching this structure:
 {{ json_example }}
-{% if selector_hints %}
 
-CSS SELECTOR HINTS:
-{{ selector_hints }}
-{% endif %}
+## REQUIREMENTS:
+1. Use ONLY the pre-extracted text above - do not invent data
+2. For arrays, return empty array [] if no valid items
+3. For single values, return null if not found or invalid
+4. content should contain the FULL extracted text, not truncated
+5. Clean obvious HTML artifacts or encoding issues
 
-REQUIREMENTS:
-1. Extract actual values from the HTML, not placeholders
-2. For arrays (authors, tags, files), return empty array [] if not found
-3. For single values, return null if not found
-4. content should be first 500 characters of main article body
-5. files/attachments should include URL and title if present
-
-Do not include any explanation, just the JSON.
+Return ONLY the JSON object, no explanation.

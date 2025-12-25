@@ -3,11 +3,11 @@
 This module uses the @traced_tool decorator for automatic tool instrumentation.
 """
 
-import copy
 from typing import TYPE_CHECKING, Any
 
 from ...contracts.schema_parser import TOOL_SCHEMAS_PATH, load_schema
 from ...observability.decorators import traced_tool
+from ...utils.schema_merger import merge_agent_tool_schema
 from ..base import BaseTool
 from ..validation import validated_tool
 
@@ -68,7 +68,7 @@ class AgentTool(BaseTool):
         if self._input_schema:
             required = self._input_schema.get("required", [])
             if required:
-                desc += f"\n\nREQUIRED INPUT (pass via 'context' parameter): {', '.join(required)}"
+                desc += f"\n\nREQUIRED PARAMETERS: {', '.join(required)}"
 
         return desc
 
@@ -187,17 +187,25 @@ class AgentTool(BaseTool):
     def get_parameters_schema(self) -> dict[str, Any]:
         """Return JSON schema for tool parameters.
 
-        Loads base schema from file and customizes task description with agent name.
-        Returns OpenAI-compatible parameter schema with:
-        - task (required): Task description string
-        - context (optional): Context data object
-        - run_identifier (optional): UUID for validation tracking
-        - expected_outputs (optional): List of expected output fields
+        Merges base agent tool schema with agent-specific input schema.
+        Agent input fields (target_url, collected_information, etc.) are
+        merged at the top level, NOT nested in a context object.
+
+        Returns:
+            Merged schema with:
+            - task (required): Task description string
+            - Agent-specific required fields (e.g., target_url)
+            - run_identifier (optional): UUID for validation tracking
+            - expected_outputs (optional): List of expected output fields
         """
         schema_path = TOOL_SCHEMAS_PATH / "agent_tool.schema.json"
         base_schema = load_schema(str(schema_path))
-        # Create copy to avoid modifying cached schema
-        schema = copy.deepcopy(base_schema)
+
+        # Merge base schema with agent-specific input schema
+        merged = merge_agent_tool_schema(base_schema, self._input_schema)
+
         # Customize task description with agent name
-        schema["properties"]["task"]["description"] = f"Task for the {self._agent.name} agent"
-        return schema
+        if "properties" in merged and "task" in merged["properties"]:
+            merged["properties"]["task"]["description"] = f"Task for the {self._agent.name} agent"
+
+        return merged

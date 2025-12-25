@@ -9,12 +9,14 @@ Prompts are now managed through the centralized PromptProvider.
 import json
 import time
 from typing import TYPE_CHECKING, Any
+from urllib.parse import urljoin
 
 from ..core.browser import BrowserSession
 from ..core.html_cleaner import clean_html_for_llm
 from ..core.json_parser import parse_json_response
 from ..observability.decorators import traced_tool
 from ..prompts import get_prompt_provider
+from ..utils.selector_executor import SelectorExecutor
 from .base import BaseTool
 from .validation import validated_tool
 
@@ -133,7 +135,11 @@ class RunExtractionAgentTool(BaseTool):
     @traced_tool(name="run_extraction_agent")
     @validated_tool
     def execute(self, **kwargs: Any) -> dict[str, Any]:
-        """Run extraction agent on stored HTML. Instrumented by @traced_tool."""
+        """Run extraction on stored HTML using CSS selectors.
+
+        Uses CSS selectors for deterministic extraction (no LLM).
+        Falls back to LLM only when no selectors are available.
+        """
         html_memory_key = kwargs["html_memory_key"]
         output_memory_key = kwargs["output_memory_key"]
         stored = self._service.read(html_memory_key)
@@ -143,28 +149,20 @@ class RunExtractionAgentTool(BaseTool):
         html = stored.get("html", "")
         url = stored.get("url", "")
 
-        # Truncate for LLM
-        if len(html) > 150000:
-            html = html[:150000] + "\n... [TRUNCATED]"
-
-        # Get discovered selectors for dynamic field extraction
+        # Get discovered selectors for extraction
         detail_selectors = self._service.read("detail_selectors") or {}
 
-        # Build dynamic extraction prompt based on discovered fields
-        extraction_prompt = self._build_extraction_prompt(detail_selectors)
+        extraction_method = "none"
+        extracted: dict[str, Any] = {}
 
-        messages = [
-            {"role": "system", "content": extraction_prompt},
-            {"role": "user", "content": f"URL: {url}\n\nHTML:\n{html}"},
-        ]
-
-        response = self.llm.chat(messages)
-        extracted_text = response.get("content", "{}")
-
-        # Parse JSON using shared parser
-        extracted = parse_json_response(extracted_text, allow_array=False)
-        if extracted is None:
-            extracted = {"error": "No JSON found", "raw": extracted_text[:200]}
+        if detail_selectors:
+            # DETERMINISTIC extraction using CSS selectors (no LLM)
+            extracted = SelectorExecutor.execute_all_selectors(html, detail_selectors)
+            extraction_method = "selector"
+        else:
+            # FALLBACK to LLM only when no selectors available
+            extracted = self._extract_with_llm(html, url)
+            extraction_method = "llm"
 
         # Create test entry
         test_entry = {
@@ -180,65 +178,70 @@ class RunExtractionAgentTool(BaseTool):
             "success": True,
             "result": f"Extracted to: {output_memory_key}",
             "fields": list(extracted.keys()) if isinstance(extracted, dict) else [],
+            "extraction_method": extraction_method,
         }
 
-    def _build_extraction_prompt(self, detail_selectors: dict) -> str:
-        """Build dynamic extraction prompt based on discovered selectors."""
-        # Default fields if no selectors discovered
-        default_fields: dict[str, FieldValue] = {
-            "title": "article title",
-            "date": "publication date or null",
-            "authors": ["author1", "author2"],
-            "content": "first 500 characters of main content",
-        }
+    def _extract_with_llm(self, html: str, url: str) -> dict[str, Any]:
+        """Fallback LLM extraction when no selectors available."""
+        if len(html) > 150000:
+            html = html[:150000] + "\n... [TRUNCATED]"
 
-        fields: dict[str, FieldValue]
-        if not detail_selectors:
-            fields = default_fields
-        else:
-            # Build fields from discovered selectors
-            fields = {}
-            for field_name, selector_chain in detail_selectors.items():
-                if not selector_chain:
-                    continue
+        # Build minimal prompt for raw HTML extraction
+        extraction_prompt = self._build_extraction_prompt({})
 
+        messages = [
+            {"role": "system", "content": extraction_prompt},
+            {"role": "user", "content": f"URL: {url}\n\nHTML:\n{html}"},
+        ]
+
+        response = self.llm.chat(messages)
+        extracted_text = response.get("content", "{}")
+
+        # Parse JSON using shared parser
+        extracted = parse_json_response(extracted_text, allow_array=False)
+        if extracted is None:
+            return {"error": "No JSON found", "raw": extracted_text[:200]}
+        return extracted
+
+    def _build_extraction_prompt(self, pre_extracted_fields: dict[str, str]) -> str:
+        """Build extraction prompt with pre-extracted text fields.
+
+        Args:
+            pre_extracted_fields: Dict mapping field names to extracted text
+
+        Returns:
+            Formatted prompt string for content formatting
+        """
+        # Build JSON example based on fields present
+        fields: dict[str, FieldValue] = {}
+
+        if pre_extracted_fields:
+            for field_name in pre_extracted_fields:
                 if field_name in ["authors", "tags"]:
                     fields[field_name] = ["value1", "value2"]
                 elif field_name in ["files", "attachments", "images", "related_articles"]:
                     fields[field_name] = [{"url": "...", "title": "..."}]
                 elif field_name == "content":
-                    fields[field_name] = "first 500 characters of main content"
+                    fields[field_name] = "full article content text"
                 elif field_name == "breadcrumbs":
                     fields[field_name] = ["Home", "Section", "Article"]
                 else:
                     fields[field_name] = f"{field_name} value or null"
 
-            if "title" not in fields:
-                fields["title"] = "article title"
-            if "content" not in fields:
-                fields["content"] = "first 500 characters of main content"
+        # Ensure required fields are present in example
+        if "title" not in fields:
+            fields["title"] = "article title"
+        if "content" not in fields:
+            fields["content"] = "full article content text"
 
         json_example = json.dumps(fields, indent=4)
 
-        # Build selector hints string
-        selector_hints = ""
-        if detail_selectors:
-            hints = []
-            for field_name, selector_chain in detail_selectors.items():
-                if isinstance(selector_chain, list) and len(selector_chain) > 0:
-                    primary = selector_chain[0]
-                    selector = (
-                        primary.get("selector", "") if isinstance(primary, dict) else str(primary)
-                    )
-                    if selector:
-                        hints.append(f"- {field_name}: use selector '{selector}'")
-            if hints:
-                selector_hints = "\n".join(hints)
-
-        # Use PromptProvider template
+        # Use PromptProvider template with pre-extracted fields
         provider = get_prompt_provider()
         return provider.render_prompt(
-            "article_extraction", json_example=json_example, selector_hints=selector_hints
+            "article_extraction",
+            json_example=json_example,
+            pre_extracted_fields=pre_extracted_fields,
         )
 
 
@@ -257,9 +260,22 @@ class BatchExtractArticlesTool(BaseTool):
     @traced_tool(name="batch_extract_articles")
     @validated_tool
     def execute(self, **kwargs: Any) -> dict[str, Any]:
-        """Extract from all article HTML with matching prefix. Instrumented by @traced_tool."""
+        """Extract from all article HTML with matching prefix.
+
+        Accepts detail_selectors as parameter for deterministic pre-extraction.
+        """
         html_key_prefix = kwargs["html_key_prefix"]
         output_key_prefix = kwargs.get("output_key_prefix", "test-data-article")
+
+        # Accept selectors as parameter (priority) or read from memory (fallback)
+        detail_selectors = kwargs.get("detail_selectors")
+        if detail_selectors is None:
+            detail_selectors = self._service.read("detail_selectors") or {}
+
+        # Store for RunExtractionAgentTool to use during extraction
+        if detail_selectors:
+            self._service.write("detail_selectors", detail_selectors)
+
         html_keys = self._service.search(f"{html_key_prefix}-*")
 
         if not html_keys:
@@ -279,6 +295,7 @@ class BatchExtractArticlesTool(BaseTool):
                     "html_key": html_key,
                     "output_key": output_key,
                     "success": result.get("success", False),
+                    "pre_extracted_count": result.get("pre_extracted_field_count", 0),
                 }
             )
 
@@ -306,7 +323,10 @@ class RunListingExtractionAgentTool(BaseTool):
     @traced_tool(name="run_listing_extraction_agent")
     @validated_tool
     def execute(self, **kwargs: Any) -> dict[str, Any]:
-        """Extract article URLs from listing page HTML. Instrumented by @traced_tool."""
+        """Extract article URLs from listing page HTML.
+
+        Uses CSS selectors for deterministic extraction, with LLM as fallback.
+        """
         html_memory_key = kwargs["html_memory_key"]
         output_memory_key = kwargs["output_memory_key"]
         article_selector = kwargs.get("article_selector")
@@ -317,17 +337,30 @@ class RunListingExtractionAgentTool(BaseTool):
         html = stored.get("html", "")
         url = stored.get("url", "")
 
-        # Try to extract just the main content area using listing_container_selector
-        main_content_html = html
-        listing_container_selector = self._service.read("listing_container_selector")
+        # Try CSS selector extraction first (deterministic approach)
+        article_urls: list[str] = []
+        extraction_method = "none"
 
-        if listing_container_selector:
-            focused_html = self._extract_main_content(html, listing_container_selector)
-            if focused_html and len(focused_html) < len(html):
-                main_content_html = focused_html
+        if article_selector:
+            article_urls = self._extract_urls_with_selector(html, url, article_selector)
+            if article_urls:
+                extraction_method = "selector"
 
-        # Use LLM for extraction
-        article_urls = self._extract_urls_with_llm(main_content_html, url, article_selector)
+        # Fallback to LLM only if selector extraction fails
+        if not article_urls:
+            # Try to focus on main content area first
+            main_content_html = html
+            listing_container_selector = self._service.read("listing_container_selector")
+
+            if listing_container_selector:
+                focused = SelectorExecutor.execute_selector(html, listing_container_selector)
+                if focused:
+                    # Re-wrap for HTML parsing
+                    main_content_html = f"<div>{focused}</div>"
+
+            article_urls = self._extract_urls_with_llm(main_content_html, url, article_selector)
+            if article_urls:
+                extraction_method = "llm"
 
         extracted = {
             "article_urls": article_urls,
@@ -351,25 +384,31 @@ class RunListingExtractionAgentTool(BaseTool):
             "result": f"Extracted {len(article_urls)} article URLs to: {output_memory_key}",
             "article_urls": article_urls,
             "article_count": len(article_urls),
+            "extraction_method": extraction_method,
         }
 
-    def _extract_main_content(self, html: str, container_selector: str) -> str | None:
-        """Extract just the main content container HTML using the selector."""
-        try:
-            from bs4 import BeautifulSoup
+    def _extract_urls_with_selector(self, html: str, base_url: str, selector: str) -> list[str]:
+        """Extract article URLs using CSS selector directly (deterministic)."""
+        hrefs = SelectorExecutor.extract_all_attributes(html, selector, "href")
+        if not hrefs:
+            return []
 
-            soup = BeautifulSoup(html, "html.parser")
-            container = soup.select_one(container_selector)
-            if container:
-                return str(container)
-            return None
-        except Exception:
-            return None
+        # Convert relative URLs to absolute and deduplicate
+        urls: list[str] = []
+        seen: set[str] = set()
+        for href in hrefs:
+            if not href:
+                continue
+            absolute_url = urljoin(base_url, href)
+            if absolute_url not in seen:
+                seen.add(absolute_url)
+                urls.append(absolute_url)
+        return urls
 
     def _extract_urls_with_llm(
         self, html: str, url: str, article_selector: str | None
     ) -> list[str]:
-        """Extract URLs using LLM."""
+        """Extract URLs using LLM (fallback when selector fails)."""
         if len(html) > 150000:
             html = html[:150000] + "\n... [TRUNCATED]"
 
@@ -414,10 +453,29 @@ class BatchExtractListingsTool(BaseTool):
     @traced_tool(name="batch_extract_listings")
     @validated_tool
     def execute(self, **kwargs: Any) -> dict[str, Any]:
-        """Extract from all listing HTML with matching prefix. Instrumented by @traced_tool."""
+        """Extract from all listing HTML with matching prefix.
+
+        Accepts listing_selectors for deterministic URL extraction.
+        """
         html_key_prefix = kwargs["html_key_prefix"]
         output_key_prefix = kwargs.get("output_key_prefix", "test-data-listing")
+
+        # Accept listing_selectors parameter for full selector chain support
+        listing_selectors = kwargs.get("listing_selectors", {})
+
+        # Extract primary article_selector for backward compatibility
         article_selector = kwargs.get("article_selector")
+        if not article_selector and listing_selectors.get("article_link"):
+            chain = listing_selectors["article_link"]
+            if chain and len(chain) > 0:
+                article_selector = chain[0].get("selector")
+
+        # Store container selector for RunListingExtractionAgentTool
+        if listing_selectors.get("listing_container"):
+            chain = listing_selectors["listing_container"]
+            if chain and len(chain) > 0:
+                self._service.write("listing_container_selector", chain[0].get("selector"))
+
         html_keys = self._service.search(f"{html_key_prefix}-*")
 
         if not html_keys:

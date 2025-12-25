@@ -227,19 +227,33 @@ class TestAgentToolParametersSchema:
         assert schema["properties"]["task"]["type"] == "string"
         assert "task" in schema["required"]
 
-    def test_parameters_schema_includes_context(self, mock_agent, sample_schema, tmp_path):
-        """Parameters schema includes optional context parameter."""
+    def test_parameters_schema_merges_agent_input(self, mock_agent, sample_schema, tmp_path):
+        """Parameters schema merges agent input schema at top level."""
         schema_path = tmp_path / "output.schema.json"
         schema_path.write_text(json.dumps(sample_schema))
 
-        tool = AgentTool(agent=mock_agent, output_schema_path=str(schema_path))
+        input_schema = {
+            "type": "object",
+            "properties": {"target_url": {"type": "string", "format": "uri"}},
+            "required": ["target_url"],
+        }
+        input_schema_path = tmp_path / "input.schema.json"
+        input_schema_path.write_text(json.dumps(input_schema))
+
+        tool = AgentTool(
+            agent=mock_agent,
+            output_schema_path=str(schema_path),
+            input_schema_path=str(input_schema_path),
+        )
 
         schema = tool.get_parameters_schema()
 
-        assert "context" in schema["properties"]
-        assert schema["properties"]["context"]["type"] == "object"
-        # context is optional - not in required
-        assert "context" not in schema["required"]
+        # Agent input fields merged at top level (not nested in context)
+        assert "target_url" in schema["properties"]
+        assert schema["properties"]["target_url"]["format"] == "uri"
+        # Required fields merged
+        assert "task" in schema["required"]
+        assert "target_url" in schema["required"]
 
 
 class TestAgentToolOpenAISchema:
@@ -427,7 +441,8 @@ class TestAgentToolInputValidation:
         result = tool.execute(task="Generate plan")  # Missing required fields
 
         assert result["success"] is False
-        assert result["error"] == "Input contract validation failed"
+        # Validation catches missing required args from merged schema
+        assert "Missing required arguments" in result["error"]
         # Agent should NOT have been called
         assert len(mock_agent._run_calls) == 0
 

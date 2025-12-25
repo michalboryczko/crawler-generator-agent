@@ -1,14 +1,10 @@
 {
   "type": "object",
+  "description": "Base schema for agent tools. Agent-specific input fields are merged at top level.",
   "properties": {
     "task": {
       "type": "string",
       "description": "Task description for the agent"
-    },
-    "context": {
-      "type": "object",
-      "description": "REQUIRED data for the agent's input contract. Check the tool description for required fields. For plan_generator_agent, must include: target_url, task_name, collected_information (array of sub-agent outputs).",
-      "additionalProperties": true
     },
     "run_identifier": {
       "type": "string",

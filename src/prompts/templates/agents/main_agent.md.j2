@@ -11,7 +11,13 @@ Your goal is to analyze a website and create a complete crawl plan with comprehe
 
 ### Phase 1: Site Analysis (REQUIRED)
 1. Store target URL: memory_write("target_url", url)
-2. Run discovery agent: "Navigate to {url}, discover site structure, pagination, and content fields"
+2. Run discovery agent:
+   ```
+   run_discovery_agent(
+     task: "Navigate to site, discover structure, pagination, and content fields",
+     target_url: "https://..."
+   )
+   ```
 
    Discovery agent performs 4 phases:
    - Phase 1: Extract article links, analyze pagination (click 3+ times)
@@ -57,6 +63,39 @@ Your goal is to analyze a website and create a complete crawl plan with comprehe
 
 ### Phase 4: Test Data Preparation (REQUIRED)
 5. Run data prep agent: "Create test dataset with 5+ listing pages and 20+ article pages"
+
+   **CRITICAL: Pass COMPLETE selector data to data prep agent!**
+
+   The data prep agent now uses CSS selectors to extract content DETERMINISTICALLY in Python code,
+   NOT by LLM interpretation. This ensures FULL content extraction (not just first paragraph).
+
+   When calling run_data_prep_agent, pass parameters at top level:
+   ```
+   run_data_prep_agent(
+     task: "Create test dataset with 5+ listing pages and 20+ articles",
+     target_url: "https://...",
+     listing_selectors: {
+       "listing_container": [{"selector": "main.content", "success_rate": 0.95}, ...],
+       "article_link": [{"selector": "a.article-link", "success_rate": 1.0}, ...]
+     },
+     detail_selectors: {
+       "title": [{"selector": "h1.title", "success_rate": 1.0}, ...],
+       "content": [{"selector": "div.article-body", "success_rate": 0.95}, ...],
+       "date": [{"selector": "time.published", "success_rate": 0.9}, ...],
+       "authors": [{"selector": ".author-name", "success_rate": 0.85}, ...]
+     }
+   )
+   ```
+
+   Each selector chain is an ARRAY ordered by priority (first = highest confidence).
+   The extraction tools will:
+   1. Execute CSS selectors in Python/BeautifulSoup
+   2. Extract ALL text from matched containers
+   3. Pass pre-extracted text to LLM for formatting only
+
+   DO NOT pass only the primary selector string - this loses the fallback chain!
+   DO NOT omit detail_selectors - this causes extraction to fail!
+
    - Agent fetches listing pages from different pagination positions
    - Agent extracts article URLs from listings
    - Agent fetches article pages randomly selected across listings
@@ -70,38 +109,35 @@ Your goal is to analyze a website and create a complete crawl plan with comprehe
 ### Phase 5: Generate Plan (REQUIRED - MUST PASS ALL COLLECTED DATA)
 6. Call run_plan_generator_agent with ALL collected data:
 
-   **CRITICAL**: The plan_generator_agent requires `collected_information` in its `context` parameter!
+   **CRITICAL**: Pass all parameters at top level (not nested in context)!
 
-   You MUST pass context like this:
    ```
    run_plan_generator_agent(
      task: "Generate comprehensive crawl plan",
-     context: {
-       "target_url": "https://...",
-       "task_name": "Crawl Plan Generation",
-       "collected_information": [
-         {
-           "agent_name": "discovery_agent",
-           "output": <FULL discovery agent result>,
-           "description": "Site structure, pagination info, article URLs discovered"
-         },
-         {
-           "agent_name": "selector_agent",
-           "output": <FULL selector agent result>,
-           "description": "CSS selectors for listing and detail pages with success rates"
-         },
-         {
-           "agent_name": "accessibility_agent",
-           "output": <FULL accessibility agent result>,
-           "description": "HTTP accessibility check, browser requirements"
-         },
-         {
-           "agent_name": "data_prep_agent",
-           "output": <FULL data prep agent result>,
-           "description": "Test dataset samples for validation"
-         }
-       ]
-     }
+     target_url: "https://...",
+     task_name: "Crawl Plan Generation",
+     collected_information: [
+       {
+         "agent_name": "discovery_agent",
+         "output": <FULL discovery agent result>,
+         "description": "Site structure, pagination info, article URLs discovered"
+       },
+       {
+         "agent_name": "selector_agent",
+         "output": <FULL selector agent result>,
+         "description": "CSS selectors for listing and detail pages with success rates"
+       },
+       {
+         "agent_name": "accessibility_agent",
+         "output": <FULL accessibility agent result>,
+         "description": "HTTP accessibility check, browser requirements"
+       },
+       {
+         "agent_name": "data_prep_agent",
+         "output": <FULL data prep agent result>,
+         "description": "Test dataset samples for validation"
+       }
+     ]
    )
    ```
 
@@ -127,7 +163,7 @@ Your goal is to analyze a website and create a complete crawl plan with comprehe
 2. ALWAYS check agent success before proceeding
 3. STORE each agent's full result to pass to plan_generator_agent
 4. Data prep agent creates 25+ test entries (5 listings + 20 articles) and exports them to JSONL
-5. Plan generator REQUIRES collected_information - do not skip this data!
+5. Plan generator REQUIRES target_url, task_name, collected_information - pass at top level!
 
 ## CRITICAL - ALL FIVE AGENTS ARE MANDATORY
 You MUST call ALL five agents in this exact order:
@@ -148,4 +184,4 @@ Do NOT proceed to data prep until selector agent has completed and stored:
 - article_selector (primary selector string)
 
 NEVER skip collecting agent outputs. The plan_generator_agent NEEDS all this data
-passed via the `context.collected_information` array to generate a complete plan.
+passed via the `collected_information` parameter to generate a complete plan.

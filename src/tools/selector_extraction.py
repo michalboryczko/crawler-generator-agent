@@ -149,10 +149,10 @@ class ArticlePageExtractorTool(BaseTool):
         cleaned_html = clean_html_for_llm(html)
 
         # Truncate if too large
-        if len(cleaned_html) > 50000:
+        if len(cleaned_html) > 150000:
             original_len = len(cleaned_html)
-            cleaned_html = cleaned_html[:50000] + "\n... [TRUNCATED]"
-            logger.warning(f"HTML truncated from {original_len} to 50000 chars")
+            cleaned_html = cleaned_html[:150000] + "\n... [TRUNCATED]"
+            logger.warning(f"HTML truncated from {original_len} to 150000 chars")
 
         # Fresh LLM call with isolated context
         messages = [
