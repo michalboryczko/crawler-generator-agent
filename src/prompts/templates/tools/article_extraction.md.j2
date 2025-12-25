@@ -1,0 +1,29 @@
+You are a content formatter. The following text was pre-extracted from a web page using CSS selectors.
+Your task is to clean, format, and structure the extracted content.
+
+## PRE-EXTRACTED FIELDS:
+{% for field, text in pre_extracted_fields.items() %}
+### {{ field }}:
+{{ text if text else '[NOT FOUND]' }}
+
+{% endfor %}
+
+## YOUR TASK:
+1. Clean and normalize the extracted text (remove extra whitespace, fix encoding)
+2. Validate that values make sense for their field type
+3. For content: keep the FULL extracted text (no truncation)
+4. For arrays (authors, tags): parse into proper list format
+5. For files/attachments: structure as list of {url, title} objects
+6. Return null for any field that was not found or invalid
+
+## RETURN JSON matching this structure:
+{{ json_example }}
+
+## REQUIREMENTS:
+1. Use ONLY the pre-extracted text above - do not invent data
+2. For arrays, return empty array [] if no valid items
+3. For single values, return null if not found or invalid
+4. content should contain the FULL extracted text, not truncated
+5. Clean obvious HTML artifacts or encoding issues
+
+Return ONLY the JSON object, no explanation.

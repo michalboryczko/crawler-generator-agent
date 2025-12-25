@@ -1,0 +1,10 @@
+{
+  "type": "object",
+  "properties": {
+    "key": {
+      "type": "string",
+      "description": "The key to read from memory"
+    }
+  },
+  "required": ["key"]
+}

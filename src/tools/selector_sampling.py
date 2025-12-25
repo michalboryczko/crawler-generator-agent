@@ -6,18 +6,20 @@ The @traced_tool decorator handles all tool instrumentation.
 Prompts are now managed through the centralized PromptProvider.
 """
 
-import json
 import logging
 import random
 import re
-from typing import Any
+from typing import TYPE_CHECKING, Any
 from urllib.parse import parse_qs, urlencode, urlparse, urlunparse
 
 from ..core.json_parser import parse_json_response
-from ..core.llm import LLMClient
 from ..observability.decorators import traced_tool
 from ..prompts import get_prompt_provider
 from .base import BaseTool
+from .validation import validated_tool
+
+if TYPE_CHECKING:
+    from ..core.llm import LLMClientFactory
 
 logger = logging.getLogger(__name__)
 
@@ -39,14 +41,16 @@ class ListingPagesGeneratorTool(BaseTool):
     then calculates optimal sample size (2% of total, min 5, max 20) and returns
     URLs spread across the pagination range."""
 
-    def __init__(self, llm: LLMClient):
-        self.llm = llm
+    def __init__(self, llm_factory: "LLMClientFactory"):
+        self._llm = llm_factory.get_client("listing_pages_generator")
 
     @traced_tool(name="generate_listing_pages")
-    def execute(
-        self, target_url: str, max_pages: int, pagination_links: list[str] | None = None
-    ) -> dict[str, Any]:
+    @validated_tool
+    def execute(self, **kwargs: Any) -> dict[str, Any]:
         """Generate listing page URLs to analyze. Instrumented by @traced_tool."""
+        target_url = kwargs["target_url"]
+        max_pages = kwargs["max_pages"]
+        pagination_links = kwargs.get("pagination_links")
         # Detect pagination pattern from links
         if pagination_links and len(pagination_links) >= 2:
             pattern_info = self._detect_pagination_pattern(target_url, pagination_links)
@@ -104,7 +108,7 @@ class ListingPagesGeneratorTool(BaseTool):
         ]
 
         try:
-            response = self.llm.chat(messages)
+            response = self._llm.chat(messages)
             content = response.get("content", "")
             result = parse_json_response(content)
 
@@ -232,21 +236,6 @@ class ListingPagesGeneratorTool(BaseTool):
 
         return sorted(list(pages))
 
-    def get_parameters_schema(self) -> dict[str, Any]:
-        return {
-            "type": "object",
-            "properties": {
-                "target_url": {"type": "string", "description": "Base URL of the listing page"},
-                "max_pages": {"type": "integer", "description": "Total number of pages available"},
-                "pagination_links": {
-                    "type": "array",
-                    "items": {"type": "string"},
-                    "description": "Sample pagination URLs to analyze for pattern detection (optional)",
-                },
-            },
-            "required": ["target_url", "max_pages"],
-        }
-
 
 class ArticlePagesGeneratorTool(BaseTool):
     """Generate article page URLs for selector verification.
@@ -260,14 +249,16 @@ class ArticlePagesGeneratorTool(BaseTool):
     description = """Generate article page URLs for selector verification.
     Groups URLs by pattern and samples appropriately from each group."""
 
-    def __init__(self, llm: LLMClient):
-        self.llm = llm
+    def __init__(self, llm_factory: "LLMClientFactory"):
+        self._llm = llm_factory.get_client("article_pages_generator")
 
     @traced_tool(name="generate_article_pages")
-    def execute(
-        self, article_urls: list[str], min_per_group: int = 3, sample_percentage: float = 0.20
-    ) -> dict[str, Any]:
+    @validated_tool
+    def execute(self, **kwargs: Any) -> dict[str, Any]:
         """Generate article URLs to analyze. Instrumented by @traced_tool."""
+        article_urls = kwargs["article_urls"]
+        min_per_group = kwargs.get("min_per_group", 3)
+        sample_percentage = kwargs.get("sample_percentage", 0.20)
         if not article_urls:
             return {"success": False, "error": "No article URLs provided"}
 
@@ -329,17 +320,14 @@ class ArticlePagesGeneratorTool(BaseTool):
         ]
 
         try:
-            response = self.llm.chat(messages)
+            response = self._llm.chat(messages)
             content = response.get("content", "")
 
-            # Parse JSON from response
-            # Extract JSON from markdown code blocks if present
-            if "```json" in content:
-                content = content.split("```json")[1].split("```")[0]
-            elif "```" in content:
-                content = content.split("```")[1].split("```")[0]
-
-            data = json.loads(content.strip())
+            # Parse JSON using shared parser
+            data = parse_json_response(content, allow_array=False)
+            if data is None:
+                logger.warning("Failed to parse URL pattern analysis response")
+                return {}
             patterns = data.get("patterns", [])
 
             # Group all URLs by matched patterns
@@ -401,24 +389,3 @@ class ArticlePagesGeneratorTool(BaseTool):
             groups[pattern_key].append(url)
 
         return groups
-
-    def get_parameters_schema(self) -> dict[str, Any]:
-        return {
-            "type": "object",
-            "properties": {
-                "article_urls": {
-                    "type": "array",
-                    "items": {"type": "string"},
-                    "description": "All collected article URLs",
-                },
-                "min_per_group": {
-                    "type": "integer",
-                    "description": "Minimum samples per pattern group (default: 3)",
-                },
-                "sample_percentage": {
-                    "type": "number",
-                    "description": "Percentage to sample per group (default: 0.20)",
-                },
-            },
-            "required": ["article_urls"],
-        }

@@ -1,0 +1,19 @@
+{
+  "type": "object",
+  "properties": {
+    "article_urls": {
+      "type": "array",
+      "items": {"type": "string"},
+      "description": "All collected article URLs"
+    },
+    "min_per_group": {
+      "type": "integer",
+      "description": "Minimum samples per pattern group (default: 3)"
+    },
+    "sample_percentage": {
+      "type": "number",
+      "description": "Percentage to sample per group (default: 0.20)"
+    }
+  },
+  "required": ["article_urls"]
+}

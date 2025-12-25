@@ -1,0 +1,18 @@
+{
+  "type": "object",
+  "properties": {
+    "html_memory_key": {
+      "type": "string",
+      "description": "Key containing stored listing HTML"
+    },
+    "output_memory_key": {
+      "type": "string",
+      "description": "Key to store listing test entry"
+    },
+    "article_selector": {
+      "type": "string",
+      "description": "Optional CSS selector hint for articles"
+    }
+  },
+  "required": ["html_memory_key", "output_memory_key"]
+}

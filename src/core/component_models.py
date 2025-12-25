@@ -29,6 +29,7 @@ class ComponentModelConfig:
         selector_agent: CSS selector discovery agent
         accessibility_agent: HTTP accessibility check agent
         data_prep_agent: Test data preparation agent
+        plan_generator_agent: Plan generation from collected data
 
         # LLM-based tools
         listing_page_extractor: Extract selectors from listing pages
@@ -39,6 +40,7 @@ class ComponentModelConfig:
         batch_extract_listings: Batch listing extraction
         batch_extract_articles: Batch article extraction
         extraction_agent: Isolated extraction context
+        supervisor_tool: LLM-based output validation
     """
 
     # Agent model assignments
@@ -47,6 +49,7 @@ class ComponentModelConfig:
     selector_agent: str = GLOBAL_DEFAULT_MODEL
     accessibility_agent: str = GLOBAL_DEFAULT_MODEL
     data_prep_agent: str = GLOBAL_DEFAULT_MODEL
+    plan_generator_agent: str = GLOBAL_DEFAULT_MODEL
 
     # Tool model assignments (for LLM-based tools)
     listing_page_extractor: str = GLOBAL_DEFAULT_MODEL
@@ -57,6 +60,23 @@ class ComponentModelConfig:
     batch_extract_listings: str = GLOBAL_DEFAULT_MODEL
     batch_extract_articles: str = GLOBAL_DEFAULT_MODEL
     extraction_agent: str = GLOBAL_DEFAULT_MODEL
+    supervisor_tool: str = GLOBAL_DEFAULT_MODEL
+
+    @classmethod
+    def with_default(cls, model_id: str) -> "ComponentModelConfig":
+        """Create config where all components use the same model.
+
+        Useful for legacy mode where a single model is used for everything.
+
+        Args:
+            model_id: The model ID to use for all components
+
+        Returns:
+            ComponentModelConfig with all fields set to the given model
+        """
+        # Build kwargs for all fields with the same model
+        field_values = {field: model_id for field in cls.__dataclass_fields__}
+        return cls(**field_values)
 
     @classmethod
     def from_env(cls) -> "ComponentModelConfig":
@@ -86,6 +106,7 @@ class ComponentModelConfig:
             selector_agent=os.getenv("SELECTOR_AGENT_MODEL", global_default),
             accessibility_agent=os.getenv("ACCESSIBILITY_AGENT_MODEL", global_default),
             data_prep_agent=os.getenv("DATA_PREP_AGENT_MODEL", global_default),
+            plan_generator_agent=os.getenv("PLAN_GENERATOR_AGENT_MODEL", global_default),
             # Tools
             listing_page_extractor=os.getenv("LISTING_PAGE_EXTRACTOR_MODEL", global_default),
             article_page_extractor=os.getenv("ARTICLE_PAGE_EXTRACTOR_MODEL", global_default),
@@ -95,6 +116,7 @@ class ComponentModelConfig:
             batch_extract_listings=os.getenv("BATCH_EXTRACT_LISTINGS_MODEL", global_default),
             batch_extract_articles=os.getenv("BATCH_EXTRACT_ARTICLES_MODEL", global_default),
             extraction_agent=os.getenv("EXTRACTION_AGENT_MODEL", global_default),
+            supervisor_tool=os.getenv("SUPERVISOR_TOOL_MODEL", global_default),
         )
 
         # Log non-default assignments

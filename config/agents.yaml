@@ -22,3 +22,7 @@ agents:
   main:
     output_contract_schema_path: "src/contracts/schemas/main_agent/output.schema.json"
     input_contract_schema_path: "src/contracts/schemas/main_agent/input.schema.json"
+
+  plan_generator:
+    output_contract_schema_path: "src/contracts/schemas/plan_generator_agent/output.schema.json"
+    input_contract_schema_path: "src/contracts/schemas/plan_generator_agent/input.schema.json"

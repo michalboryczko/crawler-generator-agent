@@ -46,16 +46,10 @@ class DescribeInputContractTool(BaseTool):
 
     @traced_tool()
     @validated_tool
-    def execute(self, agent_name: str) -> dict[str, Any]:
-        """Get input contract description for an agent.
+    def execute(self, **kwargs: Any) -> dict[str, Any]:
+        """Get input contract description for an agent. Instrumented by @traced_tool."""
+        agent_name = kwargs["agent_name"]
 
-        Args:
-            agent_name: Name of the agent to describe
-
-        Returns:
-            Dict with success, agent_name, fields_markdown, required_fields
-            on success, or success=False with error on failure
-        """
         if agent_name not in self._schema_paths:
             return {"success": False, "error": f"Unknown agent: {agent_name}"}
 
@@ -65,17 +59,4 @@ class DescribeInputContractTool(BaseTool):
             "agent_name": agent_name,
             "fields_markdown": generate_fields_markdown(schema),
             "required_fields": schema.get("required", []),
-        }
-
-    def get_parameters_schema(self) -> dict[str, Any]:
-        """Return schema with required agent_name parameter."""
-        return {
-            "type": "object",
-            "properties": {
-                "agent_name": {
-                    "type": "string",
-                    "description": "Name of the agent whose input contract to describe",
-                }
-            },
-            "required": ["agent_name"],
         }

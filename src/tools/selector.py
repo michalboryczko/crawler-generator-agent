@@ -28,8 +28,10 @@ class FindSelectorTool(BaseTool):
 
     @traced_tool(name="find_selector")
     @validated_tool
-    def execute(self, selector_type: str, hint: str | None = None) -> dict[str, Any]:
+    def execute(self, **kwargs: Any) -> dict[str, Any]:
         """Find potential selectors based on type and hints. Instrumented by @traced_tool."""
+        selector_type = kwargs["selector_type"]
+        hint = kwargs.get("hint")
         if selector_type == "articles":
             result = self._find_article_selectors(hint)
         elif selector_type == "pagination":
@@ -114,20 +116,6 @@ class FindSelectorTool(BaseTool):
             "total_candidates": len(results),
         }
 
-    def get_parameters_schema(self) -> dict[str, Any]:
-        return {
-            "type": "object",
-            "properties": {
-                "selector_type": {
-                    "type": "string",
-                    "enum": ["articles", "pagination"],
-                    "description": "Type of selector to find",
-                },
-                "hint": {"type": "string", "description": "Optional hint about expected pattern"},
-            },
-            "required": ["selector_type"],
-        }
-
 
 class TestSelectorTool(BaseTool):
     """Test a specific CSS selector and return matches."""
@@ -140,17 +128,11 @@ class TestSelectorTool(BaseTool):
 
     @traced_tool(name="test_selector")
     @validated_tool
-    def execute(self, selector: str) -> dict[str, Any]:
+    def execute(self, **kwargs: Any) -> dict[str, Any]:
         """Test a CSS selector. Instrumented by @traced_tool."""
+        selector = kwargs["selector"]
         elements = self.session.query_selector_all(selector)
         return {"success": True, "result": elements, "count": len(elements)}
-
-    def get_parameters_schema(self) -> dict[str, Any]:
-        return {
-            "type": "object",
-            "properties": {"selector": {"type": "string", "description": "CSS selector to test"}},
-            "required": ["selector"],
-        }
 
 
 class VerifySelectorTool(BaseTool):
@@ -165,10 +147,11 @@ class VerifySelectorTool(BaseTool):
 
     @traced_tool(name="verify_selector")
     @validated_tool
-    def execute(
-        self, selector: str, expected_urls: list[str], base_url: str | None = None
-    ) -> dict[str, Any]:
+    def execute(self, **kwargs: Any) -> dict[str, Any]:
         """Verify selector matches expected URLs. Instrumented by @traced_tool."""
+        selector = kwargs["selector"]
+        expected_urls = kwargs["expected_urls"]
+        base_url = kwargs.get("base_url")
         elements = self.session.query_selector_all(selector)
         found_urls = set()
 
@@ -202,24 +185,6 @@ class VerifySelectorTool(BaseTool):
             },
         }
 
-    def get_parameters_schema(self) -> dict[str, Any]:
-        return {
-            "type": "object",
-            "properties": {
-                "selector": {"type": "string", "description": "CSS selector to verify"},
-                "expected_urls": {
-                    "type": "array",
-                    "items": {"type": "string"},
-                    "description": "List of expected article URLs",
-                },
-                "base_url": {
-                    "type": "string",
-                    "description": "Base URL for resolving relative links",
-                },
-            },
-            "required": ["selector", "expected_urls"],
-        }
-
 
 class CompareSelectorsTool(BaseTool):
     """Compare multiple selectors to find the best one."""
@@ -232,10 +197,11 @@ class CompareSelectorsTool(BaseTool):
 
     @traced_tool(name="compare_selectors")
     @validated_tool
-    def execute(
-        self, selectors: list[str], expected_urls: list[str], base_url: str | None = None
-    ) -> dict[str, Any]:
+    def execute(self, **kwargs: Any) -> dict[str, Any]:
         """Compare multiple selectors. Instrumented by @traced_tool."""
+        selectors = kwargs["selectors"]
+        expected_urls = kwargs["expected_urls"]
+        base_url = kwargs.get("base_url")
         results = []
         expected_set = set(expected_urls)
 
@@ -268,25 +234,3 @@ class CompareSelectorsTool(BaseTool):
         best_selector = results[0]["selector"] if results else None
 
         return {"success": True, "result": results, "best_selector": best_selector}
-
-    def get_parameters_schema(self) -> dict[str, Any]:
-        return {
-            "type": "object",
-            "properties": {
-                "selectors": {
-                    "type": "array",
-                    "items": {"type": "string"},
-                    "description": "List of CSS selectors to compare",
-                },
-                "expected_urls": {
-                    "type": "array",
-                    "items": {"type": "string"},
-                    "description": "List of expected article URLs",
-                },
-                "base_url": {
-                    "type": "string",
-                    "description": "Base URL for resolving relative links",
-                },
-            },
-            "required": ["selectors", "expected_urls"],
-        }

@@ -1,0 +1,18 @@
+{
+  "type": "object",
+  "properties": {
+    "url": {
+      "type": "string",
+      "description": "URL of the listing page to analyze"
+    },
+    "wait_seconds": {
+      "type": "integer",
+      "description": "Time to wait for page load (default: 5)"
+    },
+    "listing_container_selector": {
+      "type": "string",
+      "description": "Optional CSS selector to focus on main content container"
+    }
+  },
+  "required": ["url"]
+}

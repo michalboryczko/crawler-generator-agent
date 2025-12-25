@@ -12,7 +12,7 @@ from src.prompts import get_prompt_provider
 
 from ..core.browser import BrowserSession
 from ..core.config import AgentsConfig
-from ..core.llm import LLMClient
+from ..core.llm import LLMClient, LLMClientFactory
 from ..observability.decorators import traced_agent
 from ..tools.agent_tools import AgentTool, GenerateUuidTool, PrepareAgentOutputValidationTool
 from ..tools.file import (
@@ -24,19 +24,18 @@ from ..tools.memory import (
     MemoryReadTool,
     MemoryWriteTool,
 )
-from ..tools.plan_generator import (
-    GeneratePlanTool,
-    GenerateTestPlanTool,
-)
+from ..tools.plan_generator import GenerateTestPlanTool
 from .accessibility_agent import AccessibilityAgent
 from .base import BaseAgent
 from .data_prep_agent import DataPrepAgent
 from .discovery_agent import DiscoveryAgent
+from .plan_generator_agent import PlanGeneratorAgent
 from .result import AgentResult
 from .selector_agent import SelectorAgent
 
 if TYPE_CHECKING:
     from ..infrastructure import Container
+    from ..services.context_service import ContextService
     from ..services.memory_service import MemoryService
 
 logger = logging.getLogger(__name__)
@@ -54,24 +53,28 @@ class MainAgent(BaseAgent):
 
     def __init__(
         self,
-        llm: LLMClient,
+        llm: LLMClient | LLMClientFactory,
         browser_session: BrowserSession,
         output_dir: Path,
         memory_service: "MemoryService",
         container: "Container | None" = None,
         agents_config: AgentsConfig | None = None,
+        context_service: "ContextService | None" = None,
     ):
         """Initialize the main agent.
 
         Args:
-            llm: LLM client for API calls
+            llm: LLM client or factory for API calls
             browser_session: Browser session for web interactions
             output_dir: Directory for output files
             memory_service: Memory service for this agent
             container: DI container for creating sub-agent services
             agents_config: Configuration for agent schema paths. If None,
                           loads from default config/agents.yaml.
+            context_service: Optional ContextService for persisting conversation
+                            context with event sourcing for session replay
         """
+        self._context_service = context_service
         self._memory_service = memory_service
         self.browser_session = browser_session
         self.output_dir = output_dir
@@ -89,21 +92,45 @@ class MainAgent(BaseAgent):
             agents_config = AgentsConfig.from_yaml()
         self._agents_config = agents_config
 
-        # Create sub-agents with isolated memory services
+        # Helper to create sub-agent context service with parent linking
+        def _get_subagent_context_service(agent_name: str) -> "ContextService | None":
+            if not context_service or not self._container.context_persistence_enabled:
+                return None
+            # Create context service for sub-agent with parent_instance_id
+            return self._container.context_service(
+                agent_name, parent_instance_id=context_service.instance_id
+            )
+
+        # Create sub-agents with isolated memory services and context services
         self.discovery_agent = DiscoveryAgent(
-            llm, browser_session, memory_service=self._container.memory_service("discovery")
+            llm,
+            browser_session,
+            memory_service=self._container.memory_service("discovery"),
+            context_service=_get_subagent_context_service("discovery_agent"),
         )
         self.selector_agent = SelectorAgent(
-            llm, browser_session, memory_service=self._container.memory_service("selector")
+            llm,
+            browser_session,
+            memory_service=self._container.memory_service("selector"),
+            context_service=_get_subagent_context_service("selector_agent"),
         )
         self.accessibility_agent = AccessibilityAgent(
-            llm, memory_service=self._container.memory_service("accessibility")
+            llm,
+            memory_service=self._container.memory_service("accessibility"),
+            context_service=_get_subagent_context_service("accessibility_agent"),
         )
         self.data_prep_agent = DataPrepAgent(
             llm,
             browser_session,
             memory_service=self._container.memory_service("data_prep"),
             output_dir=output_dir,
+            context_service=_get_subagent_context_service("data_prep_agent"),
+        )
+        self.plan_generator_agent = PlanGeneratorAgent(
+            llm,
+            output_dir=output_dir,
+            memory_service=self._container.memory_service("plan_generator"),
+            context_service=_get_subagent_context_service("plan_generator_agent"),
         )
 
         # Mapping from internal agent name to config key
@@ -112,6 +139,7 @@ class MainAgent(BaseAgent):
             "selector_agent": "selector",
             "accessibility_agent": "accessibility",
             "data_prep_agent": "data_prep",
+            "plan_generator_agent": "plan_generator",
         }
 
         # Build schema paths from config for PrepareAgentOutputValidationTool
@@ -125,6 +153,7 @@ class MainAgent(BaseAgent):
         selector_paths = agents_config.get_schema_paths("selector")
         accessibility_paths = agents_config.get_schema_paths("accessibility")
         data_prep_paths = agents_config.get_schema_paths("data_prep")
+        plan_generator_paths = agents_config.get_schema_paths("plan_generator")
 
         # Create AgentTools for sub-agents with contract schemas from config
         agent_tools = [
@@ -152,6 +181,12 @@ class MainAgent(BaseAgent):
                 input_schema_path=data_prep_paths.input_contract_schema_path,
                 description="Prepare test datasets with sample pages for validation",
             ),
+            AgentTool(
+                agent=self.plan_generator_agent,
+                output_schema_path=plan_generator_paths.output_contract_schema_path,
+                input_schema_path=plan_generator_paths.input_contract_schema_path,
+                description="Generate comprehensive crawl plan from collected sub-agent information",
+            ),
         ]
 
         # Unified tools list - AgentTools are auto-detected by BaseAgent
@@ -161,7 +196,6 @@ class MainAgent(BaseAgent):
             MemoryWriteTool(memory_service),
             MemoryListTool(memory_service),
             # Plan generators (structured output from memory)
-            GeneratePlanTool(memory_service),
             GenerateTestPlanTool(memory_service),
             # File tools
             FileCreateTool(output_dir),
@@ -173,7 +207,7 @@ class MainAgent(BaseAgent):
             *agent_tools,
         ]
 
-        super().__init__(llm, tools, memory_service=memory_service)
+        super().__init__(llm, tools, memory_service=memory_service, context_service=context_service)
 
     @traced_agent(name="main_agent.create_crawl_plan")
     def create_crawl_plan(self, url: str) -> AgentResult:
@@ -181,18 +215,7 @@ class MainAgent(BaseAgent):
 
         Instrumented by @traced_agent - logs workflow lifecycle and results.
         """
-        task = f"""Create a complete crawl plan for: {url}
+        from ..prompts.template_renderer import render_agent_template
 
-Execute the full workflow:
-1. Store '{url}' in memory as 'target_url'
-2. Run browser agent to extract article links, pagination info, and max pages
-3. Run selector agent to find CSS selectors for listings and detail pages
-4. Run accessibility agent to check HTTP accessibility
-5. Run data prep agent to create test dataset with 5+ listing pages and 20+ article pages
-   (The data prep agent will also dump test data to data/test_set.jsonl)
-6. Use generate_plan_md to create comprehensive plan, then file_create for plan.md
-7. Use generate_test_md to create test documentation, then file_create for test.md
-
-Return summary with counts when complete."""
-
+        task = render_agent_template("crawl_plan_task.md.j2", url=url)
         return self.run(task)

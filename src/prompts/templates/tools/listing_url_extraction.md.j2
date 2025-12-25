@@ -1,0 +1,33 @@
+You are extracting article URLs from a LISTING PAGE.
+
+## YOUR TASK
+Find ALL <a href="..."> links to individual articles in the HTML below.
+{% if selector_hint %}
+
+USE THIS CSS SELECTOR to find article links: {{ selector_hint }}
+{% endif %}
+
+## CRITICAL: Different pages have DIFFERENT articles!
+This page URL is: {{ page_url }}
+- If the URL has ?start=100, articles start from position 100
+- If the URL has ?start=1000, articles start from position 1000
+- Each listing page has DIFFERENT article URLs - they should NOT be the same!
+
+## DO NOT EXTRACT from these (they're the same on EVERY page):
+- Header section with "latest" or "featured" items
+- Top navigation with recent articles
+- Sidebar recommendations
+- Footer links
+- Any section labeled "popular", "trending", "recent"
+
+## EXTRACT from the MAIN CONTENT AREA:
+- The large repeated list of articles (10-20+ items)
+- This is the section that CHANGES when you paginate
+
+## Return JSON:
+{
+    "article_urls": ["https://example.com/article1", "https://example.com/article2", ...]
+}
+
+Expected: 10-30 URLs per page. If you find less than 5, you're probably looking at the header/sidebar!
+Convert relative URLs to absolute using base: {{ base_url }}

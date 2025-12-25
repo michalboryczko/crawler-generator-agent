@@ -207,15 +207,15 @@ class TestValidateResponseToolDefaultRegistry:
         assert result["valid"] is True
 
 
-class TestValidateResponseToolWrappedStructure:
-    """Tests for wrapped structure validation."""
+class TestValidateResponseToolFlatStructure:
+    """Tests for flat structure validation with agent_response_content."""
 
     @pytest.fixture
     def registry_with_content_schema(self):
         """Create registry with schema that includes agent_response_content."""
         registry = ValidationRegistry()
         registry.register(
-            run_identifier="wrapped-uuid",
+            run_identifier="flat-uuid",
             schema={
                 "type": "object",
                 "properties": {
@@ -239,105 +239,35 @@ class TestValidateResponseToolWrappedStructure:
         )
         return registry
 
-    def test_wrapped_structure_valid(self, registry_with_content_schema):
-        """Wrapped structure with data key validates correctly."""
+    def test_flat_structure_valid(self, registry_with_content_schema):
+        """Flat structure validates correctly."""
         tool = ValidateResponseTool(registry=registry_with_content_schema)
 
-        wrapped_response = {
+        response = {
             "agent_response_content": "Found 2 articles with numbered pagination",
-            "data": {
-                "article_urls": ["https://example.com/a1", "https://example.com/a2"],
-                "pagination_type": "numbered",
-            },
+            "article_urls": ["https://example.com/a1", "https://example.com/a2"],
+            "pagination_type": "numbered",
         }
 
-        result = tool.execute(run_identifier="wrapped-uuid", response_json=wrapped_response)
+        result = tool.execute(run_identifier="flat-uuid", response_json=response)
 
         assert result["success"] is True
         assert result["valid"] is True
 
-    def test_wrapped_structure_missing_content(self, registry_with_content_schema):
-        """Wrapped structure without agent_response_content fails."""
+    def test_flat_structure_missing_content(self, registry_with_content_schema):
+        """Flat structure without agent_response_content fails."""
         tool = ValidateResponseTool(registry=registry_with_content_schema)
 
-        wrapped_response = {
-            "data": {
-                "article_urls": ["https://example.com/a1"],
-                "pagination_type": "numbered",
-            }
-        }
-
-        result = tool.execute(run_identifier="wrapped-uuid", response_json=wrapped_response)
-
-        assert result["success"] is True
-        assert result["valid"] is False
-        assert any("agent_response_content" in e["path"] for e in result["validation_errors"])
-
-    def test_wrapped_structure_invalid_data(self, registry_with_content_schema):
-        """Wrapped structure with invalid data fails with data.path."""
-        tool = ValidateResponseTool(registry=registry_with_content_schema)
-
-        wrapped_response = {
-            "agent_response_content": "Summary",
-            "data": {
-                "article_urls": "not-an-array",  # Wrong type
-                "pagination_type": "numbered",
-            },
-        }
-
-        result = tool.execute(run_identifier="wrapped-uuid", response_json=wrapped_response)
-
-        assert result["success"] is True
-        assert result["valid"] is False
-        # Path should be prefixed with data.
-        assert any("data." in e["path"] for e in result["validation_errors"])
-
-    def test_wrapped_structure_missing_required_data_field(self, registry_with_content_schema):
-        """Wrapped structure missing required field in data fails."""
-        tool = ValidateResponseTool(registry=registry_with_content_schema)
-
-        wrapped_response = {
-            "agent_response_content": "Summary",
-            "data": {
-                "article_urls": ["https://example.com/a1"],
-                # Missing pagination_type
-            },
-        }
-
-        result = tool.execute(run_identifier="wrapped-uuid", response_json=wrapped_response)
-
-        assert result["success"] is True
-        assert result["valid"] is False
-
-    def test_legacy_flat_structure_still_works(self, registry_with_content_schema):
-        """Legacy flat structure (without data wrapper) still validates."""
-        tool = ValidateResponseTool(registry=registry_with_content_schema)
-
-        flat_response = {
-            "agent_response_content": "Summary",
+        response = {
             "article_urls": ["https://example.com/a1"],
             "pagination_type": "numbered",
         }
 
-        result = tool.execute(run_identifier="wrapped-uuid", response_json=flat_response)
-
-        assert result["success"] is True
-        assert result["valid"] is True
-
-    def test_legacy_flat_structure_missing_content(self, registry_with_content_schema):
-        """Legacy flat structure missing agent_response_content fails."""
-        tool = ValidateResponseTool(registry=registry_with_content_schema)
-
-        flat_response = {
-            "article_urls": ["https://example.com/a1"],
-            "pagination_type": "numbered",
-        }
-
-        result = tool.execute(run_identifier="wrapped-uuid", response_json=flat_response)
+        result = tool.execute(run_identifier="flat-uuid", response_json=response)
 
         assert result["success"] is True
         assert result["valid"] is False
-        assert any("agent_response_content" in e["path"] for e in result["validation_errors"])
+        assert any("agent_response_content" in e["message"] for e in result["validation_errors"])
 
 
 class TestValidateResponseToolEdgeCases:

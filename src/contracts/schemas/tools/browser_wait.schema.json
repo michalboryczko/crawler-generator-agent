@@ -1,0 +1,13 @@
+{
+  "type": "object",
+  "properties": {
+    "selector": {
+      "type": "string",
+      "description": "CSS selector to wait for"
+    },
+    "seconds": {
+      "type": "integer",
+      "description": "Number of seconds to wait"
+    }
+  }
+}

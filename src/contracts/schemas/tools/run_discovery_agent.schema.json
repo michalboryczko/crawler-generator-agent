@@ -1,0 +1,14 @@
+{
+  "type": "object",
+  "properties": {
+    "task": {
+      "type": "string",
+      "description": "Task description for the discovery agent"
+    },
+    "context": {
+      "type": "object",
+      "description": "Optional context data to pass to the agent"
+    }
+  },
+  "required": ["task"]
+}

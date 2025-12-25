@@ -17,6 +17,15 @@ def create_mock_llm() -> MagicMock:
     return mock_llm
 
 
+def create_mock_llm_factory() -> MagicMock:
+    """Create a mock LLM factory that returns mock clients."""
+    mock_factory = MagicMock()
+    mock_client = MagicMock()
+    mock_client.chat.return_value = {"content": "Done", "tool_calls": []}
+    mock_factory.get_client.return_value = mock_client
+    return mock_factory
+
+
 def create_mock_browser_session() -> MagicMock:
     """Create a mock browser session."""
     return MagicMock()
@@ -28,6 +37,7 @@ class TestAgentIsolatedMemory:
     def test_agents_with_container_have_isolated_memory(self):
         """Test agents created with container have isolated memory services."""
         mock_llm = create_mock_llm()
+        mock_llm_factory = create_mock_llm_factory()
         mock_browser = create_mock_browser_session()
 
         config = StorageConfig(backend_type="memory")
@@ -37,7 +47,9 @@ class TestAgentIsolatedMemory:
         selector_service = container.memory_service("selector")
 
         _discovery_agent = DiscoveryAgent(mock_llm, mock_browser, memory_service=discovery_service)
-        _selector_agent = SelectorAgent(mock_llm, mock_browser, memory_service=selector_service)
+        _selector_agent = SelectorAgent(
+            mock_llm_factory, mock_browser, memory_service=selector_service
+        )
 
         # Different agent names provide isolation
         discovery_service.write("key", "discovery_value")

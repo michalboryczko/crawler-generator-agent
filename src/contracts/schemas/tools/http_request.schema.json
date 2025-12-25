@@ -1,0 +1,24 @@
+{
+  "type": "object",
+  "properties": {
+    "url": {
+      "type": "string",
+      "description": "URL to request"
+    },
+    "method": {
+      "type": "string",
+      "enum": ["GET", "POST", "PUT", "DELETE", "HEAD"],
+      "description": "HTTP method (default: GET)"
+    },
+    "headers": {
+      "type": "object",
+      "additionalProperties": {"type": "string"},
+      "description": "Optional request headers"
+    },
+    "body": {
+      "type": "string",
+      "description": "Optional request body"
+    }
+  },
+  "required": ["url"]
+}

@@ -25,8 +25,10 @@ class RandomChoiceTool(BaseTool):
 
     @traced_tool(name="random_choice")
     @validated_tool
-    def execute(self, candidates: list[Any], count: int) -> dict[str, Any]:
+    def execute(self, **kwargs: Any) -> dict[str, Any]:
         """Pick random items from candidates. Instrumented by @traced_tool."""
+        candidates = kwargs["candidates"]
+        count = kwargs["count"]
         if not candidates:
             return {"success": False, "error": "Candidates list is empty"}
 
@@ -49,18 +51,4 @@ class RandomChoiceTool(BaseTool):
             "result": picked,
             "count": len(picked),
             "total_candidates": len(candidates),
-        }
-
-    def get_parameters_schema(self) -> dict[str, Any]:
-        return {
-            "type": "object",
-            "properties": {
-                "candidates": {
-                    "type": "array",
-                    "items": {},
-                    "description": "List of items to choose from",
-                },
-                "count": {"type": "integer", "description": "Number of items to randomly pick"},
-            },
-            "required": ["candidates", "count"],
         }

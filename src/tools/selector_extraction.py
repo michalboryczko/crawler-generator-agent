@@ -10,17 +10,19 @@ import json
 import logging
 import time
 from collections import Counter
-from typing import Any
+from typing import TYPE_CHECKING, Any
 from urllib.parse import urljoin
 
 from ..core.browser import BrowserSession
 from ..core.html_cleaner import clean_html_for_llm
 from ..core.json_parser import parse_json_response
-from ..core.llm import LLMClient
 from ..observability.decorators import traced_tool
 from ..prompts import get_prompt_provider
 from .base import BaseTool
 from .validation import validated_tool
+
+if TYPE_CHECKING:
+    from ..core.llm import LLMClientFactory
 
 logger = logging.getLogger(__name__)
 
@@ -47,16 +49,17 @@ class ListingPageExtractorTool(BaseTool):
     description = """Navigate to a listing page and extract CSS selectors for article
     elements plus all article URLs. Uses fresh LLM context for each page."""
 
-    def __init__(self, llm: LLMClient, browser: BrowserSession):
-        self.llm = llm
+    def __init__(self, llm_factory: "LLMClientFactory", browser: BrowserSession):
+        self._llm = llm_factory.get_client("listing_page_extractor")
         self.browser = browser
 
     @traced_tool(name="extract_listing_page")
     @validated_tool
-    def execute(
-        self, url: str, wait_seconds: int = 5, listing_container_selector: str | None = None
-    ) -> dict[str, Any]:
+    def execute(self, **kwargs: Any) -> dict[str, Any]:
         """Extract selectors and URLs from a listing page. Instrumented by @traced_tool."""
+        url = kwargs["url"]
+        wait_seconds = kwargs.get("wait_seconds", 5)
+        # listing_container_selector is available but not currently used
         logger.info(f"Extracting listing page: {url}")
 
         # Navigate to page
@@ -79,7 +82,7 @@ class ListingPageExtractorTool(BaseTool):
             {"role": "user", "content": f"Analyze this listing page HTML:\n\n{cleaned_html}"},
         ]
 
-        response = self.llm.chat(messages)
+        response = self._llm.chat(messages)
         content = response.get("content", "")
 
         # Parse JSON response
@@ -114,23 +117,6 @@ class ListingPageExtractorTool(BaseTool):
         else:
             return {"success": False, "url": url, "error": "Failed to parse LLM response"}
 
-    def get_parameters_schema(self) -> dict[str, Any]:
-        return {
-            "type": "object",
-            "properties": {
-                "url": {"type": "string", "description": "URL of the listing page to analyze"},
-                "wait_seconds": {
-                    "type": "integer",
-                    "description": "Time to wait for page load (default: 5)",
-                },
-                "listing_container_selector": {
-                    "type": "string",
-                    "description": "Optional CSS selector to focus on main content container",
-                },
-            },
-            "required": ["url"],
-        }
-
 
 class ArticlePageExtractorTool(BaseTool):
     """Extract detail selectors from a single article page.
@@ -142,14 +128,16 @@ class ArticlePageExtractorTool(BaseTool):
     description = """Navigate to an article page and extract CSS selectors for all
     content fields (title, date, author, content, etc). Uses fresh LLM context."""
 
-    def __init__(self, llm: LLMClient, browser: BrowserSession):
-        self.llm = llm
+    def __init__(self, llm_factory: "LLMClientFactory", browser: BrowserSession):
+        self._llm = llm_factory.get_client("article_page_extractor")
         self.browser = browser
 
     @traced_tool(name="extract_article_page")
     @validated_tool
-    def execute(self, url: str, wait_seconds: int = 5) -> dict[str, Any]:
+    def execute(self, **kwargs: Any) -> dict[str, Any]:
         """Extract detail selectors from an article page. Instrumented by @traced_tool."""
+        url = kwargs["url"]
+        wait_seconds = kwargs.get("wait_seconds", 5)
         logger.info(f"Extracting article page: {url}")
 
         # Navigate to page
@@ -161,10 +149,10 @@ class ArticlePageExtractorTool(BaseTool):
         cleaned_html = clean_html_for_llm(html)
 
         # Truncate if too large
-        if len(cleaned_html) > 50000:
+        if len(cleaned_html) > 150000:
             original_len = len(cleaned_html)
-            cleaned_html = cleaned_html[:50000] + "\n... [TRUNCATED]"
-            logger.warning(f"HTML truncated from {original_len} to 50000 chars")
+            cleaned_html = cleaned_html[:150000] + "\n... [TRUNCATED]"
+            logger.warning(f"HTML truncated from {original_len} to 150000 chars")
 
         # Fresh LLM call with isolated context
         messages = [
@@ -172,7 +160,7 @@ class ArticlePageExtractorTool(BaseTool):
             {"role": "user", "content": f"Analyze this article page HTML:\n\n{cleaned_html}"},
         ]
 
-        response = self.llm.chat(messages)
+        response = self._llm.chat(messages)
         content = response.get("content", "")
 
         # Parse JSON response
@@ -194,19 +182,6 @@ class ArticlePageExtractorTool(BaseTool):
         else:
             return {"success": False, "url": url, "error": "Failed to parse LLM response"}
 
-    def get_parameters_schema(self) -> dict[str, Any]:
-        return {
-            "type": "object",
-            "properties": {
-                "url": {"type": "string", "description": "URL of the article page to analyze"},
-                "wait_seconds": {
-                    "type": "integer",
-                    "description": "Time to wait for page load (default: 5)",
-                },
-            },
-            "required": ["url"],
-        }
-
 
 class SelectorAggregatorTool(BaseTool):
     """Aggregate selectors from multiple page extractions into selector chains.
@@ -221,15 +196,15 @@ class SelectorAggregatorTool(BaseTool):
     selector chains (ordered lists of all working selectors). Returns selector
     chains that the crawler can try in order until one matches."""
 
-    def __init__(self, llm: LLMClient):
-        self.llm = llm
+    def __init__(self, llm_factory: "LLMClientFactory"):
+        self._llm = llm_factory.get_client("selector_aggregator")
 
     @traced_tool(name="aggregate_selectors")
     @validated_tool
-    def execute(
-        self, listing_extractions: list[dict], article_extractions: list[dict]
-    ) -> dict[str, Any]:
+    def execute(self, **kwargs: Any) -> dict[str, Any]:
         """Aggregate selectors into ordered chains. Instrumented by @traced_tool."""
+        listing_extractions = kwargs["listing_extractions"]
+        article_extractions = kwargs["article_extractions"]
         # Aggregate listing selectors into chains
         listing_result = self._aggregate_listing_selectors(listing_extractions)
 
@@ -329,7 +304,7 @@ class SelectorAggregatorTool(BaseTool):
         ]
 
         try:
-            response = self.llm.chat(messages)
+            response = self._llm.chat(messages)
             content = response.get("content", "")
             result = parse_json_response(content)
 
@@ -407,22 +382,4 @@ class SelectorAggregatorTool(BaseTool):
         return {
             "selectors": selectors,
             "notes": f"Fallback chain aggregation from {total_pages} pages",
-        }
-
-    def get_parameters_schema(self) -> dict[str, Any]:
-        return {
-            "type": "object",
-            "properties": {
-                "listing_extractions": {
-                    "type": "array",
-                    "items": {"type": "object"},
-                    "description": "Results from ListingPageExtractorTool for each page",
-                },
-                "article_extractions": {
-                    "type": "array",
-                    "items": {"type": "object"},
-                    "description": "Results from ArticlePageExtractorTool for each page",
-                },
-            },
-            "required": ["listing_extractions", "article_extractions"],
         }

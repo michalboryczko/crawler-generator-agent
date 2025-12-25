@@ -1,0 +1,10 @@
+{
+  "type": "object",
+  "properties": {
+    "selector": {
+      "type": "string",
+      "description": "CSS selector to test"
+    }
+  },
+  "required": ["selector"]
+}

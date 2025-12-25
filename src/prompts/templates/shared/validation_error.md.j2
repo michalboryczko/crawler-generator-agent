@@ -1,0 +1,12 @@
+## VALIDATION FAILED - RETRY REQUIRED
+
+Your output does not match the required schema. Please fix and try again.
+
+**Errors:**
+{% for error in errors %}
+  - {{ error }}
+{% endfor %}
+
+**Retries remaining:** {{ retries_remaining }}
+
+CRITICAL: You MUST output a valid JSON response that matches the schema. Do not use tools - just output the corrected JSON response directly.

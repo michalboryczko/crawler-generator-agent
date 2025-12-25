@@ -9,6 +9,7 @@ Tools delegate to this service - tools become thin controllers.
 
 import json
 import logging
+from datetime import datetime
 from pathlib import Path
 from typing import Any
 
@@ -252,3 +253,32 @@ class MemoryService:
 
         session_id = session_id or str(uuid.uuid4())
         return cls(repository, session_id, agent_name)
+
+    @staticmethod
+    def copy_session_memory(
+        repository: AbstractMemoryRepository,
+        source_session_id: str,
+        target_session_id: str,
+        up_to_timestamp: datetime | None = None,
+    ) -> int:
+        """Copy all memory entries from source session to target session.
+
+        This is a session-level operation that copies memory from ALL agents
+        in the source session. Used for --copy mode to give new session
+        access to memory from previous run.
+
+        Args:
+            repository: The memory repository to use
+            source_session_id: Source session ID to copy from
+            target_session_id: Target session ID to copy to
+            up_to_timestamp: Optional cutoff - only copy entries created
+                             at or before this timestamp
+
+        Returns:
+            Number of entries copied
+        """
+        return repository.copy_session_memory(
+            source_session_id=source_session_id,
+            target_session_id=target_session_id,
+            up_to_timestamp=up_to_timestamp,
+        )

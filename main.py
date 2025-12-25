@@ -16,13 +16,14 @@ from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from src.agents.result import AgentResult
+    from src.services.context_service import ContextService
 
 from dotenv import load_dotenv
 
 from src.agents.main_agent import MainAgent
 from src.core.browser import BrowserSession
 from src.core.config import AppConfig
-from src.core.llm import LLMClient, LLMClientFactory
+from src.core.llm import LLMClientFactory
 
 # Observability imports
 from src.infrastructure import Container, init_container
@@ -47,6 +48,11 @@ class CliArgs:
     list_models: bool
     env_file: str
     devtools_url: str | None
+    # Session replay options
+    resume: str | None
+    copy_from: str | None
+    overwrite_at: int | None
+    up_to: int | None
 
 
 def parse_arguments() -> CliArgs:
@@ -76,6 +82,37 @@ def parse_arguments() -> CliArgs:
         default=None,
         help="Chrome DevTools WebSocket URL (e.g., ws://localhost:9222). Overrides CDP_URL env var",
     )
+    # Session replay options
+    session_group = parser.add_mutually_exclusive_group()
+    session_group.add_argument(
+        "--resume",
+        "-r",
+        default=None,
+        metavar="SESSION_ID",
+        help="Resume from a previous session (continue from last context point)",
+    )
+    session_group.add_argument(
+        "--copy",
+        "-c",
+        default=None,
+        metavar="SESSION_ID",
+        dest="copy_from",
+        help="Copy context from a previous session to a new session",
+    )
+    parser.add_argument(
+        "--overwrite-at",
+        type=int,
+        default=None,
+        metavar="SEQUENCE",
+        help="With --resume, erase context after this sequence number and continue (overwrite mode)",
+    )
+    parser.add_argument(
+        "--up-to",
+        type=int,
+        default=None,
+        metavar="SEQUENCE",
+        help="With --copy, copy context only up to this sequence number (inclusive)",
+    )
     args = parser.parse_args()
 
     return CliArgs(
@@ -85,6 +122,10 @@ def parse_arguments() -> CliArgs:
         list_models=args.list_models,
         env_file=args.env_file,
         devtools_url=args.devtools_url,
+        resume=args.resume,
+        copy_from=args.copy_from,
+        overwrite_at=args.overwrite_at,
+        up_to=args.up_to,
     )
 
 
@@ -148,13 +189,16 @@ def setup_observability() -> ObservabilityContext:
     return ctx
 
 
-def create_llm_client(
+def create_llm_factory(
     app_config: AppConfig, multi_model: bool, ctx: ObservabilityContext, logger: logging.Logger
-) -> tuple[LLMClient, LLMClientFactory | None]:
-    """Create LLM client (single or factory-based)."""
+) -> LLMClientFactory:
+    """Create LLM client factory.
+
+    Always returns a factory so each agent can get its own properly-named client.
+    In legacy mode, creates a factory from the single OpenAI config.
+    """
     if multi_model:
         llm_factory = LLMClientFactory.from_env()
-        llm = llm_factory.get_client("main_agent")
         logger.info(f"Multi-model mode: using factory with {len(llm_factory.registry)} models")
         emit_info(
             event="llm.factory.initialized",
@@ -165,41 +209,53 @@ def create_llm_client(
                 "main_agent_model": llm_factory.get_component_model("main_agent"),
             },
         )
-        return llm, llm_factory
+        return llm_factory
     else:
-        llm = LLMClient(app_config.openai)
+        # Create a factory from the single config so agents get proper component names
+        llm_factory = LLMClientFactory.from_single_config(app_config.openai)
+        logger.info(f"Legacy mode: using single model {app_config.openai.model}")
         emit_info(
-            event="llm.client.initialized",
+            event="llm.factory.initialized",
             ctx=ctx,
             data={"mode": "legacy", "model": app_config.openai.model},
         )
-        return llm, None
+        return llm_factory
 
 
 def run_crawler_workflow(
     url: str,
     app_config: AppConfig,
-    llm: LLMClient,
+    llm_factory: LLMClientFactory,
     ctx: ObservabilityContext,
     logger: logging.Logger,
+    args: CliArgs,
 ) -> int:
     """Run the crawler workflow and return exit code."""
     output_dir = app_config.output.get_output_dir(url)
     output_dir.mkdir(parents=True, exist_ok=True)
     logger.info(f"Output directory: {output_dir}")
 
+    # Determine session ID based on replay mode
+    session_id = None
+    if args.resume:
+        session_id = args.resume
+        logger.info(f"Resuming session: {session_id}")
+    elif args.copy_from:
+        logger.info(f"Copying context from session: {args.copy_from}")
+
     # Initialize DI container
-    container = init_container(app_config.storage)
+    container = init_container(app_config.storage, session_id)
     logger.info(f"Storage backend: {app_config.storage.backend_type}")
 
-    # Create session record to track this run
+    # Create session record to track this run (skip if resuming)
     session_service = container.session_service
-    session_service.create(
-        session_id=container.session_id,
-        target_site=url,
-        output_dir=output_dir,
-        agent_version=app_config.agent_version,
-    )
+    if not args.resume:
+        session_service.create(
+            session_id=container.session_id,
+            target_site=url,
+            output_dir=output_dir,
+            agent_version=app_config.agent_version,
+        )
     logger.info(f"Session ID: {container.session_id}")
 
     browser_session = BrowserSession(app_config.browser)
@@ -218,12 +274,13 @@ def run_crawler_workflow(
             url=url,
             output_dir=output_dir,
             app_config=app_config,
-            llm=llm,
+            llm_factory=llm_factory,
             browser_session=browser_session,
             container=container,
             session_service=session_service,
             ctx=ctx,
             logger=logger,
+            args=args,
         )
     finally:
         browser_session.disconnect()
@@ -234,20 +291,135 @@ def run_crawler_workflow(
         )
 
 
+def _setup_context_service(
+    container: Container,
+    args: CliArgs,
+    logger: logging.Logger,
+) -> "ContextService | None":
+    """Set up context service based on session replay options.
+
+    Args:
+        container: DI container
+        args: CLI arguments
+        logger: Logger instance
+
+    Returns:
+        ContextService if context persistence is enabled, None otherwise
+    """
+    from src.services.context_service import ContextService
+
+    if not container.context_persistence_enabled:
+        return None
+
+    context_repo = container.context_repository
+    if context_repo is None:
+        return None
+
+    # Resume mode: continue from existing session
+    if args.resume:
+        # Find the main_agent instance from the resumed session
+        instances = context_repo.get_instances_by_session(args.resume)
+        main_instance = next((i for i in instances if i.agent_name == "main_agent"), None)
+
+        if main_instance:
+            logger.info(f"Found existing main_agent instance: {main_instance.id}")
+
+            # Handle overwrite mode
+            if args.overwrite_at is not None:
+                context_svc = container.context_service("main_agent", instance_id=main_instance.id)
+                deleted = context_svc.truncate_after_sequence(args.overwrite_at)
+                logger.info(
+                    f"Overwrite mode: deleted {deleted} events after sequence {args.overwrite_at}"
+                )
+                return context_svc
+
+            # Resume mode: return existing context service
+            return container.context_service("main_agent", instance_id=main_instance.id)
+        else:
+            logger.warning(f"No main_agent instance found in session {args.resume}, creating new")
+            return container.context_service("main_agent")
+
+    # Copy mode: copy context from another session to new session
+    if args.copy_from:
+        source_instances = context_repo.get_instances_by_session(args.copy_from)
+        source_main = next((i for i in source_instances if i.agent_name == "main_agent"), None)
+
+        if source_main:
+            # Create new instance for current session
+            context_svc = container.context_service("main_agent")
+            source_svc = ContextService(context_repo, args.copy_from, source_main.id)
+
+            # Copy events from source to new instance (optionally up to an event ID)
+            copied = source_svc.copy_to_new_instance(
+                target_session_id=container.session_id,
+                target_instance_id=context_svc.instance_id,
+                up_to_event_id=args.up_to,
+            )
+            if args.up_to:
+                logger.info(
+                    f"Copied {copied} events (up to id {args.up_to}) from session {args.copy_from}"
+                )
+            else:
+                logger.info(f"Copied {copied} events from session {args.copy_from}")
+
+            # Copy memory entries from source session
+            # If --up-to specified, filter by the event's timestamp
+            up_to_timestamp = None
+            if args.up_to:
+                event = context_repo.get_event(args.up_to)
+                if event:
+                    up_to_timestamp = event.created_at
+
+            from src.services.memory_service import MemoryService
+
+            memory_copied = MemoryService.copy_session_memory(
+                repository=container.repository,
+                source_session_id=args.copy_from,
+                target_session_id=container.session_id,
+                up_to_timestamp=up_to_timestamp,
+            )
+            if up_to_timestamp:
+                logger.info(f"Copied {memory_copied} memory entries (up to {up_to_timestamp})")
+            else:
+                logger.info(f"Copied {memory_copied} memory entries from session {args.copy_from}")
+
+            return context_svc
+        else:
+            logger.warning(f"No main_agent instance found in session {args.copy_from}")
+            return container.context_service("main_agent")
+
+    # Default: create new context service
+    return container.context_service("main_agent")
+
+
 def _execute_agent(
     url: str,
     output_dir: Path,
     app_config: AppConfig,
-    llm: LLMClient,
+    llm_factory: LLMClientFactory,
     browser_session: BrowserSession,
     container: Container,
     session_service: "SessionService",
     ctx: ObservabilityContext,
     logger: logging.Logger,
+    args: CliArgs,
 ) -> int:
     """Execute the main agent and handle results."""
     memory_service = container.memory_service("main_agent")
-    agent = MainAgent(llm, browser_session, output_dir, memory_service, container=container)
+
+    # Handle context service for session replay
+    context_service = None
+    if container.context_persistence_enabled:
+        context_service = _setup_context_service(container, args, logger)
+
+    agent = MainAgent(
+        llm_factory,
+        browser_session,
+        output_dir,
+        memory_service,
+        container=container,
+        context_service=context_service,
+    )
     logger.info(f"Creating crawl plan for: {url}")
 
     result = agent.create_crawl_plan(url)
@@ -351,10 +523,15 @@ def main() -> int:
         logger.info(f"Using model: {app_config.openai.model}")
         emit_info(event="config.loaded", ctx=ctx, data={"model": app_config.openai.model})
 
-        llm, _ = create_llm_client(app_config, args.multi_model, ctx, logger)
+        llm_factory = create_llm_factory(app_config, args.multi_model, ctx, logger)
 
         return run_crawler_workflow(
-            url=args.url, app_config=app_config, llm=llm, ctx=ctx, logger=logger
+            url=args.url,
+            app_config=app_config,
+            llm_factory=llm_factory,
+            ctx=ctx,
+            logger=logger,
+            args=args,
         )
 
     except KeyboardInterrupt:

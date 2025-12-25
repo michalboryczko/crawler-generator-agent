@@ -1,0 +1,16 @@
+{
+  "type": "object",
+  "properties": {
+    "listing_extractions": {
+      "type": "array",
+      "items": {"type": "object"},
+      "description": "Results from ListingPageExtractorTool for each page"
+    },
+    "article_extractions": {
+      "type": "array",
+      "items": {"type": "object"},
+      "description": "Results from ArticlePageExtractorTool for each page"
+    }
+  },
+  "required": ["listing_extractions", "article_extractions"]
+}

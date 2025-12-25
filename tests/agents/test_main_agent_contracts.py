@@ -66,7 +66,7 @@ def test_agents_config(tmp_path):
 
     # Create schema files for each agent
     agents = {}
-    for agent_name in ["discovery", "selector", "accessibility", "data_prep"]:
+    for agent_name in ["discovery", "selector", "accessibility", "data_prep", "plan_generator"]:
         agent_dir = tmp_path / f"{agent_name}_agent"
         agent_dir.mkdir()
 
@@ -156,36 +156,10 @@ class TestMainAgentHasAgentTools:
         tool_names = [t.name for t in main_agent.agent_tools]
         assert "run_data_prep_agent" in tool_names
 
-
-class TestAgentToolsHaveSchemas:
-    """Tests that AgentTools have proper schema paths configured."""
-
-    def test_discovery_agent_tool_has_output_schema(self, main_agent):
-        """Discovery agent tool should have output schema path."""
-        tool = next((t for t in main_agent.agent_tools if t.name == "run_discovery_agent"), None)
-        assert tool is not None
-        assert tool.output_schema is not None
-        assert "article_urls" in tool.output_schema.get("properties", {})
-
-    def test_selector_agent_tool_has_output_schema(self, main_agent):
-        """Selector agent tool should have output schema path."""
-        tool = next((t for t in main_agent.agent_tools if t.name == "run_selector_agent"), None)
-        assert tool is not None
-        assert tool.output_schema is not None
-
-    def test_accessibility_agent_tool_has_output_schema(self, main_agent):
-        """Accessibility agent tool should have output schema path."""
-        tool = next(
-            (t for t in main_agent.agent_tools if t.name == "run_accessibility_agent"), None
-        )
-        assert tool is not None
-        assert tool.output_schema is not None
-
-    def test_data_prep_agent_tool_has_output_schema(self, main_agent):
-        """Data prep agent tool should have output schema path."""
-        tool = next((t for t in main_agent.agent_tools if t.name == "run_data_prep_agent"), None)
-        assert tool is not None
-        assert tool.output_schema is not None
+    def test_has_plan_generator_agent_tool(self, main_agent):
+        """MainAgent should have an AgentTool for plan generator agent."""
+        tool_names = [t.name for t in main_agent.agent_tools]
+        assert "run_plan_generator_agent" in tool_names
 
 
 class TestPromptIncludesSubAgents:
@@ -206,6 +180,7 @@ class TestPromptIncludesSubAgents:
         assert "selector_agent" in section
         assert "accessibility_agent" in section
         assert "data_prep_agent" in section
+        assert "plan_generator_agent" in section
 
     def test_sub_agents_section_includes_workflow_rules(self, main_agent):
         """Sub-agents section should include workflow rules."""
@@ -231,6 +206,7 @@ class TestAgentToolsInToolMap:
         assert "run_selector_agent" in main_agent._tool_map
         assert "run_accessibility_agent" in main_agent._tool_map
         assert "run_data_prep_agent" in main_agent._tool_map
+        assert "run_plan_generator_agent" in main_agent._tool_map
 
     def test_tool_map_entries_are_agent_tools(self, main_agent):
         """Tool map entries for agent runners should be AgentTool instances."""
@@ -238,3 +214,4 @@ class TestAgentToolsInToolMap:
         assert isinstance(main_agent._tool_map["run_selector_agent"], AgentTool)
         assert isinstance(main_agent._tool_map["run_accessibility_agent"], AgentTool)
         assert isinstance(main_agent._tool_map["run_data_prep_agent"], AgentTool)
+        assert isinstance(main_agent._tool_map["run_plan_generator_agent"], AgentTool)

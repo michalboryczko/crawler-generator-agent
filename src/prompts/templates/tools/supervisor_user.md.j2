@@ -1,0 +1,19 @@
+Please validate the following generated output.
+
+## Task Description
+{{ given_task }}
+
+## Input Data (from sub-agents)
+{{ input_data }}
+
+## Generated Output (to validate)
+{{ output_data }}
+{% if context_data %}
+
+## Additional Context
+{{ context_data }}
+{% endif %}
+
+## Validation Request
+Please analyze the output and provide your validation result as a JSON object.
+Check for completeness, consistency with input data, correctness of format, and overall quality.

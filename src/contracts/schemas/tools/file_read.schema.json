@@ -1,0 +1,18 @@
+{
+  "type": "object",
+  "properties": {
+    "filename": {
+      "type": "string",
+      "description": "Relative path to file within output directory"
+    },
+    "head": {
+      "type": "integer",
+      "description": "Return only first N lines"
+    },
+    "tail": {
+      "type": "integer",
+      "description": "Return only last N lines"
+    }
+  },
+  "required": ["filename"]
+}

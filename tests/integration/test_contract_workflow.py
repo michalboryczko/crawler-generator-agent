@@ -236,12 +236,14 @@ class TestTemplateIntegration:
             },
             "required": ["article_urls"],
         }
+        expected_outputs = ["article_urls", "pagination"]
         rendered = render_template(
             "response_rules.md.j2",
             run_identifier="test-uuid-123",
-            expected_outputs=["article_urls", "pagination"],
+            expected_outputs=expected_outputs,
             required_fields=["article_urls", "pagination"],
             output_contract_schema=schema,
+            example_json={field: "<value>" for field in expected_outputs},
         )
 
         assert "test-uuid-123" in rendered

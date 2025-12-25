@@ -9,7 +9,7 @@ from typing import TYPE_CHECKING
 from src.prompts import get_prompt_provider
 
 from ..core.browser import BrowserSession
-from ..core.llm import LLMClient
+from ..core.llm import LLMClient, LLMClientFactory
 from ..tools.agent_tools import ValidateResponseTool
 from ..tools.browser import (
     ClickTool,
@@ -28,6 +28,7 @@ from ..tools.memory import (
 from .base import BaseAgent
 
 if TYPE_CHECKING:
+    from ..services.context_service import ContextService
     from ..services.memory_service import MemoryService
 
 
@@ -40,9 +41,10 @@ class DiscoveryAgent(BaseAgent):
 
     def __init__(
         self,
-        llm: LLMClient,
+        llm: LLMClient | LLMClientFactory,
         browser_session: BrowserSession,
         memory_service: "MemoryService",
+        context_service: "ContextService | None" = None,
     ):
         self.browser_session = browser_session
 
@@ -63,4 +65,4 @@ class DiscoveryAgent(BaseAgent):
             ValidateResponseTool(),
         ]
 
-        super().__init__(llm, tools, memory_service=memory_service)
+        super().__init__(llm, tools, memory_service=memory_service, context_service=context_service)

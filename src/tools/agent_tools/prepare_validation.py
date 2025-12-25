@@ -57,27 +57,16 @@ class PrepareAgentOutputValidationTool(BaseTool):
 
     @traced_tool()
     @validated_tool
-    def execute(
-        self,
-        run_identifier: str,
-        agent_name: str,
-        expected_outputs: list[str] | None = None,
-    ) -> dict[str, Any]:
-        """Register validation context for a sub-agent call.
+    def execute(self, **kwargs: Any) -> dict[str, Any]:
+        """Register validation context for a sub-agent call. Instrumented by @traced_tool."""
+        run_identifier = kwargs["run_identifier"]
+        agent_name = kwargs["agent_name"]
+        expected_outputs = kwargs.get("expected_outputs")
 
-        Args:
-            run_identifier: UUID from generate_uuid tool
-            agent_name: Name of the agent to validate
-            expected_outputs: Optional specific fields to validate
-                             (defaults to schema's required fields)
-
-        Returns:
-            Dict with success and context details, or error
-        """
         if agent_name not in self._schema_paths:
             return {"success": False, "error": f"Unknown agent: {agent_name}"}
 
-        schema = load_schema(self._schema_paths[agent_name])
+        schema = load_schema(self._schema_paths[agent_name], inject_response_content=True)
         available_fields = set(schema.get("properties", {}).keys())
 
         # If expected_outputs provided, validate they exist in schema
@@ -110,26 +99,4 @@ class PrepareAgentOutputValidationTool(BaseTool):
                 f"Validation prepared. Sub-agent should call validate_response "
                 f"with run_identifier '{run_identifier}'"
             ),
-        }
-
-    def get_parameters_schema(self) -> dict[str, Any]:
-        """Return schema for parameters."""
-        return {
-            "type": "object",
-            "properties": {
-                "run_identifier": {
-                    "type": "string",
-                    "description": "UUID from generate_uuid tool",
-                },
-                "agent_name": {
-                    "type": "string",
-                    "description": "Name of the agent to validate",
-                },
-                "expected_outputs": {
-                    "type": "array",
-                    "items": {"type": "string"},
-                    "description": "Optional specific fields to validate",
-                },
-            },
-            "required": ["run_identifier", "agent_name"],
         }

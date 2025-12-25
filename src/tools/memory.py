@@ -37,25 +37,14 @@ class MemoryReadTool(BaseTool):
 
     @traced_tool(name="memory_read")
     @validated_tool
-    def execute(self, key: str) -> dict[str, Any]:
+    def execute(self, **kwargs: Any) -> dict[str, Any]:
         """Read from memory."""
+        key = kwargs["key"]
         value = self._service.read(key)
         return {
             "success": True,
             "result": value,
             "found": value is not None,
-        }
-
-    def get_parameters_schema(self) -> dict[str, Any]:
-        return {
-            "type": "object",
-            "properties": {
-                "key": {
-                    "type": "string",
-                    "description": "The key to read from memory",
-                }
-            },
-            "required": ["key"],
         }
 
 
@@ -70,8 +59,10 @@ class MemoryWriteTool(BaseTool):
 
     @traced_tool(name="memory_write")
     @validated_tool
-    def execute(self, key: str, value: Any) -> dict[str, Any]:
+    def execute(self, **kwargs: Any) -> dict[str, Any]:
         """Write to memory."""
+        key = kwargs["key"]
+        value = kwargs["value"]
         overwritten = self._service.read(key) is not None
         self._service.write(key, value)
 
@@ -82,21 +73,6 @@ class MemoryWriteTool(BaseTool):
             "result": f"Stored value at key: {key}",
             "overwritten": overwritten,
             "value_size": value_size,
-        }
-
-    def get_parameters_schema(self) -> dict[str, Any]:
-        return {
-            "type": "object",
-            "properties": {
-                "key": {
-                    "type": "string",
-                    "description": "The key to write to",
-                },
-                "value": {
-                    "description": "The value to store (any JSON-serializable type)",
-                },
-            },
-            "required": ["key", "value"],
         }
 
 
@@ -111,25 +87,14 @@ class MemorySearchTool(BaseTool):
 
     @traced_tool(name="memory_search")
     @validated_tool
-    def execute(self, pattern: str) -> dict[str, Any]:
+    def execute(self, **kwargs: Any) -> dict[str, Any]:
         """Search memory keys."""
+        pattern = kwargs["pattern"]
         keys = self._service.search(pattern)
         return {
             "success": True,
             "result": keys,
             "count": len(keys),
-        }
-
-    def get_parameters_schema(self) -> dict[str, Any]:
-        return {
-            "type": "object",
-            "properties": {
-                "pattern": {
-                    "type": "string",
-                    "description": "Glob pattern to match keys (e.g., 'page.*', '*_url')",
-                }
-            },
-            "required": ["pattern"],
         }
 
 
@@ -144,19 +109,13 @@ class MemoryListTool(BaseTool):
 
     @traced_tool(name="memory_list")
     @validated_tool
-    def execute(self) -> dict[str, Any]:
+    def execute(self, **kwargs: Any) -> dict[str, Any]:
         """List all memory keys."""
         keys = self._service.list_keys()
         return {
             "success": True,
             "result": keys,
             "count": len(keys),
-        }
-
-    def get_parameters_schema(self) -> dict[str, Any]:
-        return {
-            "type": "object",
-            "properties": {},
         }
 
 
@@ -174,8 +133,10 @@ class MemoryDumpTool(BaseTool):
 
     @traced_tool(name="memory_dump")
     @validated_tool
-    def execute(self, keys: list[str], filename: str) -> dict[str, Any]:
+    def execute(self, **kwargs: Any) -> dict[str, Any]:
         """Dump keys to JSONL file."""
+        keys = kwargs["keys"]
+        filename = kwargs["filename"]
         output_path = self._output_dir / filename
         count = self._service.dump_to_jsonl(keys, output_path)
 
@@ -184,21 +145,4 @@ class MemoryDumpTool(BaseTool):
             "result": f"Dumped {count} entries to {filename}",
             "path": str(output_path),
             "count": count,
-        }
-
-    def get_parameters_schema(self) -> dict[str, Any]:
-        return {
-            "type": "object",
-            "properties": {
-                "keys": {
-                    "type": "array",
-                    "items": {"type": "string"},
-                    "description": "List of memory keys to dump",
-                },
-                "filename": {
-                    "type": "string",
-                    "description": "Output filename (e.g., 'data/test_set.jsonl')",
-                },
-            },
-            "required": ["keys", "filename"],
         }

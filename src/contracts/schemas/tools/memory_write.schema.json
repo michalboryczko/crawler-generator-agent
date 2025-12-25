@@ -1,0 +1,13 @@
+{
+  "type": "object",
+  "properties": {
+    "key": {
+      "type": "string",
+      "description": "The key to write to"
+    },
+    "value": {
+      "description": "The value to store (any JSON-serializable type)"
+    }
+  },
+  "required": ["key", "value"]
+}

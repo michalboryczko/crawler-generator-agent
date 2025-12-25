@@ -11,6 +11,7 @@ import aiohttp
 
 from ..observability.decorators import traced_tool
 from .base import BaseTool
+from .validation import validated_tool
 
 
 class HTTPRequestTool(BaseTool):
@@ -24,14 +25,13 @@ class HTTPRequestTool(BaseTool):
         self.timeout = timeout
 
     @traced_tool(name="http_request")
-    def execute(
-        self,
-        url: str,
-        method: str = "GET",
-        headers: dict[str, str] | None = None,
-        body: str | None = None,
-    ) -> dict[str, Any]:
+    @validated_tool
+    def execute(self, **kwargs: Any) -> dict[str, Any]:
         """Make HTTP request. Instrumented by @traced_tool."""
+        url = kwargs["url"]
+        method = kwargs.get("method", "GET")
+        headers = kwargs.get("headers")
+        body = kwargs.get("body")
 
         async def _request():
             default_headers = {
@@ -61,23 +61,3 @@ class HTTPRequestTool(BaseTool):
         loop.close()
 
         return {"success": True, "result": result}
-
-    def get_parameters_schema(self) -> dict[str, Any]:
-        return {
-            "type": "object",
-            "properties": {
-                "url": {"type": "string", "description": "URL to request"},
-                "method": {
-                    "type": "string",
-                    "enum": ["GET", "POST", "PUT", "DELETE", "HEAD"],
-                    "description": "HTTP method (default: GET)",
-                },
-                "headers": {
-                    "type": "object",
-                    "additionalProperties": {"type": "string"},
-                    "description": "Optional request headers",
-                },
-                "body": {"type": "string", "description": "Optional request body"},
-            },
-            "required": ["url"],
-        }

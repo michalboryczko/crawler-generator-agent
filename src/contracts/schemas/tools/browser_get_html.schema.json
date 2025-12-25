@@ -1,0 +1,9 @@
+{
+  "type": "object",
+  "properties": {
+    "raw": {
+      "type": "boolean",
+      "description": "If true, return raw HTML without cleaning. Default: false"
+    }
+  }
+}

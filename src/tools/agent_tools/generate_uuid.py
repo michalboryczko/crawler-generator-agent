@@ -39,15 +39,7 @@ class GenerateUuidTool(BaseTool):
 
     @traced_tool()
     @validated_tool
-    def execute(self) -> dict[str, Any]:
-        """Generate a new UUID4.
-
-        Returns:
-            Dict with success=True and run_identifier string
-        """
+    def execute(self, **kwargs: Any) -> dict[str, Any]:
+        """Generate a new UUID4. Instrumented by @traced_tool."""
         run_identifier = str(uuid.uuid4())
         return {"success": True, "run_identifier": run_identifier}
-
-    def get_parameters_schema(self) -> dict[str, Any]:
-        """Return empty schema (no parameters needed)."""
-        return {"type": "object", "properties": {}, "required": []}

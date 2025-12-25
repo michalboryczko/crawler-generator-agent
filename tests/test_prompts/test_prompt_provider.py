@@ -313,10 +313,12 @@ class TestDynamicTemplates:
         result = provider.render_prompt(
             "article_extraction",
             json_example='{"title": "", "content": ""}',
-            selector_hints="h1.title, div.content",
+            pre_extracted_fields={"title": "Test Title", "content": "Test Content"},
         )
         assert "title" in result
         assert "content" in result
+        assert "Test Title" in result
+        assert "Test Content" in result
 
     def test_listing_url_extraction_template_registered(self):
         """Listing URL extraction template is registered."""

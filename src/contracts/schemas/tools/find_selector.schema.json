@@ -1,0 +1,15 @@
+{
+  "type": "object",
+  "properties": {
+    "selector_type": {
+      "type": "string",
+      "enum": ["articles", "pagination"],
+      "description": "Type of selector to find"
+    },
+    "hint": {
+      "type": "string",
+      "description": "Optional hint about expected pattern"
+    }
+  },
+  "required": ["selector_type"]
+}

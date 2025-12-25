@@ -132,3 +132,44 @@ class InMemoryRepository(AbstractMemoryRepository):
         self._entries.clear()
         self._id_counter = 0
         return count
+
+    def copy_session_memory(
+        self,
+        source_session_id: str,
+        target_session_id: str,
+        up_to_timestamp: datetime | None = None,
+    ) -> int:
+        """Copy memory entries from one session to another.
+
+        Copies all memory entries from source session to target session,
+        optionally filtering by creation timestamp.
+        """
+        source_prefix = f"{source_session_id}:"
+        now = datetime.now(UTC)
+        count = 0
+
+        # Find all entries from source session
+        entries_to_copy = []
+        for composite_key, entry in self._entries.items():
+            if composite_key.startswith(source_prefix) and (
+                up_to_timestamp is None or entry.created_at <= up_to_timestamp
+            ):
+                entries_to_copy.append(entry)
+
+        # Copy entries to target session
+        for entry in entries_to_copy:
+            self._id_counter += 1
+            new_entry = MemoryEntry(
+                id=self._id_counter,
+                session_id=target_session_id,
+                agent_name=entry.agent_name,
+                key=entry.key,
+                value=entry.value,
+                created_at=now,
+                updated_at=now,
+            )
+            target_key = self._make_composite_key(target_session_id, entry.agent_name, entry.key)
+            self._entries[target_key] = new_entry
+            count += 1
+
+        return count
