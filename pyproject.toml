@@ -19,6 +19,8 @@ dependencies = [
     "opentelemetry-exporter-otlp-proto-grpc>=1.21.0",
     # SQLAlchemy ORM (used for model objects)
     "sqlalchemy>=2.0.0",
+    # Alembic for database migrations
+    "alembic>=1.13.0",
 ]
 
 [project.optional-dependencies]
@@ -29,6 +31,7 @@ dev = [
     "ruff>=0.1.0",
     "mypy>=1.0.0",
     "types-PyYAML>=6.0.0",
+    "types-jsonschema>=4.20.0",
 ]
 mysql = [
     "pymysql>=1.1.0",
@@ -88,7 +91,6 @@ warn_return_any = false
 warn_unused_ignores = true
 ignore_missing_imports = true
 disable_error_code = [
-    "override",      # Tool execute() signatures differ for IDE hints; @validated_tool handles runtime validation
     "attr-defined",  # Singleton pattern dynamic attributes
     "misc",          # Various edge cases (type declarations in __new__)
     "union-attr",    # JSON parsing returns dict | list, we handle it

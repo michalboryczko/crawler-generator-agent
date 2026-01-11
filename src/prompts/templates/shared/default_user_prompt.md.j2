@@ -1,0 +1,8 @@
+{{ task }}
+
+{% if context %}
+## Context
+```json
+{{ context | tojson(indent=2) }}
+```
+{% endif %}

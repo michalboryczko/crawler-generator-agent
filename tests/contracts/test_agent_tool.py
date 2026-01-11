@@ -1,4 +1,4 @@
-"""Tests for AgentTool class with prompt attachment."""
+"""Tests for AgentTool class."""
 
 import json
 from unittest.mock import MagicMock
@@ -73,18 +73,6 @@ def sample_schema():
     }
 
 
-@pytest.fixture
-def sample_input_schema():
-    """Simple input schema."""
-    return {
-        "type": "object",
-        "properties": {
-            "url": {"type": "string", "format": "uri", "description": "Target URL to analyze"}
-        },
-        "required": ["url"],
-    }
-
-
 class TestAgentToolCreation:
     """Tests for AgentTool initialization."""
 
@@ -95,12 +83,8 @@ class TestAgentToolCreation:
 
         tool = AgentTool(agent=mock_agent, output_schema_path=str(schema_path))
 
-        assert tool.agent is mock_agent
-        # Original fields should be present
-        assert "article_urls" in tool.output_schema["properties"]
-        assert "pagination_type" in tool.output_schema["properties"]
-        # agent_response_content should be injected
-        assert "agent_response_content" in tool.output_schema["properties"]
+        assert tool.name == "run_discovery_agent"
+        assert "discovery_agent" in tool.description
 
     def test_create_with_custom_description(self, mock_agent, sample_schema, tmp_path):
         """Create AgentTool with custom description."""
@@ -114,25 +98,6 @@ class TestAgentToolCreation:
         )
 
         assert tool.description == "Custom description for discovery"
-
-    def test_create_with_input_schema(
-        self, mock_agent, sample_schema, sample_input_schema, tmp_path
-    ):
-        """Create AgentTool with both input and output schemas."""
-        output_path = tmp_path / "output.schema.json"
-        output_path.write_text(json.dumps(sample_schema))
-        input_path = tmp_path / "input.schema.json"
-        input_path.write_text(json.dumps(sample_input_schema))
-
-        tool = AgentTool(
-            agent=mock_agent, output_schema_path=str(output_path), input_schema_path=str(input_path)
-        )
-
-        # Input schema is not modified
-        assert tool.input_schema == sample_input_schema
-        # Output schema has agent_response_content injected
-        assert "agent_response_content" in tool.output_schema["properties"]
-        assert "article_urls" in tool.output_schema["properties"]
 
 
 class TestAgentToolProperties:
@@ -156,24 +121,36 @@ class TestAgentToolProperties:
 
         assert "discovery_agent" in tool.description
 
-    def test_output_schema_property(self, mock_agent, sample_schema, tmp_path):
-        """output_schema returns the loaded schema."""
+
+class TestAgentToolTemplateMethods:
+    """Tests for template-accessed methods (used by sub_agents_section.md.j2)."""
+
+    def test_get_agent_name(self, mock_agent, sample_schema, tmp_path):
+        """get_agent_name returns the wrapped agent's name."""
         schema_path = tmp_path / "output.schema.json"
         schema_path.write_text(json.dumps(sample_schema))
 
         tool = AgentTool(agent=mock_agent, output_schema_path=str(schema_path))
 
-        assert tool.output_schema["type"] == "object"
-        assert "article_urls" in tool.output_schema["properties"]
+        assert tool.get_agent_name() == "discovery_agent"
 
-    def test_input_schema_none_when_not_provided(self, mock_agent, sample_schema, tmp_path):
-        """input_schema is None when not provided."""
+    def test_get_agent_description(self, mock_agent, sample_schema, tmp_path):
+        """get_agent_description returns agent's formatted description."""
         schema_path = tmp_path / "output.schema.json"
         schema_path.write_text(json.dumps(sample_schema))
 
         tool = AgentTool(agent=mock_agent, output_schema_path=str(schema_path))
 
-        assert tool.input_schema is None
+        assert tool.get_agent_description() == "discovery_agent - Test agent for unit tests"
+
+    def test_get_tool_name(self, mock_agent, sample_schema, tmp_path):
+        """get_tool_name returns run_{agent.name}."""
+        schema_path = tmp_path / "output.schema.json"
+        schema_path.write_text(json.dumps(sample_schema))
+
+        tool = AgentTool(agent=mock_agent, output_schema_path=str(schema_path))
+
+        assert tool.get_tool_name() == "run_discovery_agent"
 
 
 class TestAgentToolExecute:
@@ -218,6 +195,20 @@ class TestAgentToolExecute:
         assert "iterations" in result
         assert result["success"] is True
 
+    def test_execute_passes_schema_to_agent(self, mock_agent, sample_schema, tmp_path):
+        """execute() passes output_contract_schema to agent.run()."""
+        schema_path = tmp_path / "output.schema.json"
+        schema_path.write_text(json.dumps(sample_schema))
+
+        tool = AgentTool(agent=mock_agent, output_schema_path=str(schema_path))
+        tool.execute(task="Test task")
+
+        assert len(mock_agent._run_calls) == 1
+        call = mock_agent._run_calls[0]
+        assert call["output_contract_schema"] is not None
+        # Schema should have agent_response_content injected
+        assert "agent_response_content" in call["output_contract_schema"]["properties"]
+
 
 class TestAgentToolParametersSchema:
     """Tests for get_parameters_schema()."""
@@ -236,128 +227,33 @@ class TestAgentToolParametersSchema:
         assert schema["properties"]["task"]["type"] == "string"
         assert "task" in schema["required"]
 
-    def test_parameters_schema_includes_context(self, mock_agent, sample_schema, tmp_path):
-        """Parameters schema includes optional context parameter."""
+    def test_parameters_schema_merges_agent_input(self, mock_agent, sample_schema, tmp_path):
+        """Parameters schema merges agent input schema at top level."""
         schema_path = tmp_path / "output.schema.json"
         schema_path.write_text(json.dumps(sample_schema))
 
-        tool = AgentTool(agent=mock_agent, output_schema_path=str(schema_path))
+        input_schema = {
+            "type": "object",
+            "properties": {"target_url": {"type": "string", "format": "uri"}},
+            "required": ["target_url"],
+        }
+        input_schema_path = tmp_path / "input.schema.json"
+        input_schema_path.write_text(json.dumps(input_schema))
+
+        tool = AgentTool(
+            agent=mock_agent,
+            output_schema_path=str(schema_path),
+            input_schema_path=str(input_schema_path),
+        )
 
         schema = tool.get_parameters_schema()
 
-        assert "context" in schema["properties"]
-        assert schema["properties"]["context"]["type"] == "object"
-        # context is optional - not in required
-        assert "context" not in schema["required"]
-
-
-class TestAgentToolPromptAttachment:
-    """Tests for prompt_attachment()."""
-
-    def test_prompt_attachment_contains_agent_name(self, mock_agent, sample_schema, tmp_path):
-        """prompt_attachment contains agent name."""
-        schema_path = tmp_path / "output.schema.json"
-        schema_path.write_text(json.dumps(sample_schema))
-
-        tool = AgentTool(agent=mock_agent, output_schema_path=str(schema_path))
-
-        attachment = tool.prompt_attachment()
-
-        assert "discovery_agent" in attachment
-
-    def test_prompt_attachment_contains_tool_name(self, mock_agent, sample_schema, tmp_path):
-        """prompt_attachment contains tool name."""
-        schema_path = tmp_path / "output.schema.json"
-        schema_path.write_text(json.dumps(sample_schema))
-
-        tool = AgentTool(agent=mock_agent, output_schema_path=str(schema_path))
-
-        attachment = tool.prompt_attachment()
-
-        assert "run_discovery_agent" in attachment
-
-    def test_prompt_attachment_contains_output_contract(self, mock_agent, sample_schema, tmp_path):
-        """prompt_attachment contains output contract section."""
-        schema_path = tmp_path / "output.schema.json"
-        schema_path.write_text(json.dumps(sample_schema))
-
-        tool = AgentTool(agent=mock_agent, output_schema_path=str(schema_path))
-
-        attachment = tool.prompt_attachment()
-
-        assert "Output Contract" in attachment
-        assert "article_urls" in attachment
-        assert "pagination_type" in attachment
-
-    def test_prompt_attachment_contains_example_json(self, mock_agent, sample_schema, tmp_path):
-        """prompt_attachment contains example JSON."""
-        schema_path = tmp_path / "output.schema.json"
-        schema_path.write_text(json.dumps(sample_schema))
-
-        tool = AgentTool(agent=mock_agent, output_schema_path=str(schema_path))
-
-        attachment = tool.prompt_attachment()
-
-        assert "Example Output" in attachment
-        assert "```json" in attachment
-
-    def test_prompt_attachment_example_uses_wrapped_structure(
-        self, mock_agent, sample_schema, tmp_path
-    ):
-        """prompt_attachment example JSON uses wrapped structure with data key."""
-        schema_path = tmp_path / "output.schema.json"
-        schema_path.write_text(json.dumps(sample_schema))
-
-        tool = AgentTool(agent=mock_agent, output_schema_path=str(schema_path))
-
-        attachment = tool.prompt_attachment()
-
-        # Extract JSON from attachment (between ```json and ```)
-        json_start = attachment.find("```json") + len("```json")
-        json_end = attachment.find("```", json_start)
-        json_str = attachment[json_start:json_end].strip()
-        example = json.loads(json_str)
-
-        # Verify wrapped structure
-        assert "agent_response_content" in example
-        assert "data" in example
-        # Data fields should be inside 'data' key
-        assert "article_urls" in example["data"]
-        assert "pagination_type" in example["data"]
-        # Data fields should NOT be at top level (except agent_response_content)
-        assert "article_urls" not in example
-        assert "pagination_type" not in example
-
-    def test_prompt_attachment_with_input_schema(
-        self, mock_agent, sample_schema, sample_input_schema, tmp_path
-    ):
-        """prompt_attachment includes input contract when provided."""
-        output_path = tmp_path / "output.schema.json"
-        output_path.write_text(json.dumps(sample_schema))
-        input_path = tmp_path / "input.schema.json"
-        input_path.write_text(json.dumps(sample_input_schema))
-
-        tool = AgentTool(
-            agent=mock_agent, output_schema_path=str(output_path), input_schema_path=str(input_path)
-        )
-
-        attachment = tool.prompt_attachment()
-
-        assert "Input Contract" in attachment
-        assert "url" in attachment
-
-    def test_prompt_attachment_no_input_section_without_schema(
-        self, mock_agent, sample_schema, tmp_path
-    ):
-        """prompt_attachment omits input section when no input schema."""
-        schema_path = tmp_path / "output.schema.json"
-        schema_path.write_text(json.dumps(sample_schema))
-
-        tool = AgentTool(agent=mock_agent, output_schema_path=str(schema_path))
-
-        attachment = tool.prompt_attachment()
-
-        assert "Input Contract" not in attachment
+        # Agent input fields merged at top level (not nested in context)
+        assert "target_url" in schema["properties"]
+        assert schema["properties"]["target_url"]["format"] == "uri"
+        # Required fields merged
+        assert "task" in schema["required"]
+        assert "target_url" in schema["required"]
 
 
 class TestAgentToolOpenAISchema:
@@ -377,48 +273,237 @@ class TestAgentToolOpenAISchema:
         assert "parameters" in schema["function"]
 
 
-class TestAgentToolSchemaInjection:
-    """Tests for agent_response_content field injection."""
+class TestAgentToolKwargsMerging:
+    """Tests for kwargs merging into context (Task 2)."""
 
-    def test_output_schema_has_agent_response_content(self, mock_agent, sample_schema, tmp_path):
-        """Output schema should have agent_response_content injected."""
+    def test_execute_merges_extra_kwargs_into_context(self, mock_agent, sample_schema, tmp_path):
+        """Extra kwargs beyond reserved keys are merged into context."""
         schema_path = tmp_path / "output.schema.json"
         schema_path.write_text(json.dumps(sample_schema))
 
         tool = AgentTool(agent=mock_agent, output_schema_path=str(schema_path))
 
-        assert "agent_response_content" in tool.output_schema["properties"]
-        field = tool.output_schema["properties"]["agent_response_content"]
-        assert field["type"] == "string"
-        assert "description" in field
-
-    def test_execute_passes_schema_to_agent(self, mock_agent, sample_schema, tmp_path):
-        """execute() should pass output_contract_schema to agent.run()."""
-        schema_path = tmp_path / "output.schema.json"
-        schema_path.write_text(json.dumps(sample_schema))
-
-        tool = AgentTool(agent=mock_agent, output_schema_path=str(schema_path))
-        tool.execute(task="Test task")
+        # Pass extra kwargs like parent agent would
+        tool.execute(
+            task="Generate plan",
+            target_url="https://example.com",
+            collected_information=[{"agent_name": "discovery", "output": {}}],
+        )
 
         assert len(mock_agent._run_calls) == 1
-        call = mock_agent._run_calls[0]
-        assert call["output_contract_schema"] is not None
-        assert "agent_response_content" in call["output_contract_schema"]["properties"]
+        context = mock_agent._run_calls[0]["context"]
+        assert context["target_url"] == "https://example.com"
+        assert context["collected_information"] == [{"agent_name": "discovery", "output": {}}]
 
-    def test_input_schema_not_modified(
-        self, mock_agent, sample_schema, sample_input_schema, tmp_path
+    def test_execute_preserves_explicit_context(self, mock_agent, sample_schema, tmp_path):
+        """Explicit context dict is preserved when passed."""
+        schema_path = tmp_path / "output.schema.json"
+        schema_path.write_text(json.dumps(sample_schema))
+
+        tool = AgentTool(agent=mock_agent, output_schema_path=str(schema_path))
+
+        explicit_context = {"existing_key": "existing_value"}
+        tool.execute(task="Test", context=explicit_context)
+
+        context = mock_agent._run_calls[0]["context"]
+        assert context["existing_key"] == "existing_value"
+
+    def test_execute_merges_explicit_and_extra_kwargs(self, mock_agent, sample_schema, tmp_path):
+        """Both explicit context and extra kwargs are combined."""
+        schema_path = tmp_path / "output.schema.json"
+        schema_path.write_text(json.dumps(sample_schema))
+
+        tool = AgentTool(agent=mock_agent, output_schema_path=str(schema_path))
+
+        tool.execute(
+            task="Test",
+            context={"existing": "value"},
+            new_field="new_value",
+        )
+
+        context = mock_agent._run_calls[0]["context"]
+        assert context["existing"] == "value"
+        assert context["new_field"] == "new_value"
+
+    def test_extra_kwargs_override_explicit_context(self, mock_agent, sample_schema, tmp_path):
+        """Extra kwargs override same keys in explicit context."""
+        schema_path = tmp_path / "output.schema.json"
+        schema_path.write_text(json.dumps(sample_schema))
+
+        tool = AgentTool(agent=mock_agent, output_schema_path=str(schema_path))
+
+        tool.execute(
+            task="Test",
+            context={"target_url": "old_url"},
+            target_url="new_url",  # Should override
+        )
+
+        context = mock_agent._run_calls[0]["context"]
+        assert context["target_url"] == "new_url"
+
+
+class TestAgentToolInputValidation:
+    """Tests for input contract validation (Task 3)."""
+
+    @pytest.fixture
+    def input_schema(self):
+        """Input schema with required fields."""
+        return {
+            "type": "object",
+            "required": ["target_url", "collected_information"],
+            "properties": {
+                "target_url": {"type": "string", "format": "uri"},
+                "collected_information": {"type": "array", "minItems": 1},
+            },
+        }
+
+    def test_validate_input_returns_none_when_valid(
+        self, mock_agent, sample_schema, input_schema, tmp_path
     ):
-        """Input schema should NOT have agent_response_content injected."""
+        """Validation passes when all required fields present."""
         output_path = tmp_path / "output.schema.json"
         output_path.write_text(json.dumps(sample_schema))
         input_path = tmp_path / "input.schema.json"
-        input_path.write_text(json.dumps(sample_input_schema))
+        input_path.write_text(json.dumps(input_schema))
 
         tool = AgentTool(
-            agent=mock_agent, output_schema_path=str(output_path), input_schema_path=str(input_path)
+            agent=mock_agent,
+            output_schema_path=str(output_path),
+            input_schema_path=str(input_path),
         )
 
-        # Input schema should NOT have the field
-        assert "agent_response_content" not in tool.input_schema["properties"]
-        # Output schema should have the field
-        assert "agent_response_content" in tool.output_schema["properties"]
+        result = tool._validate_input(
+            {"target_url": "https://example.com", "collected_information": [{"data": "test"}]}
+        )
+
+        assert result is None  # None means valid
+
+    def test_validate_input_returns_error_when_missing_required(
+        self, mock_agent, sample_schema, input_schema, tmp_path
+    ):
+        """Validation fails when required fields missing."""
+        output_path = tmp_path / "output.schema.json"
+        output_path.write_text(json.dumps(sample_schema))
+        input_path = tmp_path / "input.schema.json"
+        input_path.write_text(json.dumps(input_schema))
+
+        tool = AgentTool(
+            agent=mock_agent,
+            output_schema_path=str(output_path),
+            input_schema_path=str(input_path),
+        )
+
+        result = tool._validate_input({"target_url": "https://example.com"})
+
+        assert result is not None
+        assert result["success"] is False
+        assert result["error"] == "Input contract validation failed"
+        assert "collected_information" in result["missing_fields"]
+
+    def test_validate_input_returns_error_with_helpful_hints(
+        self, mock_agent, sample_schema, input_schema, tmp_path
+    ):
+        """Error response includes helpful hints for retry."""
+        output_path = tmp_path / "output.schema.json"
+        output_path.write_text(json.dumps(sample_schema))
+        input_path = tmp_path / "input.schema.json"
+        input_path.write_text(json.dumps(input_schema))
+
+        tool = AgentTool(
+            agent=mock_agent,
+            output_schema_path=str(output_path),
+            input_schema_path=str(input_path),
+        )
+
+        result = tool._validate_input({})
+
+        assert "hint" in result
+        assert "target_url" in result["hint"]
+        assert "collected_information" in result["hint"]
+        assert result["required_fields"] == ["target_url", "collected_information"]
+        assert result["provided_fields"] == []
+
+    def test_execute_returns_validation_error_when_input_invalid(
+        self, mock_agent, sample_schema, input_schema, tmp_path
+    ):
+        """execute() returns validation error without calling agent."""
+        output_path = tmp_path / "output.schema.json"
+        output_path.write_text(json.dumps(sample_schema))
+        input_path = tmp_path / "input.schema.json"
+        input_path.write_text(json.dumps(input_schema))
+
+        tool = AgentTool(
+            agent=mock_agent,
+            output_schema_path=str(output_path),
+            input_schema_path=str(input_path),
+        )
+
+        result = tool.execute(task="Generate plan")  # Missing required fields
+
+        assert result["success"] is False
+        # Validation catches missing required args from merged schema
+        assert "Missing required arguments" in result["error"]
+        # Agent should NOT have been called
+        assert len(mock_agent._run_calls) == 0
+
+    def test_execute_proceeds_when_input_valid(
+        self, mock_agent, sample_schema, input_schema, tmp_path
+    ):
+        """execute() proceeds to call agent when input is valid."""
+        output_path = tmp_path / "output.schema.json"
+        output_path.write_text(json.dumps(sample_schema))
+        input_path = tmp_path / "input.schema.json"
+        input_path.write_text(json.dumps(input_schema))
+
+        tool = AgentTool(
+            agent=mock_agent,
+            output_schema_path=str(output_path),
+            input_schema_path=str(input_path),
+        )
+
+        result = tool.execute(
+            task="Generate plan",
+            target_url="https://example.com",
+            collected_information=[{"agent": "discovery", "output": {}}],
+        )
+
+        assert result["success"] is True
+        assert len(mock_agent._run_calls) == 1
+
+    def test_execute_skips_validation_when_no_input_schema(
+        self, mock_agent, sample_schema, tmp_path
+    ):
+        """No validation when input_schema_path not provided."""
+        output_path = tmp_path / "output.schema.json"
+        output_path.write_text(json.dumps(sample_schema))
+
+        # No input schema provided
+        tool = AgentTool(agent=mock_agent, output_schema_path=str(output_path))
+
+        result = tool.execute(task="Test without input schema")
+
+        # Should succeed even without any context
+        assert result["success"] is True
+        assert len(mock_agent._run_calls) == 1
+
+    def test_validate_input_with_none_context(
+        self, mock_agent, sample_schema, input_schema, tmp_path
+    ):
+        """Validation handles None context by treating as empty dict."""
+        output_path = tmp_path / "output.schema.json"
+        output_path.write_text(json.dumps(sample_schema))
+        input_path = tmp_path / "input.schema.json"
+        input_path.write_text(json.dumps(input_schema))
+
+        tool = AgentTool(
+            agent=mock_agent,
+            output_schema_path=str(output_path),
+            input_schema_path=str(input_path),
+        )
+
+        result = tool._validate_input(None)
+
+        assert result is not None
+        assert result["success"] is False
+        assert "target_url" in result["missing_fields"]
+        assert "collected_information" in result["missing_fields"]

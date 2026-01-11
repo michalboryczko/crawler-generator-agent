@@ -153,12 +153,14 @@ class TestRenderResponseRules:
             },
             "required": ["article_urls"],
         }
+        expected_outputs = ["article_urls"]
         result = render_template(
             "response_rules.md.j2",
             run_identifier="uuid-123-456",
             required_fields=["article_urls", "pagination_type"],
-            expected_outputs=["article_urls"],
+            expected_outputs=expected_outputs,
             output_contract_schema=schema,
+            example_json={field: "<value>" for field in expected_outputs},
         )
 
         assert "uuid-123-456" in result
@@ -171,17 +173,20 @@ class TestRenderResponseRules:
     def test_render_response_rules_includes_instructions(self):
         """Rules include validation instructions."""
         schema = {"type": "object", "properties": {"name": {"type": "string"}}}
+        expected_outputs = ["name"]
         result = render_template(
             "response_rules.md.j2",
             run_identifier="test-uuid",
             required_fields=["name"],
-            expected_outputs=[],
+            expected_outputs=expected_outputs,
             output_contract_schema=schema,
+            example_json={field: "<value>" for field in expected_outputs},
         )
 
         assert "MUST" in result
         assert "JSON" in result
-        assert "REQUIRED" in result
+        assert "CRITICAL" in result  # Uses CRITICAL instead of REQUIRED
+        assert "automatic" in result  # Mentions automatic validation
 
     def test_render_response_rules_with_expected_outputs(self):
         """Expected outputs section rendered."""
@@ -193,27 +198,31 @@ class TestRenderResponseRules:
                 "metadata": {"type": "object"},
             },
         }
+        expected_outputs = ["name", "value", "metadata"]
         result = render_template(
             "response_rules.md.j2",
             run_identifier="test-uuid",
             required_fields=["name"],
-            expected_outputs=["name", "value", "metadata"],
+            expected_outputs=expected_outputs,
             output_contract_schema=schema,
+            example_json={field: "<value>" for field in expected_outputs},
         )
 
-        assert "User Expectations" in result
+        assert "Required Fields" in result
         assert "name" in result
         assert "value" in result
         assert "metadata" in result
 
     def test_render_response_rules_with_empty_schema(self):
         """Empty schema renders as empty object."""
+        expected_outputs = ["name"]
         result = render_template(
             "response_rules.md.j2",
             run_identifier="test-uuid",
             required_fields=["name"],
-            expected_outputs=["name"],
+            expected_outputs=expected_outputs,
             output_contract_schema={},
+            example_json={field: "<value>" for field in expected_outputs},
         )
 
         assert "test-uuid" in result
@@ -262,6 +271,206 @@ class TestRenderContractSummary:
 
         assert "test_agent" in result
         assert "No description" in result
+
+
+class TestPlanGeneratorUserTemplate:
+    """Tests for plan_generator_user.md.j2 template with nested markdown rendering."""
+
+    def test_renders_simple_values_inline(self):
+        """Simple string/number values render inline with key."""
+        from src.prompts.template_renderer import render_agent_template
+
+        collected_information = [
+            {
+                "agent_name": "discovery_agent",
+                "description": "Found articles",
+                "output": {
+                    "pagination_type": "numbered",
+                    "max_pages": 10,
+                    "success": True,
+                },
+            }
+        ]
+
+        result = render_agent_template(
+            "plan_generator_user.md.j2",
+            task="Test",
+            target_url="https://example.com",
+            collected_information=collected_information,
+        )
+
+        # Simple values should be inline
+        assert "- **pagination_type**: numbered" in result
+        assert "- **max_pages**: 10" in result
+        assert "- **success**: true" in result
+        # Should NOT contain json blocks for simple values
+        assert "```json\nnumbered" not in result
+
+    def test_renders_arrays_as_nested_lists(self):
+        """Arrays render as nested markdown lists, not JSON."""
+        from src.prompts.template_renderer import render_agent_template
+
+        collected_information = [
+            {
+                "agent_name": "discovery_agent",
+                "description": "Found articles",
+                "output": {
+                    "article_urls": [
+                        "https://example.com/article1",
+                        "https://example.com/article2",
+                    ],
+                },
+            }
+        ]
+
+        result = render_agent_template(
+            "plan_generator_user.md.j2",
+            task="Test",
+            target_url="https://example.com",
+            collected_information=collected_information,
+        )
+
+        # Should render as nested list
+        assert "- **article_urls**:" in result
+        assert "- https://example.com/article1" in result
+        assert "- https://example.com/article2" in result
+        # Should NOT be JSON
+        assert '["https://example.com/article1"' not in result
+
+    def test_renders_nested_objects_as_nested_lists(self):
+        """Nested objects render as nested markdown lists."""
+        from src.prompts.template_renderer import render_agent_template
+
+        collected_information = [
+            {
+                "agent_name": "selector_agent",
+                "description": "Built selectors",
+                "output": {
+                    "listing_selectors": {
+                        "title": ".article-title",
+                        "link": "a.read-more",
+                    },
+                },
+            }
+        ]
+
+        result = render_agent_template(
+            "plan_generator_user.md.j2",
+            task="Test",
+            target_url="https://example.com",
+            collected_information=collected_information,
+        )
+
+        # Should render nested object as nested list
+        assert "- **listing_selectors**:" in result
+        assert "- **title**: .article-title" in result
+        assert "- **link**: a.read-more" in result
+
+    def test_renders_deeply_nested_structures(self):
+        """Deeply nested structures render correctly."""
+        from src.prompts.template_renderer import render_agent_template
+
+        collected_information = [
+            {
+                "agent_name": "selector_agent",
+                "description": "Complex output",
+                "output": {
+                    "data": {
+                        "selectors": {
+                            "listing": {
+                                "title": ".title",
+                                "urls": ["url1", "url2"],
+                            }
+                        }
+                    }
+                },
+            }
+        ]
+
+        result = render_agent_template(
+            "plan_generator_user.md.j2",
+            task="Test",
+            target_url="https://example.com",
+            collected_information=collected_information,
+        )
+
+        # Check nested structure is rendered
+        assert "- **data**:" in result
+        assert "- **selectors**:" in result
+        assert "- **listing**:" in result
+        assert "- **title**: .title" in result
+        assert "- url1" in result
+        assert "- url2" in result
+
+    def test_handles_null_values(self):
+        """Null values render as 'null'."""
+        from src.prompts.template_renderer import render_agent_template
+
+        collected_information = [
+            {
+                "agent_name": "discovery_agent",
+                "description": "Test",
+                "output": {
+                    "next_page_selector": None,
+                },
+            }
+        ]
+
+        result = render_agent_template(
+            "plan_generator_user.md.j2",
+            task="Test",
+            target_url="https://example.com",
+            collected_information=collected_information,
+        )
+
+        assert "- **next_page_selector**: null" in result
+
+    def test_includes_task_section(self):
+        """Template includes Your Task section with instructions."""
+        from src.prompts.template_renderer import render_agent_template
+
+        result = render_agent_template(
+            "plan_generator_user.md.j2",
+            task="Generate Plan",
+            target_url="https://example.com",
+            collected_information=[],
+        )
+
+        assert "## Your Task" in result
+        assert "plan_draft_provider" in result
+        assert "prepare_crawler_configuration" in result
+
+    def test_no_json_blocks_for_nested_data(self):
+        """Verify no ```json blocks appear for nested data structures."""
+        from src.prompts.template_renderer import render_agent_template
+
+        collected_information = [
+            {
+                "agent_name": "discovery_agent",
+                "description": "Found data",
+                "output": {
+                    "success": True,
+                    "data": {
+                        "pagination_type": "numbered",
+                        "max_pages": 589,
+                        "article_urls": ["url1", "url2", "url3"],
+                        "nested": {"key": "value"},
+                    },
+                },
+            }
+        ]
+
+        result = render_agent_template(
+            "plan_generator_user.md.j2",
+            task="Test",
+            target_url="https://example.com",
+            collected_information=collected_information,
+        )
+
+        # Count occurrences of ```json - should be 0 in output section
+        # (might be in Your Task section example, but not in rendered data)
+        output_section = result.split("## From discovery_agent")[1].split("## Your Task")[0]
+        assert "```json" not in output_section
 
 
 class TestTemplateErrors:

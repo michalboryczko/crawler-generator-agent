@@ -1,0 +1,22 @@
+Create a complete crawl plan for: {{ url }}
+
+Execute all 5 phases as defined in your workflow.
+
+## Your Task
+Target URL: {{ url }}
+
+1. Run all four sub-agents in order (discovery → selector → accessibility → data_prep)
+2. STORE each agent's full result - you will need these for phase 5
+3. Pass ALL collected results to plan_generator_agent via `context.collected_information`
+4. Generate test.md documentation
+
+## Reminders
+- Store target_url to memory first: memory_write("target_url", "{{ url }}")
+- Each agent stores specific memory keys - verify they exist before proceeding
+- The plan_generator_agent REQUIRES the collected_information array with all 4 agent outputs
+- Do NOT skip any agent - all are mandatory for a complete crawl plan
+
+Return summary with:
+- Plan file path (from plan_generator_agent response)
+- Status of each phase
+- Counts: articles discovered, selectors found, test entries created

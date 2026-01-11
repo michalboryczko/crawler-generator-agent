@@ -26,8 +26,10 @@ class FileCreateTool(BaseTool):
 
     @traced_tool(name="file_create")
     @validated_tool
-    def execute(self, filename: str, content: str) -> dict[str, Any]:
+    def execute(self, **kwargs: Any) -> dict[str, Any]:
         """Create a file with content. Instrumented by @traced_tool."""
+        filename = kwargs["filename"]
+        content = kwargs["content"]
         filepath = self.output_dir / filename
         # Ensure parent directories exist
         filepath.parent.mkdir(parents=True, exist_ok=True)
@@ -43,19 +45,6 @@ class FileCreateTool(BaseTool):
 
         return {"success": True, "result": f"Created file: {filename}", "path": str(filepath)}
 
-    def get_parameters_schema(self) -> dict[str, Any]:
-        return {
-            "type": "object",
-            "properties": {
-                "filename": {
-                    "type": "string",
-                    "description": "Relative path to file within output directory (e.g., 'plan.md', 'data/test.jsonl')",
-                },
-                "content": {"type": "string", "description": "Content to write to the file"},
-            },
-            "required": ["filename", "content"],
-        }
-
 
 class FileReadTool(BaseTool):
     """Read content from a file."""
@@ -68,10 +57,11 @@ class FileReadTool(BaseTool):
 
     @traced_tool(name="file_read")
     @validated_tool
-    def execute(
-        self, filename: str, head: int | None = None, tail: int | None = None
-    ) -> dict[str, Any]:
+    def execute(self, **kwargs: Any) -> dict[str, Any]:
         """Read file content with optional head/tail. Instrumented by @traced_tool."""
+        filename = kwargs["filename"]
+        head = kwargs.get("head")
+        tail = kwargs.get("tail")
         filepath = self.output_dir / filename
 
         if not filepath.exists():
@@ -93,20 +83,6 @@ class FileReadTool(BaseTool):
             "returned_lines": len(lines),
         }
 
-    def get_parameters_schema(self) -> dict[str, Any]:
-        return {
-            "type": "object",
-            "properties": {
-                "filename": {
-                    "type": "string",
-                    "description": "Relative path to file within output directory",
-                },
-                "head": {"type": "integer", "description": "Return only first N lines"},
-                "tail": {"type": "integer", "description": "Return only last N lines"},
-            },
-            "required": ["filename"],
-        }
-
 
 class FileAppendTool(BaseTool):
     """Append content to a file."""
@@ -119,8 +95,10 @@ class FileAppendTool(BaseTool):
 
     @traced_tool(name="file_append")
     @validated_tool
-    def execute(self, filename: str, content: str) -> dict[str, Any]:
+    def execute(self, **kwargs: Any) -> dict[str, Any]:
         """Append content to file. Instrumented by @traced_tool."""
+        filename = kwargs["filename"]
+        content = kwargs["content"]
         filepath = self.output_dir / filename
 
         if not filepath.exists():
@@ -136,19 +114,6 @@ class FileAppendTool(BaseTool):
 
         return {"success": True, "result": f"Appended content to: {filename}"}
 
-    def get_parameters_schema(self) -> dict[str, Any]:
-        return {
-            "type": "object",
-            "properties": {
-                "filename": {
-                    "type": "string",
-                    "description": "Relative path to file within output directory",
-                },
-                "content": {"type": "string", "description": "Content to append to the file"},
-            },
-            "required": ["filename", "content"],
-        }
-
 
 class FileReplaceTool(BaseTool):
     """Replace content of a file."""
@@ -161,8 +126,10 @@ class FileReplaceTool(BaseTool):
 
     @traced_tool(name="file_replace")
     @validated_tool
-    def execute(self, filename: str, content: str) -> dict[str, Any]:
+    def execute(self, **kwargs: Any) -> dict[str, Any]:
         """Replace file content. Instrumented by @traced_tool."""
+        filename = kwargs["filename"]
+        content = kwargs["content"]
         filepath = self.output_dir / filename
         filepath.parent.mkdir(parents=True, exist_ok=True)
 
@@ -173,17 +140,4 @@ class FileReplaceTool(BaseTool):
             "success": True,
             "result": f"Replaced content of: {filename}",
             "path": str(filepath),
-        }
-
-    def get_parameters_schema(self) -> dict[str, Any]:
-        return {
-            "type": "object",
-            "properties": {
-                "filename": {
-                    "type": "string",
-                    "description": "Relative path to file within output directory",
-                },
-                "content": {"type": "string", "description": "New content for the file"},
-            },
-            "required": ["filename", "content"],
         }

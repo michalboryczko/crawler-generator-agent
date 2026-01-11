@@ -1,0 +1,7 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "type": "object",
+  "description": "Parameters for plan_draft_provider tool - no parameters required",
+  "properties": {},
+  "additionalProperties": false
+}

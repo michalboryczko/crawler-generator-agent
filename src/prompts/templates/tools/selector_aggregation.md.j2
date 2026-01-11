@@ -1,0 +1,30 @@
+Analyze these CSS selectors extracted from {{ total_pages }} article pages.
+For each field, create an ORDERED CHAIN of all working selectors (not just one!).
+Order them by reliability - most reliable first, fallbacks after.
+
+The crawler will try each selector in order until one matches.
+
+Selector variations found (with counts):
+{{ selector_variations_json }}
+
+Respond with JSON only:
+{
+  "selectors": {
+    "title": [
+      {"selector": "most reliable selector", "priority": 1, "notes": "why this is primary"},
+      {"selector": "fallback selector", "priority": 2, "notes": "when to use this"}
+    ],
+    "date": [...],
+    "authors": [...],
+    "lead": [...],
+    "content": [...],
+    "category": [...],
+    "tags": [...],
+    "breadcrumbs": [...],
+    "files": [...]
+  },
+  "notes": "overall analysis"
+}
+
+IMPORTANT: Include ALL selectors that worked on any page, not just the most common one.
+The crawler needs fallbacks for pages with different structures.

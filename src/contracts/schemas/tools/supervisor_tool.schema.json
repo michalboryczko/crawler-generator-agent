@@ -1,0 +1,33 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "type": "object",
+  "description": "Parameters for supervisor_tool - validates generated output quality using LLM analysis",
+  "required": ["given_task", "input_data", "output_data"],
+  "properties": {
+    "given_task": {
+      "type": "string",
+      "description": "Description of the task that was performed. Example: 'I got task to generate crawl plan for given target url based on collected information from other agents. The plan should include recommended fields and crawler configuration in json format.'"
+    },
+    "input_data": {
+      "description": "The input data that was provided to the agent (collected_information array or object). This is what the agent based its work on.",
+      "oneOf": [
+        {"type": "object"},
+        {"type": "array", "items": {}},
+        {"type": "string"}
+      ]
+    },
+    "output_data": {
+      "description": "The generated output to validate (plan content, crawler config, or other generated artifact). This is what needs to be checked for quality.",
+      "oneOf": [
+        {"type": "object"},
+        {"type": "array", "items": {}},
+        {"type": "string"}
+      ]
+    },
+    "context_data": {
+      "type": "string",
+      "description": "Optional additional context that might help in validation (e.g., special requirements, constraints)"
+    }
+  },
+  "additionalProperties": false
+}

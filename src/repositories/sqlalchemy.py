@@ -200,6 +200,45 @@ class SQLAlchemyRepository(AbstractMemoryRepository):
             session.commit()
             return result.rowcount
 
+    def copy_session_memory(
+        self,
+        source_session_id: str,
+        target_session_id: str,
+        up_to_timestamp: datetime | None = None,
+    ) -> int:
+        """Copy memory entries from one session to another.
+
+        Copies all memory entries from source session to target session,
+        optionally filtering by creation timestamp.
+        """
+        with self._get_session() as session:
+            # Build query for source entries
+            stmt = select(MemoryEntry).where(MemoryEntry.session_id == source_session_id)
+
+            if up_to_timestamp is not None:
+                stmt = stmt.where(MemoryEntry.created_at <= up_to_timestamp)
+
+            source_entries = session.execute(stmt).scalars().all()
+
+            now = datetime.now(UTC)
+            count = 0
+
+            for entry in source_entries:
+                # Create new entry for target session
+                new_entry = MemoryEntry(
+                    session_id=target_session_id,
+                    agent_name=entry.agent_name,
+                    key=entry.key,
+                    value=entry.value,
+                    created_at=now,
+                    updated_at=now,
+                )
+                session.add(new_entry)
+                count += 1
+
+            session.commit()
+            return count
+
     def close(self) -> None:
         """Close the database engine."""
         self.engine.dispose()

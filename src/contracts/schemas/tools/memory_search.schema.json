@@ -1,0 +1,10 @@
+{
+  "type": "object",
+  "properties": {
+    "pattern": {
+      "type": "string",
+      "description": "Glob pattern to match keys (e.g., 'page.*', '*_url')"
+    }
+  },
+  "required": ["pattern"]
+}

@@ -1,0 +1,19 @@
+{
+  "type": "object",
+  "properties": {
+    "selector": {
+      "type": "string",
+      "description": "CSS selector to verify"
+    },
+    "expected_urls": {
+      "type": "array",
+      "items": {"type": "string"},
+      "description": "List of expected article URLs"
+    },
+    "base_url": {
+      "type": "string",
+      "description": "Base URL for resolving relative links"
+    }
+  },
+  "required": ["selector", "expected_urls"]
+}

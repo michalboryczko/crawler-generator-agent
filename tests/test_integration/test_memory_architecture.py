@@ -1,50 +1,14 @@
-"""Integration tests for memory isolation and data flow.
+"""Integration tests for memory isolation.
 
-These tests verify the new memory architecture where:
+These tests verify the memory architecture where:
 1. Each agent has an isolated MemoryService
-2. Data flows explicitly via AgentResult and context parameters
-3. Orchestration tools can optionally share data via shared memory service
+2. Data is properly isolated by agent name within a session
 """
 
-from unittest.mock import MagicMock
-
-from src.agents.result import AgentResult
 from src.core.config import StorageConfig
 from src.infrastructure import init_container
 from src.repositories.inmemory import InMemoryRepository
 from src.services.memory_service import MemoryService
-from src.tools.orchestration import (
-    RunAccessibilityAgentTool,
-    RunDiscoveryAgentTool,
-    RunSelectorAgentTool,
-    create_agent_runner_tool,
-)
-
-
-def create_mock_llm() -> MagicMock:
-    """Create a mock LLM with spec to avoid factory detection."""
-    mock_llm = MagicMock(spec=["chat"])
-    mock_llm.chat.return_value = {"content": "Done", "tool_calls": []}
-    return mock_llm
-
-
-def create_mock_browser_session() -> MagicMock:
-    """Create a mock browser session."""
-    return MagicMock()
-
-
-class MockRunnableAgent:
-    """Mock agent that returns configurable results."""
-
-    def __init__(self, result: AgentResult) -> None:
-        self.result = result
-        self.last_task: str | None = None
-        self.last_context: dict | None = None
-
-    def run(self, task: str, context: dict | None = None) -> AgentResult:
-        self.last_task = task
-        self.last_context = context
-        return self.result
 
 
 class TestContainerAndMemoryService:
@@ -120,236 +84,129 @@ class TestMemoryServiceIsolation:
         assert service2.read("secret") is None
 
 
-class TestExplicitDataFlow:
-    """Test explicit data passing between agents via context."""
+class TestMemorySessionCopy:
+    """Test copying memory between sessions for --copy mode."""
 
-    def test_context_flows_through_orchestration_tool(self):
-        """Context passed to tool reaches the agent."""
-        result = AgentResult.ok(final_selectors={"article": "div.article"})
-        result.iterations = 1
-
-        agent = MockRunnableAgent(result)
-        tool = RunSelectorAgentTool(agent)
-
-        context = {"article_links": ["link1", "link2"], "target_url": "http://example.com"}
-        tool.execute(task="Find selectors", context=context)
-
-        assert agent.last_context == context
-
-    def test_agent_result_data_returned_in_tool_response(self):
-        """Tool response includes full structured data from AgentResult."""
-        result = AgentResult.ok(
-            extracted_articles=[{"href": "/a1"}, {"href": "/a2"}],
-            pagination_type="numbered",
-            pagination_max_pages=50,
-        )
-        result.iterations = 3
-
-        agent = MockRunnableAgent(result)
-        tool = RunDiscoveryAgentTool(agent)
-
-        response = tool.execute(task="Extract articles")
-
-        assert response["success"] is True
-        assert response["data"]["extracted_articles"] == [{"href": "/a1"}, {"href": "/a2"}]
-        assert response["data"]["pagination_type"] == "numbered"
-        assert response["data"]["pagination_max_pages"] == 50
-        assert response["iterations"] == 3
-
-
-class TestOrchestratorMemorySharing:
-    """Test optional memory sharing through orchestrator."""
-
-    def test_specified_keys_stored_in_orchestrator_memory(self):
-        """Store_keys parameter stores specified results in shared memory."""
+    def test_copy_all_memory_entries(self):
+        """Copy all memory entries from source to target session."""
         repo = InMemoryRepository()
-        orchestrator_memory = MemoryService(repo, "session", "orchestrator")
 
-        result = AgentResult.ok(
-            pagination_type="infinite_scroll",
-            extracted_count=100,
-            internal_state="not exported",
+        # Create source session with multiple agents and entries
+        source_agent1 = MemoryService(repo, "source-session", "agent1")
+        source_agent2 = MemoryService(repo, "source-session", "agent2")
+
+        source_agent1.write("key1", "value1")
+        source_agent1.write("key2", "value2")
+        source_agent2.write("key3", "value3")
+
+        # Copy to target session
+        copied = MemoryService.copy_session_memory(
+            repository=repo,
+            source_session_id="source-session",
+            target_session_id="target-session",
         )
-        result.iterations = 1
 
-        agent = MockRunnableAgent(result)
-        tool = RunDiscoveryAgentTool(
-            agent,
-            orchestrator_memory=orchestrator_memory,
-            store_keys=["pagination_type", "extracted_count"],
-        )
+        assert copied == 3
 
-        tool.execute(task="Analyze page")
+        # Verify entries exist in target session
+        target_agent1 = MemoryService(repo, "target-session", "agent1")
+        target_agent2 = MemoryService(repo, "target-session", "agent2")
 
-        # Specified keys should be in orchestrator memory
-        assert orchestrator_memory.read("pagination_type") == "infinite_scroll"
-        assert orchestrator_memory.read("extracted_count") == 100
-        # Non-specified keys should not be stored
-        assert orchestrator_memory.read("internal_state") is None
+        assert target_agent1.read("key1") == "value1"
+        assert target_agent1.read("key2") == "value2"
+        assert target_agent2.read("key3") == "value3"
 
-    def test_orchestrator_memory_persists_across_tools(self):
-        """Data stored by one tool is available for other tools."""
+    def test_copy_with_timestamp_filter(self):
+        """Copy only entries created before a specific timestamp."""
+        from datetime import timedelta
+
         repo = InMemoryRepository()
-        shared_memory = MemoryService(repo, "session", "orchestrator")
 
-        # Discovery agent stores pagination type
-        discovery_result = AgentResult.ok(pagination_type="numbered", total_pages=10)
-        discovery_result.iterations = 1
-        discovery_agent = MockRunnableAgent(discovery_result)
-        discovery_tool = RunDiscoveryAgentTool(
-            discovery_agent,
-            orchestrator_memory=shared_memory,
-            store_keys=["pagination_type", "total_pages"],
-        )
-        discovery_tool.execute(task="Analyze site")
+        # Create source session entries
+        source_agent = MemoryService(repo, "source-session", "agent")
+        source_agent.write("early_key", "early_value")
 
-        # Selector agent stores selectors
-        selector_result = AgentResult.ok(article_selector="div.article")
-        selector_result.iterations = 1
-        selector_agent = MockRunnableAgent(selector_result)
-        selector_tool = RunSelectorAgentTool(
-            selector_agent,
-            orchestrator_memory=shared_memory,
-            store_keys=["article_selector"],
-        )
-        selector_tool.execute(task="Find selectors")
+        # Get the entry's created_at timestamp
+        entry1 = repo.get("source-session", "agent", "early_key")
+        cutoff = entry1.created_at + timedelta(milliseconds=1)
 
-        # Both results should be in shared memory
-        assert shared_memory.read("pagination_type") == "numbered"
-        assert shared_memory.read("total_pages") == 10
-        assert shared_memory.read("article_selector") == "div.article"
+        # Create another entry "later"
+        source_agent.write("late_key", "late_value")
 
+        # Manually backdate the late entry for testing
+        # (In real code, entries are created with current timestamp)
+        late_entry = repo.get("source-session", "agent", "late_key")
+        late_entry.created_at = cutoff + timedelta(seconds=1)
 
-class TestDataFlowWorkflow:
-    """End-to-end workflow tests for data passing."""
-
-    def test_discovery_to_selector_workflow(self):
-        """Simulate discovery agent results flowing to selector agent."""
-        # Step 1: Discovery agent extracts article links
-        discovery_result = AgentResult.ok(
-            extracted_articles=[
-                {"href": "/article/1", "text": "Article 1"},
-                {"href": "/article/2", "text": "Article 2"},
-            ],
-            pagination_type="numbered",
-            base_url="http://example.com",
-        )
-        discovery_result.iterations = 2
-        discovery_agent = MockRunnableAgent(discovery_result)
-
-        # Step 2: Execute discovery tool and get result
-        discovery_tool = RunDiscoveryAgentTool(discovery_agent)
-        discovery_response = discovery_tool.execute(task="Extract articles from page")
-
-        # Step 3: Extract data to pass to selector agent
-        context_for_selector = {
-            "article_links": discovery_response["data"]["extracted_articles"],
-            "pagination_info": discovery_response["data"]["pagination_type"],
-        }
-
-        # Step 4: Selector agent runs with context
-        selector_result = AgentResult.ok(
-            article_link_selector="a.article-link",
-            pagination_selector="div.pagination a",
-        )
-        selector_result.iterations = 1
-        selector_agent = MockRunnableAgent(selector_result)
-        selector_tool = RunSelectorAgentTool(selector_agent)
-
-        selector_response = selector_tool.execute(
-            task="Find CSS selectors", context=context_for_selector
+        # Copy with timestamp filter
+        copied = MemoryService.copy_session_memory(
+            repository=repo,
+            source_session_id="source-session",
+            target_session_id="target-session",
+            up_to_timestamp=cutoff,
         )
 
-        # Verify data flowed correctly
-        assert (
-            selector_agent.last_context["article_links"]
-            == discovery_response["data"]["extracted_articles"]
-        )
-        assert selector_response["data"]["article_link_selector"] == "a.article-link"
+        assert copied == 1
 
-    def test_full_agent_chain_with_shared_memory(self):
-        """Test complete workflow: discovery -> selector -> accessibility."""
+        # Verify only early entry was copied
+        target_agent = MemoryService(repo, "target-session", "agent")
+        assert target_agent.read("early_key") == "early_value"
+        assert target_agent.read("late_key") is None
+
+    def test_copy_preserves_agent_isolation(self):
+        """Copied entries maintain their agent name isolation."""
         repo = InMemoryRepository()
-        shared_memory = MemoryService(repo, "session", "main")
 
-        # Discovery agent
-        discovery_result = AgentResult.ok(
-            url="http://example.com",
-            link_count=25,
-            pagination_type="next_button",
-        )
-        discovery_result.iterations = 1
-        discovery_agent = MockRunnableAgent(discovery_result)
-        discovery_tool = RunDiscoveryAgentTool(
-            discovery_agent,
-            orchestrator_memory=shared_memory,
-            store_keys=["url", "pagination_type"],
+        # Create entries for different agents
+        MemoryService(repo, "source", "browser").write("data", "browser_data")
+        MemoryService(repo, "source", "selector").write("data", "selector_data")
+
+        # Copy session
+        copied = MemoryService.copy_session_memory(
+            repository=repo,
+            source_session_id="source",
+            target_session_id="target",
         )
 
-        # Selector agent
-        selector_result = AgentResult.ok(
-            article_selector="article.post",
-            link_selector="article.post a",
-        )
-        selector_result.iterations = 1
-        selector_agent = MockRunnableAgent(selector_result)
-        selector_tool = RunSelectorAgentTool(
-            selector_agent,
-            orchestrator_memory=shared_memory,
-            store_keys=["article_selector", "link_selector"],
-        )
+        assert copied == 2
 
-        # Accessibility agent
-        accessibility_result = AgentResult.ok(
-            http_accessible=True,
-            no_js_required=True,
-        )
-        accessibility_result.iterations = 1
-        accessibility_agent = MockRunnableAgent(accessibility_result)
-        accessibility_tool = RunAccessibilityAgentTool(
-            accessibility_agent,
-            orchestrator_memory=shared_memory,
-            store_keys=["http_accessible", "no_js_required"],
-        )
+        # Verify agent isolation is preserved
+        target_browser = MemoryService(repo, "target", "browser")
+        target_selector = MemoryService(repo, "target", "selector")
 
-        # Execute chain
-        discovery_tool.execute(task="Analyze site")
-        selector_tool.execute(task="Find selectors", context={"url": shared_memory.read("url")})
-        accessibility_tool.execute(
-            task="Check accessibility",
-            context={"selector": shared_memory.read("article_selector")},
-        )
+        assert target_browser.read("data") == "browser_data"
+        assert target_selector.read("data") == "selector_data"
 
-        # Verify final shared memory state
-        assert shared_memory.read("url") == "http://example.com"
-        assert shared_memory.read("pagination_type") == "next_button"
-        assert shared_memory.read("article_selector") == "article.post"
-        assert shared_memory.read("link_selector") == "article.post a"
-        assert shared_memory.read("http_accessible") is True
-        assert shared_memory.read("no_js_required") is True
-
-
-class TestFactoryFunctionWithMemory:
-    """Test create_agent_runner_tool with memory features."""
-
-    def test_factory_creates_tool_with_memory_support(self):
-        """Factory function creates tool that supports memory storage."""
+    def test_copy_empty_session(self):
+        """Copying from empty session returns 0."""
         repo = InMemoryRepository()
-        shared_memory = MemoryService(repo, "session", "test")
 
-        result = AgentResult.ok(important_key="important_value", other="data")
-        result.iterations = 1
-        agent = MockRunnableAgent(result)
-
-        tool = create_agent_runner_tool(
-            tool_name="test_agent",
-            agent=agent,
-            description="Test agent",
-            orchestrator_memory=shared_memory,
-            store_keys=["important_key"],
+        copied = MemoryService.copy_session_memory(
+            repository=repo,
+            source_session_id="empty-source",
+            target_session_id="target",
         )
 
-        tool.execute(task="do work")
+        assert copied == 0
 
-        assert shared_memory.read("important_key") == "important_value"
-        assert shared_memory.read("other") is None
+    def test_copy_doesnt_affect_source(self):
+        """Copying doesn't modify source session entries."""
+        repo = InMemoryRepository()
+
+        source_agent = MemoryService(repo, "source", "agent")
+        source_agent.write("key", "original_value")
+
+        # Copy to target
+        MemoryService.copy_session_memory(
+            repository=repo,
+            source_session_id="source",
+            target_session_id="target",
+        )
+
+        # Modify target
+        target_agent = MemoryService(repo, "target", "agent")
+        target_agent.write("key", "modified_value")
+
+        # Source should be unchanged
+        assert source_agent.read("key") == "original_value"
+        assert target_agent.read("key") == "modified_value"

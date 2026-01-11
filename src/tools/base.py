@@ -4,6 +4,8 @@ import logging
 from abc import ABC, abstractmethod
 from typing import Any
 
+from ..contracts.schema_parser import TOOL_SCHEMAS_PATH, load_schema
+
 logger = logging.getLogger(__name__)
 
 
@@ -14,7 +16,8 @@ class BaseTool(ABC):
         - name: Tool identifier used in function calling
         - description: Human-readable description for LLM
         - execute(): Tool execution logic
-        - get_parameters_schema(): JSON schema for parameters
+
+    Schema is loaded automatically from src/contracts/schemas/tools/{name}.schema.json
     """
 
     @property
@@ -49,7 +52,10 @@ class BaseTool(ABC):
             },
         }
 
-    @abstractmethod
     def get_parameters_schema(self) -> dict[str, Any]:
-        """Return JSON schema for tool parameters."""
-        pass
+        """Load JSON schema for tool parameters from file.
+
+        Schema file location: src/contracts/schemas/tools/{self.name}.schema.json
+        Override this method for tools with dynamic schemas (e.g., AgentTool).
+        """
+        return load_schema(TOOL_SCHEMAS_PATH / f"{self.name}.schema.json")

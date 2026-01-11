@@ -1,0 +1,50 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "type": "object",
+  "description": "Parameters for batch_extract_listings tool. Extracts article URLs from listing pages using CSS selectors for deterministic extraction.",
+  "properties": {
+    "html_key_prefix": {
+      "type": "string",
+      "description": "Memory key prefix for listing HTML content. Tool searches for '{prefix}-*' keys."
+    },
+    "output_key_prefix": {
+      "type": "string",
+      "description": "Memory key prefix for extraction results. Default: test-data-listing"
+    },
+    "article_selector": {
+      "type": "string",
+      "description": "Primary CSS selector for article links (backward compatible). If not provided, extracted from listing_selectors.article_link[0].selector"
+    },
+    "listing_selectors": {
+      "type": "object",
+      "description": "Complete listing selectors from Selector Agent with full selector chains. Selectors are executed in Python code for deterministic URL extraction.",
+      "properties": {
+        "listing_container": {
+          "type": "array",
+          "description": "Selector chain for main content container holding article list",
+          "items": {
+            "type": "object",
+            "properties": {
+              "selector": { "type": "string" },
+              "success_rate": { "type": "number", "minimum": 0, "maximum": 1 }
+            },
+            "required": ["selector"]
+          }
+        },
+        "article_link": {
+          "type": "array",
+          "description": "Selector chain for article link elements to extract URLs from",
+          "items": {
+            "type": "object",
+            "properties": {
+              "selector": { "type": "string" },
+              "success_rate": { "type": "number", "minimum": 0, "maximum": 1 }
+            },
+            "required": ["selector"]
+          }
+        }
+      }
+    }
+  },
+  "required": ["html_key_prefix"]
+}

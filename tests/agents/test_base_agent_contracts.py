@@ -220,14 +220,15 @@ class TestBuildFinalPrompt:
     """Tests for _build_final_prompt() method."""
 
     def test_build_final_prompt_basic(self):
-        """Returns system_prompt when no contract params."""
+        """Returns system_prompt with language rules when no contract params."""
         llm = MockLLMClient()
         agent = BaseAgent(llm=llm)
         agent.system_prompt = "Test system prompt."
 
         prompt = agent._build_final_prompt()
 
-        assert prompt == "Test system prompt."
+        assert "Test system prompt." in prompt
+        assert "Language and Output Rules" in prompt
 
     def test_build_final_prompt_with_context(self):
         """Context JSON injected into prompt."""
@@ -420,3 +421,318 @@ class TestRunWithValidationParams:
         system_msg = llm.chat_calls[0]["messages"][0]
         assert system_msg["role"] == "system"
         assert "Available agents" in system_msg["content"]
+
+
+class MockValidateResponseTool(BaseTool):
+    """Mock validate_response tool for testing code-level validation."""
+
+    def __init__(self, validation_results: list[dict[str, Any]] | None = None):
+        """Initialize with canned validation results.
+
+        Args:
+            validation_results: List of results to return on each execute() call.
+                               Each result should have 'valid' (bool) and optionally
+                               'validation_errors' (list of dicts with 'message').
+        """
+        self._results = validation_results or []
+        self._call_count = 0
+        self.execute_calls: list[dict[str, Any]] = []
+
+    @property
+    def name(self) -> str:
+        return "validate_response"
+
+    @property
+    def description(self) -> str:
+        return "Validate response JSON"
+
+    def get_parameters_schema(self) -> dict[str, Any]:
+        return {
+            "type": "object",
+            "properties": {
+                "run_identifier": {"type": "string"},
+                "response_json": {"type": "object"},
+            },
+            "required": ["run_identifier", "response_json"],
+        }
+
+    def execute(self, **kwargs) -> dict[str, Any]:
+        self.execute_calls.append(kwargs)
+        if self._call_count < len(self._results):
+            result = self._results[self._call_count]
+            self._call_count += 1
+            return result
+        # Default: valid
+        return {"success": True, "valid": True}
+
+
+class TestCodeLevelValidationRetry:
+    """Tests for code-level validation with retry in run()."""
+
+    def test_run_validates_output_when_run_identifier_provided(self):
+        """run() validates output when run_identifier provided."""
+        # First response: invalid (missing required field)
+        # Second response: valid
+        responses = [
+            {"content": '{"wrong_field": "value"}', "tool_calls": []},
+            {"content": '{"name": "correct"}', "tool_calls": []},
+        ]
+        llm = MockLLMClient(responses=responses)
+
+        # Mock validate_response tool that fails first, then passes
+        validate_tool = MockValidateResponseTool(
+            [
+                {
+                    "success": True,
+                    "valid": False,
+                    "validation_errors": [{"message": "Missing required field: name"}],
+                },
+                {"success": True, "valid": True},
+            ]
+        )
+        agent = BaseAgent(llm=llm, tools=[validate_tool])
+
+        result = agent.run(task="test", run_identifier="test-uuid-123")
+
+        # Should have retried and succeeded
+        assert result.success is True
+        # Should have been called twice (first invalid, then valid)
+        assert len(llm.chat_calls) == 2
+        # Validate tool should have been called twice
+        assert len(validate_tool.execute_calls) == 2
+        assert validate_tool.execute_calls[0]["run_identifier"] == "test-uuid-123"
+
+    def test_run_skips_validation_when_no_run_identifier(self):
+        """run() skips validation when no run_identifier provided."""
+        responses = [{"content": "any content", "tool_calls": []}]
+        llm = MockLLMClient(responses=responses)
+
+        validate_tool = MockValidateResponseTool(
+            [
+                {"success": True, "valid": False, "validation_errors": [{"message": "Error"}]},
+            ]
+        )
+        agent = BaseAgent(llm=llm, tools=[validate_tool])
+
+        result = agent.run(task="test")  # No run_identifier
+
+        assert result.success is True
+        # Should only be called once
+        assert len(llm.chat_calls) == 1
+        # Validate tool should NOT have been called (no run_identifier)
+        assert len(validate_tool.execute_calls) == 0
+
+    def test_run_injects_error_message_on_validation_failure(self):
+        """run() injects error message when validation fails."""
+        responses = [
+            {"content": '{"wrong": "value"}', "tool_calls": []},
+            {"content": '{"name": "fixed"}', "tool_calls": []},
+        ]
+        llm = MockLLMClient(responses=responses)
+
+        validate_tool = MockValidateResponseTool(
+            [
+                {
+                    "success": True,
+                    "valid": False,
+                    "validation_errors": [{"message": "Missing required field: name"}],
+                },
+                {"success": True, "valid": True},
+            ]
+        )
+        agent = BaseAgent(llm=llm, tools=[validate_tool])
+
+        agent.run(task="test", run_identifier="test-uuid-456")
+
+        # Second call should have validation error message in messages
+        second_call_messages = llm.chat_calls[1]["messages"]
+        user_messages = [m for m in second_call_messages if m.get("role") == "user"]
+
+        # Should have original task + validation error
+        assert len(user_messages) >= 2
+        assert "VALIDATION FAILED" in user_messages[-1]["content"]
+
+    def test_run_skips_validation_when_tool_not_available(self):
+        """run() skips validation when validate_response tool not available."""
+        responses = [{"content": '{"any": "content"}', "tool_calls": []}]
+        llm = MockLLMClient(responses=responses)
+        # No validate_response tool provided
+        agent = BaseAgent(llm=llm, tools=[])
+
+        result = agent.run(task="test", run_identifier="test-uuid-789")
+
+        assert result.success is True
+        # Should only be called once (no retry since tool not available)
+        assert len(llm.chat_calls) == 1
+
+
+class TestPendingToolCallsResume:
+    """Tests for resuming from persisted context with pending tool calls."""
+
+    def test_get_pending_tool_calls_returns_empty_for_no_messages(self):
+        """_get_pending_tool_calls returns empty list for no messages."""
+        llm = MockLLMClient()
+        agent = BaseAgent(llm=llm)
+
+        result = agent._get_pending_tool_calls([])
+
+        assert result == []
+
+    def test_get_pending_tool_calls_returns_empty_for_non_assistant_last(self):
+        """_get_pending_tool_calls returns empty for non-assistant last message."""
+        llm = MockLLMClient()
+        agent = BaseAgent(llm=llm)
+
+        messages = [
+            {"role": "system", "content": "System prompt"},
+            {"role": "user", "content": "Task"},
+        ]
+
+        result = agent._get_pending_tool_calls(messages)
+
+        assert result == []
+
+    def test_get_pending_tool_calls_returns_empty_for_assistant_without_tool_calls(self):
+        """_get_pending_tool_calls returns empty for assistant without tool_calls."""
+        llm = MockLLMClient()
+        agent = BaseAgent(llm=llm)
+
+        messages = [
+            {"role": "system", "content": "System prompt"},
+            {"role": "user", "content": "Task"},
+            {"role": "assistant", "content": "Response without tool calls"},
+        ]
+
+        result = agent._get_pending_tool_calls(messages)
+
+        assert result == []
+
+    def test_get_pending_tool_calls_extracts_tool_calls(self):
+        """_get_pending_tool_calls extracts pending tool calls from assistant message."""
+        llm = MockLLMClient()
+        agent = BaseAgent(llm=llm)
+
+        messages = [
+            {"role": "system", "content": "System prompt"},
+            {"role": "user", "content": "Task"},
+            {
+                "role": "assistant",
+                "content": "",
+                "tool_calls": [
+                    {
+                        "id": "call_123",
+                        "type": "function",
+                        "function": {
+                            "name": "test_tool",
+                            "arguments": '{"key": "value"}',
+                        },
+                    }
+                ],
+            },
+        ]
+
+        result = agent._get_pending_tool_calls(messages)
+
+        assert len(result) == 1
+        assert result[0]["id"] == "call_123"
+        assert result[0]["name"] == "test_tool"
+        assert result[0]["arguments"] == {"key": "value"}
+
+    def test_get_pending_tool_calls_handles_dict_arguments(self):
+        """_get_pending_tool_calls handles dict arguments (not just JSON string)."""
+        llm = MockLLMClient()
+        agent = BaseAgent(llm=llm)
+
+        messages = [
+            {
+                "role": "assistant",
+                "content": "",
+                "tool_calls": [
+                    {
+                        "id": "call_456",
+                        "type": "function",
+                        "function": {
+                            "name": "another_tool",
+                            "arguments": {"already": "parsed"},  # dict not string
+                        },
+                    }
+                ],
+            },
+        ]
+
+        result = agent._get_pending_tool_calls(messages)
+
+        assert result[0]["arguments"] == {"already": "parsed"}
+
+    def test_run_executes_pending_tool_calls_before_llm(self):
+        """run() executes pending tool calls before calling LLM when resuming."""
+
+        class TrackingTool(BaseTool):
+            """Tool that tracks when it's called."""
+
+            def __init__(self):
+                self.execute_calls = []
+
+            @property
+            def name(self) -> str:
+                return "tracking_tool"
+
+            @property
+            def description(self) -> str:
+                return "Tracks execution"
+
+            def get_parameters_schema(self) -> dict[str, Any]:
+                return {"type": "object", "properties": {"data": {"type": "string"}}}
+
+            def execute(self, **kwargs) -> dict[str, Any]:
+                self.execute_calls.append(kwargs)
+                return {"success": True, "result": "tracked"}
+
+        # LLM should be called once AFTER the tool execution
+        llm = MockLLMClient(responses=[{"content": "Done", "tool_calls": []}])
+        tracking_tool = TrackingTool()
+
+        # Create mock context service that returns messages with pending tool call
+        class MockContextService:
+            def get_messages(self):
+                return [
+                    {"role": "system", "content": "System"},
+                    {"role": "user", "content": "Task"},
+                    {
+                        "role": "assistant",
+                        "content": "",
+                        "tool_calls": [
+                            {
+                                "id": "pending_call",
+                                "type": "function",
+                                "function": {
+                                    "name": "tracking_tool",
+                                    "arguments": '{"data": "test_value"}',
+                                },
+                            }
+                        ],
+                    },
+                ]
+
+            def append_message(self, role, content, **kwargs):
+                pass  # Ignore for test
+
+        agent = BaseAgent(llm=llm, tools=[tracking_tool], context_service=MockContextService())
+
+        result = agent.run(task="Test task")
+
+        # Tool should have been executed with pending call
+        assert len(tracking_tool.execute_calls) == 1
+        assert tracking_tool.execute_calls[0]["data"] == "test_value"
+
+        # LLM should have been called with tool result
+        assert len(llm.chat_calls) == 1
+        messages = llm.chat_calls[0]["messages"]
+
+        # Should have tool result message
+        tool_messages = [m for m in messages if m.get("role") == "tool"]
+        assert len(tool_messages) == 1
+        assert tool_messages[0]["tool_call_id"] == "pending_call"
+        assert "tracked" in tool_messages[0]["content"]
+
+        assert result.success is True

@@ -1,0 +1,20 @@
+{
+  "type": "object",
+  "description": "Base schema for agent tools. Agent-specific input fields are merged at top level.",
+  "properties": {
+    "task": {
+      "type": "string",
+      "description": "Task description for the agent"
+    },
+    "run_identifier": {
+      "type": "string",
+      "description": "UUID from generate_uuid for validation tracking"
+    },
+    "expected_outputs": {
+      "type": "array",
+      "items": {"type": "string"},
+      "description": "List of expected output fields from the agent"
+    }
+  },
+  "required": ["task"]
+}

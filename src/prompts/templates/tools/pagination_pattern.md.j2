@@ -1,0 +1,25 @@
+Analyze these pagination URLs and identify the pagination pattern.
+
+Base/Target URL: {{ target_url }}
+
+Sample pagination links:
+{% for link in pagination_links[:10] %}
+{{ link }}
+{% endfor %}
+
+Identify:
+1. What parameter controls pagination (page, offset, skip, start, p, etc.)
+2. Is it page-based (page=1,2,3) or offset-based (offset=0,20,40) or something else?
+3. What is the base URL without pagination params?
+4. How to construct a URL for page N?
+
+Respond with JSON only:
+{
+    "pattern_type": "page_number" or "offset" or "path_segment" or "other",
+    "param_name": "the parameter name like 'page' or 'offset'",
+    "base_url": "URL without pagination params",
+    "url_template": "template with {n} placeholder, e.g. 'https://example.com?page={n}' or 'https://example.com?offset={n*20}'",
+    "offset_multiplier": null or number (e.g., 20 if offset=0,20,40 for pages 1,2,3),
+    "starts_at": 0 or 1 (whether first page is 0 or 1),
+    "notes": "any observations"
+}

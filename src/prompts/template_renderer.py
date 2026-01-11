@@ -11,6 +11,7 @@ from pathlib import Path
 from jinja2 import Environment, FileSystemLoader
 
 TEMPLATES_DIR = Path(__file__).parent / "templates" / "shared"
+AGENTS_TEMPLATES_DIR = Path(__file__).parent / "templates" / "agents"
 
 
 def _tojson_filter(value: object, indent: int = 2) -> str:
@@ -57,5 +58,40 @@ def render_template(template_name: str, **context) -> str:
         jinja2.TemplateNotFound: If template doesn't exist.
     """
     env = get_template_env()
+    template = env.get_template(template_name)
+    return template.render(**context)
+
+
+@lru_cache(maxsize=1)
+def get_agents_template_env() -> Environment:
+    """Get configured Jinja2 environment for agent templates.
+
+    Returns:
+        Jinja2 Environment with agents templates directory.
+    """
+    env = Environment(
+        loader=FileSystemLoader(str(AGENTS_TEMPLATES_DIR)),
+        autoescape=False,
+        trim_blocks=True,
+        lstrip_blocks=True,
+    )
+    env.filters["tojson"] = _tojson_filter
+    return env
+
+
+def render_agent_template(template_name: str, **context) -> str:
+    """Render an agent template with provided context.
+
+    Args:
+        template_name: Name of template file (e.g., "crawl_plan_task.md.j2").
+        **context: Template variables.
+
+    Returns:
+        Rendered template string.
+
+    Raises:
+        jinja2.TemplateNotFound: If template doesn't exist.
+    """
+    env = get_agents_template_env()
     template = env.get_template(template_name)
     return template.render(**context)

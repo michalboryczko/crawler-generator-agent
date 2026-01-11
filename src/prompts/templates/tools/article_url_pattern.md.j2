@@ -1,0 +1,18 @@
+Analyze these article URLs and identify distinct URL patterns.
+Group them by their structural pattern (path structure, not content).
+
+URLs to analyze:
+{% for url in sample_urls %}
+{{ url }}
+{% endfor %}
+
+Respond with JSON only:
+{
+  "patterns": [
+    {
+      "pattern_name": "descriptive name like 'slug-based' or 'year/month/slug'",
+      "pattern_regex": "regex to match this pattern",
+      "example_urls": ["url1", "url2"]
+    }
+  ]
+}

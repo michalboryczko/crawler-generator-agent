@@ -2,7 +2,7 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "test_data_agent_input",
   "title": "TestDataAgent Input Contract",
-  "description": "Input requirements for the TestData Agent (formerly DataPrepAgent)",
+  "description": "Input requirements for the TestData Agent (formerly DataPrepAgent). CRITICAL: Both listing_selectors and detail_selectors must be passed from Selector Agent for deterministic extraction.",
   "type": "object",
   "required": ["target_url"],
   "properties": {
@@ -21,27 +21,50 @@
       "minimum": 1,
       "description": "Maximum number of pagination pages (from Discovery Agent)"
     },
-    "article_selector": {
-      "type": "string",
-      "description": "Primary CSS selector for article links (from Selector Agent)"
-    },
-    "listing_container_selector": {
-      "type": "string",
-      "description": "CSS selector for main content area on listing pages (from Selector Agent)"
+    "listing_selectors": {
+      "type": "object",
+      "description": "CRITICAL: Complete listing selectors from Selector Agent. Used for deterministic URL extraction in code. Pass the ENTIRE listing_selectors object.",
+      "properties": {
+        "listing_container": {
+          "type": "array",
+          "description": "Selector chain for main content container",
+          "items": { "$ref": "#/definitions/selector_chain_item" }
+        },
+        "article_link": {
+          "type": "array",
+          "description": "Selector chain for article link elements",
+          "items": { "$ref": "#/definitions/selector_chain_item" }
+        }
+      },
+      "additionalProperties": {
+        "type": "array",
+        "items": { "$ref": "#/definitions/selector_chain_item" }
+      }
     },
     "detail_selectors": {
       "type": "object",
-      "description": "Selector chains for article detail fields (from Selector Agent)",
+      "description": "CRITICAL: Complete detail selectors from Selector Agent for all article fields. Selectors are executed in Python code for deterministic extraction - NOT interpreted by LLM. Pass the ENTIRE detail_selectors object to ensure FULL content extraction.",
       "additionalProperties": {
         "type": "array",
-        "items": {
-          "type": "object",
-          "properties": {
-            "selector": { "type": "string" },
-            "success_rate": { "type": "number", "minimum": 0, "maximum": 1 }
-          }
+        "description": "Selector chain for this field - array ordered by priority",
+        "items": { "$ref": "#/definitions/selector_chain_item" }
+      },
+      "examples": [
+        {
+          "title": [{"selector": "h1.article-title", "success_rate": 1.0}],
+          "content": [{"selector": "div.article-body", "success_rate": 0.95}],
+          "date": [{"selector": "time.published", "success_rate": 0.9}],
+          "authors": [{"selector": ".author-name", "success_rate": 0.85}]
         }
-      }
+      ]
+    },
+    "article_selector": {
+      "type": "string",
+      "description": "Primary CSS selector for article links (backward compatible, prefer listing_selectors.article_link)"
+    },
+    "listing_container_selector": {
+      "type": "string",
+      "description": "Primary CSS selector for main content area (backward compatible, prefer listing_selectors.listing_container)"
     },
     "collected_article_urls": {
       "type": "array",
@@ -50,6 +73,24 @@
         "format": "uri"
       },
       "description": "Pre-discovered article URLs from Selector Agent (optional, agent can discover its own)"
+    }
+  },
+  "definitions": {
+    "selector_chain_item": {
+      "type": "object",
+      "properties": {
+        "selector": {
+          "type": "string",
+          "description": "CSS selector string"
+        },
+        "success_rate": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1,
+          "description": "Success rate from selector discovery (0.0-1.0)"
+        }
+      },
+      "required": ["selector"]
     }
   },
   "additionalProperties": false

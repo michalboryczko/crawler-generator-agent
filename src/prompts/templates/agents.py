@@ -23,6 +23,7 @@ def register_agent_prompts(registry: "PromptRegistry") -> None:
         ("agent.selector", "selector_agent", "CSS selector discovery agent"),
         ("agent.accessibility", "accessibility_agent", "HTTP accessibility checker"),
         ("agent.data_prep", "data_prep_agent", "Test data preparation agent"),
+        ("agent.plan_generator", "plan_generator", "Plan generation agent"),
     ]
     for name, template_name, description in prompts:
         registry.register_prompt(

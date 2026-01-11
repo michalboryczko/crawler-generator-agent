@@ -1,0 +1,15 @@
+{
+  "type": "object",
+  "properties": {
+    "candidates": {
+      "type": "array",
+      "items": {},
+      "description": "List of items to choose from"
+    },
+    "count": {
+      "type": "integer",
+      "description": "Number of items to randomly pick"
+    }
+  },
+  "required": ["candidates", "count"]
+}

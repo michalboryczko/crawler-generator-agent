@@ -1,0 +1,14 @@
+{
+  "type": "object",
+  "properties": {
+    "filename": {
+      "type": "string",
+      "description": "Relative path to file within output directory (e.g., 'plan.md', 'data/test.jsonl')"
+    },
+    "content": {
+      "type": "string",
+      "description": "Content to write to the file"
+    }
+  },
+  "required": ["filename", "content"]
+}

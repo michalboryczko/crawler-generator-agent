@@ -3,11 +3,11 @@
 This module uses the @traced_tool decorator for automatic tool instrumentation.
 """
 
-import json
 from typing import TYPE_CHECKING, Any
 
-from ...contracts.schema_parser import generate_example_json, generate_fields_markdown, load_schema
+from ...contracts.schema_parser import TOOL_SCHEMAS_PATH, load_schema
 from ...observability.decorators import traced_tool
+from ...utils.schema_merger import merge_agent_tool_schema
 from ..base import BaseTool
 from ..validation import validated_tool
 
@@ -18,9 +18,6 @@ if TYPE_CHECKING:
 class AgentTool(BaseTool):
     """Tool that wraps a sub-agent with contract metadata.
 
-    Provides prompt_attachment() for generating prompt sections that describe
-    the agent's input requirements and output contract.
-
     Example:
         tool = AgentTool(
             agent=discovery_agent,
@@ -30,9 +27,6 @@ class AgentTool(BaseTool):
 
         # Get OpenAI-compatible schema for function calling
         schema = tool.to_openai_schema()
-
-        # Generate prompt section describing the agent
-        prompt_section = tool.prompt_attachment()
     """
 
     def __init__(
@@ -67,72 +61,121 @@ class AgentTool(BaseTool):
 
     @property
     def description(self) -> str:
-        """Human-readable description for LLM."""
-        return self._description
+        """Human-readable description for LLM, including input requirements."""
+        desc = self._description
 
-    @property
-    def agent(self) -> "BaseAgent":
-        """The wrapped sub-agent."""
-        return self._agent
+        # Add input contract info if available
+        if self._input_schema:
+            required = self._input_schema.get("required", [])
+            if required:
+                desc += f"\n\nREQUIRED PARAMETERS: {', '.join(required)}"
 
-    @property
-    def output_schema(self) -> dict[str, Any]:
-        """The output contract schema."""
-        return self._output_schema
+        return desc
 
-    @property
-    def input_schema(self) -> dict[str, Any] | None:
-        """The input contract schema (if defined)."""
-        return self._input_schema
+    # --- Template-accessed methods (used in sub_agents_section.md.j2) ---
 
     def get_agent_name(self) -> str:
-        """Return the wrapped agent's name."""
+        """Return the wrapped agent's name.
+
+        Note: Called from Jinja2 template sub_agents_section.md.j2
+        """
         return self._agent.name
 
     def get_agent_description(self) -> str:
-        """Return agent's full description via agent's get_description method."""
+        """Return agent's full description via agent's get_description method.
+
+        Note: Called from Jinja2 template sub_agents_section.md.j2
+        """
         return self._agent.get_description()
 
     def get_tool_name(self) -> str:
-        """Return the tool name (run_{agent.name})."""
+        """Return the tool name (run_{agent.name}).
+
+        Note: Called from Jinja2 template sub_agents_section.md.j2
+        """
         return self.name
 
-    def get_output_contract_schema(self) -> dict[str, Any]:
-        """Return the output contract schema dictionary."""
-        return self._output_schema
+    def _validate_input(self, context: dict[str, Any] | None) -> dict[str, Any] | None:
+        """Validate context against input schema.
 
-    def get_input_contract_schema(self) -> dict[str, Any] | None:
-        """Return the input contract schema dictionary or None."""
-        return self._input_schema
+        Returns error dict if validation fails, None if valid.
+        Error dict is designed to help calling agent retry with correct input.
+
+        Args:
+            context: Context dict to validate against input schema
+
+        Returns:
+            None if valid, error dict with helpful hints if invalid
+        """
+        if not self._input_schema:
+            return None  # No schema, no validation
+
+        from jsonschema import ValidationError, validate
+
+        if context is None:
+            context = {}
+
+        try:
+            validate(instance=context, schema=self._input_schema)
+            return None  # Valid
+        except ValidationError as e:
+            required = self._input_schema.get("required", [])
+            missing = [f for f in required if f not in context]
+
+            return {
+                "success": False,
+                "error": "Input contract validation failed",
+                "validation_message": e.message,
+                "path": list(e.path),
+                "required_fields": required,
+                "missing_fields": missing,
+                "provided_fields": list(context.keys()) if context else [],
+                "hint": f"Please provide all required fields: {', '.join(missing)}"
+                if missing
+                else e.message,
+            }
 
     @traced_tool()  # Uses self.name dynamically (run_{agent.name})
     @validated_tool
-    def execute(
-        self,
-        task: str,
-        context: dict | None = None,
-        run_identifier: str | None = None,
-        expected_outputs: list[str] | None = None,
-    ) -> dict[str, Any]:
-        """Execute the wrapped agent.
+    def execute(self, **kwargs: Any) -> dict[str, Any]:
+        """Execute the wrapped agent with merged context.
 
-        Instrumented by @traced_tool - logs tool inputs/outputs.
+        Extra kwargs beyond reserved keys (task, context, run_identifier,
+        expected_outputs, output_contract_schema) are automatically merged
+        into the context dict. This allows parent agents to pass data like
+        target_url, collected_information at the same level as task.
 
-        Args:
-            task: Task description to pass to the agent
-            context: Optional context data for the agent
-            run_identifier: Optional UUID for validation context tracking
-            expected_outputs: Optional list of expected output fields
+        Input validation is performed before calling the agent. If validation
+        fails, returns an error dict with helpful hints for the calling agent
+        to retry with correct input (similar to output validation retry flow).
 
-        Returns:
-            Dict with success, data, errors, and iterations
+        Instrumented by @traced_tool.
         """
+        # Extract reserved keys
+        task = kwargs.pop("task")
+        run_identifier = kwargs.pop("run_identifier", None)
+        expected_outputs = kwargs.pop("expected_outputs", None)
+        output_contract_schema_override = kwargs.pop("output_contract_schema", None)
+        explicit_context = kwargs.pop("context", None)
+
+        # Merge remaining kwargs into context
+        # This allows parent agent to pass target_url, collected_information, etc.
+        # at the same level as task, and have them merged into context
+        context = explicit_context.copy() if explicit_context else {}
+        context.update(kwargs)  # target_url, collected_information, etc.
+
+        # Validate input contract BEFORE calling agent
+        # Returns actionable error so calling agent can retry with correct input
+        validation_error = self._validate_input(context if context else None)
+        if validation_error:
+            return validation_error
+
         result = self._agent.run(
             task,
-            context=context,
+            context=context if context else None,
             expected_outputs=expected_outputs,
             run_identifier=run_identifier,
-            output_contract_schema=self._output_schema,
+            output_contract_schema=output_contract_schema_override or self._output_schema,
         )
         return {
             "success": result.success,
@@ -144,73 +187,25 @@ class AgentTool(BaseTool):
     def get_parameters_schema(self) -> dict[str, Any]:
         """Return JSON schema for tool parameters.
 
-        Returns OpenAI-compatible parameter schema with:
-        - task (required): Task description string
-        - context (optional): Context data object
-        - run_identifier (optional): UUID for validation tracking
-        - expected_outputs (optional): List of expected output fields
-        """
-        return {
-            "type": "object",
-            "properties": {
-                "task": {
-                    "type": "string",
-                    "description": f"Task for the {self._agent.name} agent",
-                },
-                "context": {
-                    "type": "object",
-                    "description": "Optional context data to pass to agent",
-                },
-                "run_identifier": {
-                    "type": "string",
-                    "description": "UUID from generate_uuid for validation tracking",
-                },
-                "expected_outputs": {
-                    "type": "array",
-                    "items": {"type": "string"},
-                    "description": "List of expected output fields from the agent",
-                },
-            },
-            "required": ["task"],
-        }
-
-    def prompt_attachment(self) -> str:
-        """Generate prompt section describing this agent and its contracts.
-
-        Returns a markdown-formatted string that can be included in prompts
-        to describe the sub-agent's capabilities and expected output format.
-
-        The example JSON uses the wrapped structure with agent_response_content
-        at the top level and actual data in a nested 'data' object.
+        Merges base agent tool schema with agent-specific input schema.
+        Agent input fields (target_url, collected_information, etc.) are
+        merged at the top level, NOT nested in a context object.
 
         Returns:
-            Markdown string with agent description and contracts
+            Merged schema with:
+            - task (required): Task description string
+            - Agent-specific required fields (e.g., target_url)
+            - run_identifier (optional): UUID for validation tracking
+            - expected_outputs (optional): List of expected output fields
         """
-        # Format example JSON with wrapped structure
-        example_json = generate_example_json(self._output_schema, wrap_in_data=True)
-        example_json_str = json.dumps(example_json, indent=2)
+        schema_path = TOOL_SCHEMAS_PATH / "agent_tool.schema.json"
+        base_schema = load_schema(str(schema_path))
 
-        lines = [
-            f"### {self._agent.name}",
-            f"**Tool name:** `{self.name}`",
-            f"**Description:** {self._description}",
-            "",
-            "#### Output Contract",
-            generate_fields_markdown(self._output_schema),
-            "",
-            "#### Example Output",
-            "```json",
-            example_json_str,
-            "```",
-        ]
+        # Merge base schema with agent-specific input schema
+        merged = merge_agent_tool_schema(base_schema, self._input_schema)
 
-        if self._input_schema:
-            lines.extend(
-                [
-                    "",
-                    "#### Input Contract",
-                    generate_fields_markdown(self._input_schema),
-                ]
-            )
+        # Customize task description with agent name
+        if "properties" in merged and "task" in merged["properties"]:
+            merged["properties"]["task"]["description"] = f"Task for the {self._agent.name} agent"
 
-        return "\n".join(lines)
+        return merged
